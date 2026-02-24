@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reputations - STFC Rep Tracker</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <nav>
+        <a href="/">Tracker</a>
+        <a href="/factions.html">Factions</a>
+        <a href="/faction-types.html">Faction Types</a>
+        <a href="/reputations.html" class="active">Reputations</a>
+    </nav>
+
+    <h1>Reputations</h1>
+
+    <div class="container">
+        <h2>Reputation Tiers</h2>
+        <table id="reputationsTable">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Low Limit</th>
+                </tr>
+            </thead>
+            <tbody id="reputationsBody">
+                <tr>
+                    <td colspan="2">Loading...</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        const API_URL = '/api';
+
+        async function loadReputations() {
+            try {
+                const response = await fetch(`${API_URL}/reputations`);
+                if (!response.ok) {
+                    throw new Error('Failed to load reputations');
+                }
+                const reputations = await response.json();
+                displayReputations(reputations);
+            } catch (error) {
+                console.error('Error loading reputations:', error);
+                document.getElementById('reputationsBody').innerHTML =
+                    '<tr><td colspan="2">Failed to load reputations.</td></tr>';
+            }
+        }
+
+        function displayReputations(reputations) {
+            const tbody = document.getElementById('reputationsBody');
+
+            if (reputations.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="2">No reputations found.</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = reputations.map(rep => `
+                <tr>
+                    <td>${rep.name}</td>
+                    <td>${rep.low_limit.toLocaleString()}</td>
+                </tr>
+            `).join('');
+        }
+
+        loadReputations();
+    </script>
+</body>
+</html>
