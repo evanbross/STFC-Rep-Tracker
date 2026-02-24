@@ -35,8 +35,8 @@
                     </select>
                 </div>
                 <div class="form-group">
-                    <label for="on_column">On Column:</label>
-                    <input type="number" id="on_column" required min="0" step="1" value="0" placeholder="e.g., 0">
+                    <label for="on_chart">On Chart:</label>
+                    <input type="number" id="on_chart" required min="0" step="1" value="0" placeholder="e.g., 0">
                 </div>
                 <button type="submit">Save</button>
                 <button type="button" class="cancel" onclick="cancelForm()">Cancel</button>
@@ -48,7 +48,7 @@
                 <tr>
                     <th>Name</th>
                     <th>Type</th>
-                    <th>On Column</th>
+                    <th>On Chart</th>
                     <th>Actions</th>
                 </tr>
             </thead>
@@ -111,10 +111,10 @@
             tbody.innerHTML = factions.map(f => `
                 <tr>
                     <td>${f.name}</td>
-                    <td><span class="code-badge">${f.faction_type}</span></td>
-                    <td>${f.on_column ?? 0}</td>
+                    <td><span class="code-badge" style="background-color: ${f.color || '#e0e0e0'}; color: ${['black', 'royalblue', 'red', 'green'].includes(f.color) ? 'white' : '#555'}">${f.faction_type}</span></td>
+                    <td>${f.on_chart ?? 0}</td>
                     <td>
-                        <button class="action-btn edit-btn" onclick="editFaction(${f.id}, '${f.name}', ${f.faction_type_id}, ${f.on_column ?? 0})">Edit</button>
+                        <button class="action-btn edit-btn" onclick="editFaction(${f.id}, '${f.name}', ${f.faction_type_id}, ${f.on_chart ?? 0})">Edit</button>
                     </td>
                 </tr>
             `).join('');
@@ -129,13 +129,13 @@
         }
 
         // Edit faction
-        function editFaction(id, name, faction_type_id, on_column) {
+        function editFaction(id, name, faction_type_id, on_chart = 0) {
             document.getElementById('addForm').classList.add('active');
             document.getElementById('formTitle').textContent = 'Edit Faction';
             document.getElementById('editId').value = id;
             document.getElementById('name').value = name;
             document.getElementById('faction_type').value = faction_type_id;
-            document.getElementById('on_column').value = on_column ?? 0;
+            document.getElementById('on_chart').value = on_chart ?? 0;
 
             // Scroll to form
             document.getElementById('addForm').scrollIntoView({ behavior: 'smooth' });
@@ -154,7 +154,7 @@
             const id = document.getElementById('editId').value;
             const name = document.getElementById('name').value.trim();
             const faction_type_id = document.getElementById('faction_type').value;
-            const on_column = parseInt(document.getElementById('on_column').value || '0', 10);
+            const on_chart = parseInt(document.getElementById('on_chart').value || '0', 10);
 
             if (!name || !faction_type_id) {
                 alert('Please fill in all fields');
@@ -170,7 +170,7 @@
                         headers: {
                             'Content-Type': 'application/json'
                         },
-                        body: JSON.stringify({ name, faction_type_id, on_column })
+                        body: JSON.stringify({ name, faction_type_id, on_chart })
                     });
                 } else {
                     // Create new
@@ -179,7 +179,7 @@
                         headers: {
                             'Content-Type': 'application/json'
                         },
-                        body: JSON.stringify({ name, faction_type_id, on_column })
+                        body: JSON.stringify({ name, faction_type_id, on_chart })
                     });
                 }
 
@@ -193,8 +193,6 @@
 
                 // Hide and reset form
                 cancelForm();
-
-                alert(id ? 'Faction updated successfully!' : 'Faction added successfully!');
             } catch (error) {
                 console.error('Error saving faction:', error);
                 alert('Failed to save faction: ' + error.message);

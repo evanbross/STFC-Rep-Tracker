@@ -36,6 +36,10 @@
                     <label for="color">Color:</label>
                     <input type="text" id="color" placeholder="e.g., gold, #FFD700, rgb(255, 215, 0)">
                 </div>
+                <div class="form-group">
+                    <label for="reputation_table_name">Reputation Table:</label>
+                    <input type="text" id="reputation_table_name" placeholder="e.g., fkr_reputations, AugmentReputations">
+                </div>
                 <button type="submit">Save</button>
                 <button type="button" class="cancel" onclick="cancelForm()">Cancel</button>
             </form>
@@ -47,12 +51,13 @@
                     <th>Code</th>
                     <th>Name</th>
                     <th>Color</th>
+                    <th>Reputation Table</th>
                     <th>Actions</th>
                 </tr>
             </thead>
             <tbody id="factionTypesBody">
                 <tr>
-                    <td colspan="3">Loading...</td>
+                    <td colspan="5">Loading...</td>
                 </tr>
             </tbody>
         </table>
@@ -74,7 +79,7 @@
             } catch (error) {
                 console.error('Error loading faction types:', error);
                 document.getElementById('factionTypesBody').innerHTML =
-                    '<tr><td colspan="3">Failed to load faction types. Make sure the backend is running.</td></tr>';
+                    '<tr><td colspan="5">Failed to load faction types. Make sure the backend is running.</td></tr>';
             }
         }
 
@@ -83,7 +88,7 @@
             const tbody = document.getElementById('factionTypesBody');
 
             if (factionTypes.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="3">No faction types found.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="5">No faction types found.</td></tr>';
                 return;
             }
 
@@ -99,8 +104,9 @@
                             </div>
                         ` : '<span style="color: #999;">None</span>'}
                     </td>
+                    <td>${ft.reputation_table_name || '<span style="color: #999;">Standard</span>'}</td>
                     <td>
-                        <button class="action-btn edit-btn" onclick="editFactionType(${ft.id}, '${ft.code}', '${ft.name}', '${ft.color || ''}')">Edit</button>
+                        <button class="action-btn edit-btn" onclick="editFactionType(${ft.id}, '${ft.code}', '${ft.name}', '${ft.color || ''}', '${ft.reputation_table_name || ''}')">Edit</button>
                     </td>
                 </tr>
             `).join('');
@@ -115,13 +121,14 @@
         }
 
         // Edit faction type
-        function editFactionType(id, code, name, color) {
+        function editFactionType(id, code, name, color, reputation_table_name) {
             document.getElementById('addForm').classList.add('active');
             document.getElementById('formTitle').textContent = 'Edit Faction Type';
             document.getElementById('editId').value = id;
             document.getElementById('code').value = code;
             document.getElementById('name').value = name;
             document.getElementById('color').value = color || '';
+            document.getElementById('reputation_table_name').value = reputation_table_name || '';
 
             // Scroll to form
             document.getElementById('addForm').scrollIntoView({ behavior: 'smooth' });
@@ -141,6 +148,7 @@
             const code = document.getElementById('code').value.trim().toUpperCase();
             const name = document.getElementById('name').value.trim();
             const color = document.getElementById('color').value.trim();
+            const reputation_table_name = document.getElementById('reputation_table_name').value.trim();
 
             if (!code || !name) {
                 alert('Please fill in all fields');
@@ -156,7 +164,7 @@
                         headers: {
                             'Content-Type': 'application/json'
                         },
-                        body: JSON.stringify({ code, name, color })
+                        body: JSON.stringify({ code, name, color, reputation_table_name })
                     });
                 } else {
                     // Create new
@@ -165,7 +173,7 @@
                         headers: {
                             'Content-Type': 'application/json'
                         },
-                        body: JSON.stringify({ code, name, color })
+                        body: JSON.stringify({ code, name, color, reputation_table_name })
                     });
                 }
 
@@ -179,8 +187,6 @@
 
                 // Hide and reset form
                 cancelForm();
-
-                alert(id ? 'Faction type updated successfully!' : 'Faction type added successfully!');
             } catch (error) {
                 console.error('Error saving faction type:', error);
                 alert('Failed to save faction type: ' + error.message);

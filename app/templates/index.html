@@ -89,9 +89,10 @@
                     
                     btn.innerHTML = `
                         <div class="faction-name" style="${factionNameStyle}">${faction.name}</div>
+                        <div class="faction-rep-level">${faction.rep_level}</div>
                         <div class="faction-status">
-                            <div class="status-item"><span class="status-label">Value:</span><span class="status-value">${faction.current_value.toLocaleString()}</span></div>
-                            <div class="status-item"><span class="status-label">Δ:</span><span class="status-value">${faction.last_delta >= 0 ? '+' : ''}${faction.last_delta.toLocaleString()}</span></div>
+                            <div class="status-item full-width"><span class="status-label">Value:</span><span class="status-value">${faction.current_value.toLocaleString()}</span></div>
+                            <div class="status-item full-width"><span class="status-label">Δ:</span><span class="status-value">${faction.last_delta >= 0 ? '+' : ''}${faction.last_delta.toLocaleString()}</span></div>
                             <div class="status-item"><span class="status-label">Rate:</span><span class="status-value">${status.raw_change_per_minute || 0}/min</span></div>
                             <div class="status-item"><span class="status-label">Time:</span><span class="status-value">${status.minutes || 0}m</span></div>
                         </div>
@@ -246,7 +247,6 @@
                 // Reset form
                 document.getElementById('value').value = '';
 
-                alert(`Added entry for ${faction}: ${value} (Δ ${entry.value_delta >= 0 ? '+' : ''}${entry.value_delta})`);
             } catch (error) {
                 console.error('Error adding entry:', error);
                 alert('Failed to add entry: ' + error.message);

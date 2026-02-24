@@ -17,17 +17,54 @@
     <h1>Reputations</h1>
 
     <div class="container">
-        <h2>Reputation Tiers</h2>
+        <h2>Standard Reputation Tiers</h2>
         <table id="reputationsTable">
             <thead>
                 <tr>
                     <th>Name</th>
                     <th>Low Limit</th>
+                    <th>High Limit</th>
                 </tr>
             </thead>
             <tbody id="reputationsBody">
                 <tr>
-                    <td colspan="2">Loading...</td>
+                    <td colspan="3">Loading...</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="container">
+        <h2>Augment Reputation Tiers</h2>
+        <table id="augmentReputationsTable">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Low Limit</th>
+                    <th>High Limit</th>
+                </tr>
+            </thead>
+            <tbody id="augmentReputationsBody">
+                <tr>
+                    <td colspan="3">Loading...</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="container">
+        <h2>Rogue Reputation Tiers</h2>
+        <table id="rogueReputationsTable">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Low Limit</th>
+                    <th>High Limit</th>
+                </tr>
+            </thead>
+            <tbody id="rogueReputationsBody">
+                <tr>
+                    <td colspan="3">Loading...</td>
                 </tr>
             </tbody>
         </table>
@@ -43,19 +80,49 @@
                     throw new Error('Failed to load reputations');
                 }
                 const reputations = await response.json();
-                displayReputations(reputations);
+                displayReputations(reputations, 'reputationsBody');
             } catch (error) {
                 console.error('Error loading reputations:', error);
                 document.getElementById('reputationsBody').innerHTML =
-                    '<tr><td colspan="2">Failed to load reputations.</td></tr>';
+                    '<tr><td colspan="3">Failed to load reputations.</td></tr>';
             }
         }
 
-        function displayReputations(reputations) {
-            const tbody = document.getElementById('reputationsBody');
+        async function loadAugmentReputations() {
+            try {
+                const response = await fetch(`${API_URL}/augment-reputations`);
+                if (!response.ok) {
+                    throw new Error('Failed to load augment reputations');
+                }
+                const reputations = await response.json();
+                displayReputations(reputations, 'augmentReputationsBody');
+            } catch (error) {
+                console.error('Error loading augment reputations:', error);
+                document.getElementById('augmentReputationsBody').innerHTML =
+                    '<tr><td colspan="3">Failed to load augment reputations.</td></tr>';
+            }
+        }
+
+        async function loadRogueReputations() {
+            try {
+                const response = await fetch(`${API_URL}/rogue-reputations`);
+                if (!response.ok) {
+                    throw new Error('Failed to load rogue reputations');
+                }
+                const reputations = await response.json();
+                displayReputations(reputations, 'rogueReputationsBody');
+            } catch (error) {
+                console.error('Error loading rogue reputations:', error);
+                document.getElementById('rogueReputationsBody').innerHTML =
+                    '<tr><td colspan="3">Failed to load rogue reputations.</td></tr>';
+            }
+        }
+
+        function displayReputations(reputations, tbodyId) {
+            const tbody = document.getElementById(tbodyId);
 
             if (reputations.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="2">No reputations found.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="3">No reputations found.</td></tr>';
                 return;
             }
 
@@ -63,11 +130,14 @@
                 <tr>
                     <td>${rep.name}</td>
                     <td>${rep.low_limit.toLocaleString()}</td>
+                    <td>${rep.high_limit !== null && rep.high_limit !== undefined ? rep.high_limit.toLocaleString() : '-'}</td>
                 </tr>
             `).join('');
         }
 
         loadReputations();
+        loadAugmentReputations();
+        loadRogueReputations();
     </script>
 </body>
 </html>

@@ -1,6 +1,6 @@
 from flask import Flask, jsonify, request, render_template
 from flask_cors import CORS
-from app.database import Database
+from app.database.database import Database
 from config import get_config
 import os
 
@@ -48,12 +48,13 @@ def add_faction_type():
     code = data.get('code')
     name = data.get('name')
     color = data.get('color')
+    reputation_table_name = data.get('reputation_table_name')
 
     if not code or not name:
         return jsonify({'error': 'Missing code or name'}), 400
 
     try:
-        faction_type = db.add_faction_type(code, name, color)
+        faction_type = db.add_faction_type(code, name, color, reputation_table_name)
         return jsonify(faction_type), 201
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
@@ -68,12 +69,13 @@ def update_faction_type(id):
     code = data.get('code')
     name = data.get('name')
     color = data.get('color')
+    reputation_table_name = data.get('reputation_table_name')
 
     if not code or not name:
         return jsonify({'error': 'Missing code or name'}), 400
 
     try:
-        faction_type = db.update_faction_type(id, code, name, color)
+        faction_type = db.update_faction_type(id, code, name, color, reputation_table_name)
         return jsonify(faction_type), 200
     except ValueError as e:
         return jsonify({'error': str(e)}), 404
@@ -170,8 +172,22 @@ def add_entry():
 
 @app.route('/api/reputations', methods=['GET'])
 def get_reputations():
-    """Get list of all reputations"""
+    """Get list of all fkr_reputations"""
     reputations = db.get_all_reputations()
+    return jsonify(reputations)
+
+
+@app.route('/api/augment-reputations', methods=['GET'])
+def get_augment_reputations():
+    """Get list of all augment reputations"""
+    reputations = db.get_all_augment_reputations()
+    return jsonify(reputations)
+
+
+@app.route('/api/rogue-reputations', methods=['GET'])
+def get_rogue_reputations():
+    """Get list of all rogue reputations"""
+    reputations = db.get_all_rogue_reputations()
     return jsonify(reputations)
 
 

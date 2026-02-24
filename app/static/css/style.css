@@ -194,8 +194,8 @@ tr:hover {
 
 /* Faction buttons (used in index.html) */
 .faction-buttons {
-    display: flex;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
     gap: 10px;
     margin-bottom: 15px;
 }
@@ -208,12 +208,9 @@ tr:hover {
     border-radius: 8px;
     cursor: pointer;
     text-align: left;
-    flex: 1;
-    min-width: 200px;
     transition: all 0.2s;
     display: flex;
     flex-direction: column;
-    width: auto;
 }
 
 .faction-btn:hover {
@@ -229,7 +226,15 @@ tr:hover {
 .faction-btn .faction-name {
     font-weight: bold;
     font-size: 1.1em;
-    margin-bottom: 5px;
+    margin-bottom: 2px;
+}
+
+.faction-btn .faction-rep-level {
+    font-size: 1.1em;
+    font-weight: bold;
+    font-style: italic;
+    color: #555;
+    margin-bottom: 8px;
 }
 
 .faction-btn .faction-status {
@@ -243,6 +248,10 @@ tr:hover {
 .status-item {
     display: flex;
     justify-content: space-between;
+}
+
+.status-item.full-width {
+    grid-column: span 2;
 }
 
 .status-label {
