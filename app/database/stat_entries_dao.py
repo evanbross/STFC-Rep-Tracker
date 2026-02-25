@@ -68,6 +68,7 @@ class StatEntriesDAO:
         conn.close()
 
         return {
+            'faction_id': faction_id,
             'timestamp': timestamp,
             'value': value,
             'value_delta': value_delta
@@ -79,7 +80,7 @@ class StatEntriesDAO:
         cursor = conn.cursor()
 
         cursor.execute('''
-            SELECT se.timestamp, se.value, se.value_delta
+            SELECT se.timestamp, se.value, se.value_delta, se.faction_id
             FROM stat_entries se
             JOIN factions f ON se.faction_id = f.id
             WHERE f.name = ?
@@ -93,7 +94,8 @@ class StatEntriesDAO:
             entries.append({
                 'timestamp': row[0],
                 'value': row[1],
-                'value_delta': row[2]
+                'value_delta': row[2],
+                'faction_id': row[3]
             })
 
         conn.close()
@@ -113,7 +115,7 @@ class StatEntriesDAO:
         result = {}
         for faction_id, name in factions:
             cursor.execute('''
-                SELECT timestamp, value, value_delta
+                SELECT timestamp, value, value_delta, faction_id
                 FROM stat_entries
                 WHERE faction_id = ?
                 ORDER BY timestamp ASC
@@ -126,7 +128,8 @@ class StatEntriesDAO:
                 entries.append({
                     'timestamp': row[0],
                     'value': row[1],
-                    'value_delta': row[2]
+                    'value_delta': row[2],
+                    'faction_id': row[3]
                 })
 
             result[name] = entries

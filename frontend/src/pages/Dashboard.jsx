@@ -18,7 +18,6 @@ ChartJS.register(
 const Dashboard = () => {
   const [factions, setFactions] = useState([]);
   const [selectedFaction, setSelectedFaction] = useState(null);
-  const [newValue, setNewValue] = useState('');
   const [chartData, setChartData] = useState({ datasets: [] });
   const [factionColorsMap, setFactionColorsMap] = useState({});
   const [isCapturing, setIsCapturing] = useState(false);
@@ -100,15 +99,6 @@ const Dashboard = () => {
     }
   }, [factionColorsMap]);
 
-  const handleAddEntry = async (e) => {
-    e.preventDefault();
-    if (!selectedFaction || !newValue) {
-      alert('Please select a faction and enter a value');
-      return;
-    }
-    await submitEntry(selectedFaction.name, newValue);
-    setNewValue('');
-  };
 
   const submitEntry = async (factionName, value) => {
     try {
@@ -188,7 +178,87 @@ const Dashboard = () => {
       <h1>STFC Reputation Tracker</h1>
 
       <div className="container">
-        <h2>Auto Capture</h2>
+        <h2>Faction Summaries</h2>
+        <div className="form-group">
+          <div className="faction-buttons">
+            {factions.map(faction => {
+              const isSelected = selectedFaction?.name === faction.name;
+              let factionNameStyle = faction.color ? { color: faction.color } : {};
+              if (['gold', 'silver', 'orange'].includes(faction.color)) {
+                factionNameStyle = { 
+                  ...factionNameStyle,
+                  WebkitTextStroke: '0.5px black',
+                  textShadow: '0 0 1px black'
+                };
+              }
+
+              return (
+                <div 
+                  key={faction.name}
+                  className={`faction-btn ${isSelected ? 'selected' : ''}`}
+                  style={isSelected && faction.color ? {
+                    borderColor: faction.color,
+                    backgroundColor: faction.color + '1a'
+                  } : {}}
+                  onClick={() => setSelectedFaction(faction)}
+                >
+                  <div className="faction-name" style={factionNameStyle}>{faction.name}</div>
+                  <div className="faction-rep-level">{faction.rep_level}</div>
+                  <div className="faction-status">
+                    <div className="status-item full-width">
+                      <span className="status-label">Latest Value:</span>
+                      <span className="status-value">{faction.current_value?.toLocaleString()}</span>
+                    </div>
+                    <div className="status-item full-width">
+                      <span className="status-label">Value Δ:</span>
+                      <span className="status-value">{faction.last_delta >= 0 ? '+' : ''}{faction.last_delta?.toLocaleString()}</span>
+                    </div>
+                    <div className="status-item full-width">
+                      <span className="status-label">Change Rate:</span>
+                      <span className="status-value">{Math.round(faction.status?.raw_change_per_minute || 0)}/min</span>
+                    </div>
+                    <div className="status-item full-width">
+                      <span className="status-label">Remaining Time:</span>
+                      <span className="status-value">
+                        {(() => {
+                          const totalMinutes = Math.round(faction.status?.minutes || 0);
+                          const hours = Math.floor(totalMinutes / 60);
+                          const mins = totalMinutes % 60;
+                          return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+                        })()}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="quick-edit" onClick={e => e.stopPropagation()}>
+                    <input 
+                      type="number" 
+                      className="quick-edit-input" 
+                      placeholder="New Value"
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                          submitEntry(faction.name, e.target.value);
+                          e.target.value = '';
+                        }
+                      }}
+                    />
+                    <button 
+                      className="quick-edit-btn"
+                      onClick={e => {
+                        const input = e.currentTarget.previousElementSibling;
+                        submitEntry(faction.name, input.value);
+                        input.value = '';
+                      }}
+                    >
+                      Save
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <h2 style={{ marginTop: '2rem' }}>Auto Capture</h2>
         <p style={{ marginBottom: '1rem', fontSize: '0.9rem', color: '#666' }}>
           Click the button below to automatically locate Star Trek Fleet Command, 
           switch to the Factions screen, and take a screenshot for processing.
@@ -204,106 +274,11 @@ const Dashboard = () => {
             color: 'white',
             border: 'none',
             borderRadius: '4px',
-            cursor: isCapturing ? 'not-allowed' : 'pointer',
-            marginBottom: '2rem'
+            cursor: isCapturing ? 'not-allowed' : 'pointer'
           }}
         >
           {isCapturing ? 'Capturing...' : 'Capture Factions Screen'}
         </button>
-
-        <h2>Add New Entry</h2>
-        <form onSubmit={handleAddEntry}>
-          <div className="form-group">
-            <label>Select Faction:</label>
-            <div className="faction-buttons">
-              {factions.map(faction => {
-                const isSelected = selectedFaction?.name === faction.name;
-                let factionNameStyle = faction.color ? { color: faction.color } : {};
-                if (['gold', 'silver', 'orange'].includes(faction.color)) {
-                  factionNameStyle = { 
-                    ...factionNameStyle,
-                    WebkitTextStroke: '0.5px black',
-                    textShadow: '0 0 1px black'
-                  };
-                }
-
-                return (
-                  <div 
-                    key={faction.name}
-                    className={`faction-btn ${isSelected ? 'selected' : ''}`}
-                    style={isSelected && faction.color ? {
-                      borderColor: faction.color,
-                      backgroundColor: faction.color + '1a'
-                    } : {}}
-                    onClick={() => setSelectedFaction(faction)}
-                  >
-                    <div className="faction-name" style={factionNameStyle}>{faction.name}</div>
-                    <div className="faction-rep-level">{faction.rep_level}</div>
-                    <div className="faction-status">
-                      <div className="status-item full-width">
-                        <span className="status-label">Latest Value:</span>
-                        <span className="status-value">{faction.current_value?.toLocaleString()}</span>
-                      </div>
-                      <div className="status-item full-width">
-                        <span className="status-label">Value Δ:</span>
-                        <span className="status-value">{faction.last_delta >= 0 ? '+' : ''}{faction.last_delta?.toLocaleString()}</span>
-                      </div>
-                      <div className="status-item full-width">
-                        <span className="status-label">Change Rate:</span>
-                        <span className="status-value">{Math.round(faction.status?.raw_change_per_minute || 0)}/min</span>
-                      </div>
-                      <div className="status-item full-width">
-                        <span className="status-label">Remaining Time:</span>
-                        <span className="status-value">
-                          {(() => {
-                            const totalMinutes = Math.round(faction.status?.minutes || 0);
-                            const hours = Math.floor(totalMinutes / 60);
-                            const mins = totalMinutes % 60;
-                            return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
-                          })()}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="quick-edit" onClick={e => e.stopPropagation()}>
-                      <input 
-                        type="number" 
-                        className="quick-edit-input" 
-                        placeholder="New Value"
-                        onKeyDown={e => {
-                          if (e.key === 'Enter') {
-                            submitEntry(faction.name, e.target.value);
-                            e.target.value = '';
-                          }
-                        }}
-                      />
-                      <button 
-                        className="quick-edit-btn"
-                        onClick={e => {
-                          const input = e.target.previousSibling;
-                          submitEntry(faction.name, input.value);
-                          input.value = '';
-                        }}
-                      >
-                        Save
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-          <div className="form-group">
-            <label htmlFor="value">Reputation Value (Selected: {selectedFaction?.name || 'None'}):</label>
-            <input 
-              type="number" 
-              id="value" 
-              value={newValue}
-              onChange={e => setNewValue(e.target.value)}
-              placeholder="Enter reputation value"
-            />
-          </div>
-          <button type="submit" style={{ width: '100%' }}>Add Entry</button>
-        </form>
       </div>
 
       <div className="chart-container">
