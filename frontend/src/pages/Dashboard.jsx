@@ -32,20 +32,11 @@ const Dashboard = () => {
       const response = await axios.get('/api/factions/summary');
       let factionList = response.data;
 
-      const CODE_ORDER = ['AUG', 'FED', 'KLI', 'ROM', 'ROG', 'BAJ', 'TER', 'DTI', 'S31', 'EXB'];
-      const codeIndex = (code) => {
-        const idx = CODE_ORDER.indexOf(code || '');
-        return idx === -1 ? Number.MAX_SAFE_INTEGER : idx;
-      };
-
       factionList.sort((a, b) => {
-        const aHas = typeof a.display_order === 'number';
-        const bHas = typeof b.display_order === 'number';
-        if (aHas && bHas && a.display_order !== b.display_order) return a.display_order - b.display_order;
-        if (aHas && !bHas) return -1;
-        if (!aHas && bHas) return 1;
-        const ci = codeIndex(a.faction_type) - codeIndex(b.faction_type);
-        if (ci !== 0) return ci;
+        const aOrder = typeof a.display_order === 'number' ? a.display_order : Number.MAX_SAFE_INTEGER;
+        const bOrder = typeof b.display_order === 'number' ? b.display_order : Number.MAX_SAFE_INTEGER;
+        
+        if (aOrder !== bOrder) return aOrder - bOrder;
         return (a.name || '').localeCompare(b.name || '');
       });
 
@@ -210,13 +201,20 @@ const Dashboard = () => {
                         <span className="status-label">Value Δ:</span>
                         <span className="status-value">{faction.last_delta >= 0 ? '+' : ''}{faction.last_delta?.toLocaleString()}</span>
                       </div>
-                      <div className="status-item">
+                      <div className="status-item full-width">
                         <span className="status-label">Change Rate:</span>
-                        <span className="status-value">{faction.status?.raw_change_per_minute || 0}/min</span>
+                        <span className="status-value">{Math.round(faction.status?.raw_change_per_minute || 0)}/min</span>
                       </div>
-                      <div className="status-item">
-                        <span className="status-label">Time:</span>
-                        <span className="status-value">{faction.status?.minutes || 0}m</span>
+                      <div className="status-item full-width">
+                        <span className="status-label">Remaining Time:</span>
+                        <span className="status-value">
+                          {(() => {
+                            const totalMinutes = Math.round(faction.status?.minutes || 0);
+                            const hours = Math.floor(totalMinutes / 60);
+                            const mins = totalMinutes % 60;
+                            return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+                          })()}
+                        </span>
                       </div>
                     </div>
                     <div className="quick-edit" onClick={e => e.stopPropagation()}>

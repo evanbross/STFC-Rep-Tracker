@@ -1,6 +1,7 @@
 from flask import Flask, jsonify, request, render_template, redirect
 from flask_cors import CORS
-from app.database import fkr_reputations_dao, rogue_reputations_dao, augment_reputations_dao, bajoran_reputations_dao, terran_reputations_dao, dti_reputations_dao, section31_reputations_dao, ex_borg_reputations_dao, factions_dao, stat_entries_dao
+from flasgger import Swagger
+from app.database import fkr_reputations_dao, rogue_reputations_dao, augment_reputations_dao, bajoran_reputations_dao, terran_reputations_dao, dti_reputations_dao, section31_reputations_dao, ex_borg_reputations_dao, factions_dao, stat_entries_dao, reputations_dao
 from app.database.database import Database
 from config import get_config
 import os
@@ -8,6 +9,7 @@ import os
 app = Flask(__name__, template_folder='frontend/dist', static_folder='frontend/dist', static_url_path='/')
 app.config.from_object(get_config())
 CORS(app, origins=app.config['CORS_ORIGINS'])
+swagger = Swagger(app)
 db = Database(app.config['DATABASE_PATH'])
 
 
@@ -48,14 +50,81 @@ def serve_react(path):
 
 @app.route('/api/factions', methods=['GET'])
 def get_factions():
-    """Get list of all factions"""
+    """
+    Get list of all factions
+    ---
+    tags:
+      - Factions
+    responses:
+      200:
+        description: A list of factions
+        schema:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              name:
+                type: string
+              code:
+                type: string
+              color:
+                type: string
+              reputation_table_name:
+                type: string
+              display_order:
+                type: integer
+              on_chart:
+                type: integer
+              on_column:
+                type: integer
+              faction_type:
+                type: string
+    """
     result = factions_dao.get_all_factions(db)
     return jsonify(result)
 
 
 @app.route('/api/factions', methods=['POST'])
 def add_faction():
-    """Add a new faction"""
+    """
+    Add a new faction
+    ---
+    tags:
+      - Factions
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          required:
+            - name
+            - code
+          properties:
+            name:
+              type: string
+            code:
+              type: string
+            color:
+              type: string
+            reputation_table_name:
+              type: string
+            on_chart:
+              type: integer
+              default: 0
+            display_order:
+              type: integer
+            on_column:
+              type: integer
+              default: 0
+    responses:
+      201:
+        description: Faction created successfully
+      400:
+        description: Missing required fields or faction already exists
+    """
     data = request.json
     name = data.get('name')
     code = data.get('code')
@@ -81,7 +150,45 @@ def add_faction():
 
 @app.route('/api/factions/<int:id>', methods=['PUT'])
 def update_faction(id):
-    """Update an existing faction"""
+    """
+    Update an existing faction
+    ---
+    tags:
+      - Factions
+    parameters:
+      - name: id
+        in: path
+        type: integer
+        required: true
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          required:
+            - name
+            - code
+          properties:
+            name:
+              type: string
+            code:
+              type: string
+            color:
+              type: string
+            reputation_table_name:
+              type: string
+            on_chart:
+              type: integer
+            display_order:
+              type: integer
+            on_column:
+              type: integer
+    responses:
+      200:
+        description: Faction updated successfully
+      404:
+        description: Faction not found
+    """
     data = request.json
     name = data.get('name')
     code = data.get('code')
@@ -107,28 +214,90 @@ def update_faction(id):
 
 @app.route('/api/factions/summary', methods=['GET'])
 def get_faction_summary():
-    """Get summary data for all factions"""
-    summary = factions_dao.get_faction_summary(db)
+    """
+    Get summary data for all factions
+    ---
+    tags:
+      - Factions
+    parameters:
+      - name: sort
+        in: query
+        type: string
+        description: Field to sort by (prefix with - for descending)
+        enum: [name, display_order, current_value, last_delta, remaining_time, change_rate, rep_level, last_updated, entry_count]
+    responses:
+      200:
+        description: A list of faction summaries
+    """
+    sort_by = request.args.get('sort')
+    summary = factions_dao.get_faction_summary(db, sort_by=sort_by)
     return jsonify(summary)
 
 
 @app.route('/api/entries', methods=['GET'])
 def get_all_entries():
-    """Get all stat entries for all factions"""
+    """
+    Get all stat entries for all factions
+    ---
+    tags:
+      - Entries
+    responses:
+      200:
+        description: A dictionary where keys are faction names and values are lists of entries
+    """
     entries = stat_entries_dao.get_all_factions_with_entries(db)
     return jsonify(entries)
 
 
 @app.route('/api/entries/<faction_name>', methods=['GET'])
 def get_faction_entries(faction_name):
-    """Get stat entries for a specific faction"""
+    """
+    Get stat entries for a specific faction
+    ---
+    tags:
+      - Entries
+    parameters:
+      - name: faction_name
+        in: path
+        type: string
+        required: true
+    responses:
+      200:
+        description: A list of entries for the faction
+    """
     entries = stat_entries_dao.get_faction_entries(db, faction_name)
     return jsonify(entries)
 
 
 @app.route('/api/entries', methods=['POST'])
 def add_entry():
-    """Add a new stat entry"""
+    """
+    Add a new stat entry
+    ---
+    tags:
+      - Entries
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          required:
+            - faction
+            - value
+          properties:
+            faction:
+              type: string
+            value:
+              type: integer
+    responses:
+      201:
+        description: Entry created successfully
+      400:
+        description: Missing faction or value
+      404:
+        description: Faction not found
+    """
     data = request.json
     faction_name = data.get('faction')
     value = data.get('value')
@@ -199,6 +368,84 @@ def get_ex_borg_reputations():
     """Get list of all ex-borg reputations"""
     reputations = ex_borg_reputations_dao.get_all_ex_borg_reputations(db)
     return jsonify(reputations)
+
+
+@app.route('/api/reputations/all', methods=['GET'])
+def get_all_reputations_grouped():
+    """
+    Get all reputations grouped by their reputation table
+    ---
+    tags:
+      - Reputations
+    responses:
+      200:
+        description: All reputations grouped by table
+    """
+    factions = factions_dao.get_all_factions(db)
+    groups = {}
+    for f in factions:
+        table_name = f.get('reputation_table_name')
+        if not table_name:
+            continue
+        if table_name not in groups:
+            groups[table_name] = {
+                'table_name': table_name,
+                'factions': [],
+                'display_order': f.get('display_order') if f.get('display_order') is not None else 999
+            }
+        groups[table_name]['factions'].append(f['name'])
+        if f.get('display_order') is not None and f['display_order'] < groups[table_name]['display_order']:
+            groups[table_name]['display_order'] = f['display_order']
+    
+    result = []
+    for table_name, group in groups.items():
+        try:
+            reps = reputations_dao.get_reputations_by_table(db, table_name)
+            
+            # Determine title
+            if table_name == 'fkr_reputations':
+                title = "FKR Reputation Tiers"
+            else:
+                title = f"{group['factions'][0]} Reputation Tiers"
+                
+            result.append({
+                'title': title,
+                'data': reps,
+                'display_order': group['display_order']
+            })
+        except Exception as e:
+            print(f"Error fetching reputations for {table_name}: {e}")
+    
+    result.sort(key=lambda x: x['display_order'])
+    return jsonify(result)
+
+
+@app.route('/api/reputations/by-table/<table_name>', methods=['GET'])
+def get_reputations_by_table(table_name):
+    """
+    Get list of all reputations from a specific reputation table
+    ---
+    tags:
+      - Reputations
+    parameters:
+      - name: table_name
+        in: path
+        type: string
+        required: true
+        description: Name of the reputation table
+    responses:
+      200:
+        description: A list of reputations
+      400:
+        description: Invalid table name
+    """
+    try:
+        reputations = reputations_dao.get_reputations_by_table(db, table_name)
+        return jsonify(reputations)
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 if __name__ == '__main__':

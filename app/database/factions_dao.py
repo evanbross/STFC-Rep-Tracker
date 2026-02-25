@@ -1,5 +1,6 @@
 import sqlite3
 from datetime import datetime
+from app.database import reputations_dao
 
 def create_table(cursor):
     """Create factions table and handle migrations"""
@@ -137,7 +138,7 @@ def update_faction(db, id, name, code, color=None, reputation_table_name=None, o
     return result
 
 
-def get_faction_summary(db):
+def get_faction_summary(db, sort_by=None):
     """Get summary data for all factions including latest value and delta"""
     conn = db.get_connection()
     cursor = conn.cursor()
@@ -195,50 +196,78 @@ def get_faction_summary(db):
         current_value = latest[0] if latest else 0
         
         # Use appropriate reputations list
-        reputations = reputations_general
-        if reputation_table_name == 'AugmentReputations' or name == 'Augment':
-            reputations = reputations_augment
-        elif reputation_table_name == 'RogueReputations' or name == 'Rogue':
-            reputations = reputations_rogue
-        elif reputation_table_name == 'fkr_reputations' or reputation_table_name == 'Reputations':
+        reputations = []
+        try:
+            if reputation_table_name:
+                # Map old names to new ones if necessary
+                table_map = {
+                    'AugmentReputations': 'augment_reputations',
+                    'RogueReputations': 'rogue_reputations',
+                    'Reputations': 'fkr_reputations',
+                    'fkr_reputations': 'fkr_reputations'
+                }
+                mapped_table = table_map.get(reputation_table_name, reputation_table_name)
+                reps_data = reputations_dao.get_reputations_by_table(db, mapped_table)
+                reputations = [(r['name'], r['low_limit'], r['high_limit']) for r in reps_data]
+            else:
+                reputations = reputations_general
+        except Exception:
             reputations = reputations_general
 
-        # Find current reputation level
+        # Find current reputation level and next goal
         rep_level = "Unknown"
+        current_low_limit = None
+        current_high_limit = None
+        
         if latest: # Only set if there's at least one entry
             for rep_name, low_limit, high_limit in reputations:
                 if high_limit is not None:
                     if low_limit <= current_value <= high_limit:
                         rep_level = rep_name
+                        current_low_limit = low_limit
+                        current_high_limit = high_limit
                         break
                 else:
                     if current_value >= low_limit:
                         rep_level = rep_name
+                        current_low_limit = low_limit
+                        current_high_limit = None
                         break
         
-        # Special case for the very last tier if the value is exactly the high_limit
-        # or if it's beyond the last tier's high limit
-        if latest and rep_level == "Unknown":
-            # Fallback to the previous logic or find the highest tier
+        # Special case for the very last tier fallback
+        if latest and rep_level == "Unknown" and reputations:
             sorted_reps = sorted(reputations, key=lambda x: x[1], reverse=True)
             for rep_name, low_limit, high_limit in sorted_reps:
                 if current_value >= low_limit:
                     rep_level = rep_name
+                    current_low_limit = low_limit
+                    current_high_limit = high_limit
                     break
 
         if latest and previous:
             t1 = datetime.fromisoformat(previous[2])
             t2 = datetime.fromisoformat(latest[2])
             diff = t2 - t1
-            minutes = diff.total_seconds() / 60.0
+            update_interval_minutes = diff.total_seconds() / 60.0
             
-            if minutes > 0:
-                status['minutes'] = round(minutes, 2)
+            if update_interval_minutes > 0:
                 status['delta'] = latest[0] - previous[0]
                 status['value_change'] = status['delta']
-                status['raw_change_per_minute'] = round(status['delta'] / minutes, 2)
-                # For now, avg is same as raw if we only have 2 points
+                status['raw_change_per_minute'] = round(status['delta'] / update_interval_minutes, 2)
                 status['avg_change_per_minute'] = status['raw_change_per_minute']
+                
+                # Calculate minutes to goal
+                if status['raw_change_per_minute'] > 0 and current_high_limit is not None:
+                    dist = current_high_limit - current_value
+                    status['minutes_to_goal'] = round(dist / status['raw_change_per_minute'], 2)
+                    status['minutes'] = status['minutes_to_goal']
+                elif status['raw_change_per_minute'] < 0 and current_low_limit is not None:
+                    dist = current_value - current_low_limit
+                    status['minutes_to_goal'] = round(dist / abs(status['raw_change_per_minute']), 2)
+                    status['minutes'] = status['minutes_to_goal']
+                else:
+                    status['minutes_to_goal'] = 0.0
+                    status['minutes'] = 0.0
         
         result.append({
             'id': faction_id,
@@ -256,4 +285,30 @@ def get_faction_summary(db):
         })
 
     conn.close()
+
+    if sort_by:
+        reverse = False
+        if sort_by.startswith('-'):
+            reverse = True
+            sort_by = sort_by[1:]
+        
+        if sort_by == 'name':
+            result.sort(key=lambda x: x['name'].lower(), reverse=reverse)
+        elif sort_by == 'display_order':
+            result.sort(key=lambda x: x['display_order'] if x['display_order'] is not None else 999999, reverse=reverse)
+        elif sort_by == 'current_value':
+            result.sort(key=lambda x: x['current_value'], reverse=reverse)
+        elif sort_by == 'last_delta':
+            result.sort(key=lambda x: x['last_delta'], reverse=reverse)
+        elif sort_by == 'remaining_time':
+            result.sort(key=lambda x: x['status']['minutes'], reverse=reverse)
+        elif sort_by == 'change_rate':
+            result.sort(key=lambda x: x['status']['raw_change_per_minute'], reverse=reverse)
+        elif sort_by == 'rep_level':
+            result.sort(key=lambda x: x['rep_level'].lower(), reverse=reverse)
+        elif sort_by == 'last_updated':
+            result.sort(key=lambda x: x['last_updated'] or '', reverse=reverse)
+        elif sort_by == 'entry_count':
+            result.sort(key=lambda x: x['entry_count'], reverse=reverse)
+
     return result

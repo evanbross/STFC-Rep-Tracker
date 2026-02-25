@@ -210,6 +210,7 @@ tr:hover {
 
 .status-item.full-width {
     grid-column: span 2;
+    width: 100%;
 }
 
 .status-label {

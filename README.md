@@ -68,7 +68,39 @@ Depending on what you are making, it can be a good idea to include screenshots o
 Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
 
 ## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+
+### Tracking Reputations
+1. Navigate to the **Tracker** tab.
+2. Select a faction from the list.
+3. Enter your current reputation points in the "Add New Entry" section.
+4. Click the "Add" button or use the quick-edit input on each faction button to update values quickly.
+5. The chart below will automatically update to show your progress over time.
+
+### Managing Factions
+1. Navigate to the **Factions** tab.
+2. You can add new factions or edit existing ones.
+3. Fields:
+   - **Name**: The display name of the faction.
+   - **Code**: A short code (e.g., FED, ROM).
+   - **Color**: CSS color or hex code for the UI and chart.
+   - **Reputation Table Name**: The database table used for this faction's reputation tiers (e.g., `fkr_reputations`).
+   - **Display Order**: Numeric order in which factions appear on the dashboard.
+   - **On Column**: Whether to display this faction in certain summary views.
+   - **On Chart**: Whether this faction should be included in the main history chart.
+
+### Viewing Reputation Tiers
+1. Navigate to the **Reputations** tab to see all defined reputation levels, their low limits, and high limits across different faction groups.
+
+### API Documentation
+1. Navigate to the **API** tab.
+2. View and interact with the documentation for all available API endpoints.
+3. You can also access it directly at `/apidocs`.
+
+### API Sorting
+The `/api/factions/summary` endpoint supports a `sort` query parameter to specify the display order.
+- **Usage**: `/api/factions/summary?sort=name`
+- **Supported fields**: `name`, `display_order`, `current_value`, `last_delta`, `remaining_time`, `change_rate`, `rep_level`, `last_updated`, `entry_count`.
+- **Descending order**: Prefix the field name with a hyphen (e.g., `?sort=-current_value`).
 
 ## Support
 Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.

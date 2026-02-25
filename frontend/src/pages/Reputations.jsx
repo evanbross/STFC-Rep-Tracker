@@ -32,40 +32,15 @@ const RepTable = ({ title, data, loading }) => (
 );
 
 const Reputations = () => {
-  const [fkrData, setFkrData] = useState([]);
-  const [augmentData, setAugmentData] = useState([]);
-  const [rogueData, setRogueData] = useState([]);
-  const [bajoranData, setBajoranData] = useState([]);
-  const [terranData, setTerranData] = useState([]);
-  const [dtiData, setDtiData] = useState([]);
-  const [section31Data, setSection31Data] = useState([]);
-  const [exBorgData, setExBorgData] = useState([]);
-  
+  const [reputationGroups, setReputationGroups] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const loadAllReputations = async () => {
       setLoading(true);
       try {
-        const [fkr, aug, rog, baj, ter, dti, s31, exb] = await Promise.all([
-          axios.get('/api/reputations'),
-          axios.get('/api/augment-reputations'),
-          axios.get('/api/rogue-reputations'),
-          axios.get('/api/bajoran-reputations'),
-          axios.get('/api/terran-reputations'),
-          axios.get('/api/dti-reputations'),
-          axios.get('/api/section31-reputations'),
-          axios.get('/api/ex-borg-reputations')
-        ]);
-        
-        setFkrData(fkr.data);
-        setAugmentData(aug.data);
-        setRogueData(rog.data);
-        setBajoranData(baj.data);
-        setTerranData(ter.data);
-        setDtiData(dti.data);
-        setSection31Data(s31.data);
-        setExBorgData(exb.data);
+        const response = await axios.get('/api/reputations/all');
+        setReputationGroups(response.data);
       } catch (error) {
         console.error('Error loading reputations:', error);
       } finally {
@@ -80,14 +55,9 @@ const Reputations = () => {
     <div className="reputations-page">
       <h1>Reputation Tiers</h1>
       
-      <RepTable title="FKR Reputation Tiers" data={fkrData} loading={loading} />
-      <RepTable title="Augment Reputation Tiers" data={augmentData} loading={loading} />
-      <RepTable title="Rogue Reputation Tiers" data={rogueData} loading={loading} />
-      <RepTable title="Bajoran Reputation Tiers" data={bajoranData} loading={loading} />
-      <RepTable title="Terran Reputation Tiers" data={terranData} loading={loading} />
-      <RepTable title="DTI Reputation Tiers" data={dtiData} loading={loading} />
-      <RepTable title="Section 31 Reputation Tiers" data={section31Data} loading={loading} />
-      <RepTable title="Ex-Borg Reputation Tiers" data={exBorgData} loading={loading} />
+      {reputationGroups.map((group, idx) => (
+        <RepTable key={idx} title={group.title} data={group.data} loading={loading} />
+      ))}
     </div>
   );
 };
