@@ -4,6 +4,8 @@ from flasgger import Swagger
 from app.database import fkr_reputations_dao, rogue_reputations_dao, augment_reputations_dao, bajoran_reputations_dao, terran_reputations_dao, dti_reputations_dao, section31_reputations_dao, ex_borg_reputations_dao, factions_dao, stat_entries_dao, reputations_dao
 from app.database.database import Database
 from config import get_config
+from app.reputation_sucker.screen_capture import ScreenCapture
+from app.reputation_sucker.image_to_rep import analyze_screenshot
 import os
 
 app = Flask(__name__, template_folder='frontend/dist', static_folder='frontend/dist', static_url_path='/')
@@ -82,7 +84,7 @@ def get_factions():
               faction_type:
                 type: string
     """
-    result = factions_dao.get_all_factions(db)
+    result = db.factions.get_all_factions()
     return jsonify(result)
 
 
@@ -138,7 +140,7 @@ def add_faction():
         return jsonify({'error': 'Missing name or code'}), 400
 
     try:
-        result = factions_dao.add_faction(db, name, code, color, reputation_table_name, int(on_chart), 
+        result = db.factions.add_faction(name, code, color, reputation_table_name, int(on_chart), 
                                          int(display_order) if display_order is not None else None,
                                          int(on_column))
         return jsonify(result), 201
@@ -202,7 +204,7 @@ def update_faction(id):
         return jsonify({'error': 'Missing name or code'}), 400
 
     try:
-        result = factions_dao.update_faction(db, id, name, code, color, reputation_table_name, int(on_chart),
+        result = db.factions.update_faction(id, name, code, color, reputation_table_name, int(on_chart),
                                             int(display_order) if display_order is not None else None,
                                             int(on_column))
         return jsonify(result), 200
@@ -230,7 +232,7 @@ def get_faction_summary():
         description: A list of faction summaries
     """
     sort_by = request.args.get('sort')
-    summary = factions_dao.get_faction_summary(db, sort_by=sort_by)
+    summary = db.factions.get_faction_summary(sort_by=sort_by)
     return jsonify(summary)
 
 
@@ -245,7 +247,7 @@ def get_all_entries():
       200:
         description: A dictionary where keys are faction names and values are lists of entries
     """
-    entries = stat_entries_dao.get_all_factions_with_entries(db)
+    entries = db.stat_entries.get_all_factions_with_entries()
     return jsonify(entries)
 
 
@@ -265,7 +267,7 @@ def get_faction_entries(faction_name):
       200:
         description: A list of entries for the faction
     """
-    entries = stat_entries_dao.get_faction_entries(db, faction_name)
+    entries = db.stat_entries.get_faction_entries(faction_name)
     return jsonify(entries)
 
 
@@ -306,7 +308,7 @@ def add_entry():
         return jsonify({'error': 'Missing faction or value'}), 400
 
     try:
-        entry = stat_entries_dao.add_stat_entry(db, faction_name, int(value))
+        entry = db.stat_entries.add_stat_entry(faction_name, int(value))
         return jsonify(entry), 201
     except ValueError as e:
         return jsonify({'error': str(e)}), 404
@@ -317,56 +319,56 @@ def add_entry():
 @app.route('/api/reputations', methods=['GET'])
 def get_reputations():
     """Get list of all fkr_reputations"""
-    reputations = fkr_reputations_dao.get_all_reputations(db)
+    reputations = db.fkr_reputations.get_all()
     return jsonify(reputations)
 
 
 @app.route('/api/augment-reputations', methods=['GET'])
 def get_augment_reputations():
     """Get list of all augment reputations"""
-    reputations = augment_reputations_dao.get_all_augment_reputations(db)
+    reputations = db.augment_reputations.get_all()
     return jsonify(reputations)
 
 
 @app.route('/api/rogue-reputations', methods=['GET'])
 def get_rogue_reputations():
     """Get list of all rogue reputations"""
-    reputations = rogue_reputations_dao.get_all_rogue_reputations(db)
+    reputations = db.rogue_reputations.get_all()
     return jsonify(reputations)
 
 
 @app.route('/api/bajoran-reputations', methods=['GET'])
 def get_bajoran_reputations():
     """Get list of all bajoran reputations"""
-    reputations = bajoran_reputations_dao.get_all_bajoran_reputations(db)
+    reputations = db.bajoran_reputations.get_all()
     return jsonify(reputations)
 
 
 @app.route('/api/terran-reputations', methods=['GET'])
 def get_terran_reputations():
     """Get list of all terran reputations"""
-    reputations = terran_reputations_dao.get_all_terran_reputations(db)
+    reputations = db.terran_reputations.get_all()
     return jsonify(reputations)
 
 
 @app.route('/api/dti-reputations', methods=['GET'])
 def get_dti_reputations():
     """Get list of all dti reputations"""
-    reputations = dti_reputations_dao.get_all_dti_reputations(db)
+    reputations = db.dti_reputations.get_all()
     return jsonify(reputations)
 
 
 @app.route('/api/section31-reputations', methods=['GET'])
 def get_section31_reputations():
     """Get list of all section 31 reputations"""
-    reputations = section31_reputations_dao.get_all_section31_reputations(db)
+    reputations = db.section31_reputations.get_all()
     return jsonify(reputations)
 
 
 @app.route('/api/ex-borg-reputations', methods=['GET'])
 def get_ex_borg_reputations():
     """Get list of all ex-borg reputations"""
-    reputations = ex_borg_reputations_dao.get_all_ex_borg_reputations(db)
+    reputations = db.ex_borg_reputations.get_all()
     return jsonify(reputations)
 
 
@@ -381,7 +383,7 @@ def get_all_reputations_grouped():
       200:
         description: All reputations grouped by table
     """
-    factions = factions_dao.get_all_factions(db)
+    factions = db.factions.get_all_factions()
     groups = {}
     for f in factions:
         table_name = f.get('reputation_table_name')
@@ -400,7 +402,7 @@ def get_all_reputations_grouped():
     result = []
     for table_name, group in groups.items():
         try:
-            reps = reputations_dao.get_reputations_by_table(db, table_name)
+            reps = reputations_dao.get_all(db, table_name)
             
             # Determine title
             if table_name == 'fkr_reputations':
@@ -440,13 +442,38 @@ def get_reputations_by_table(table_name):
         description: Invalid table name
     """
     try:
-        reputations = reputations_dao.get_reputations_by_table(db, table_name)
+        reputations = reputations_dao.get_all(db, table_name)
         return jsonify(reputations)
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+
+@app.route('/api/capture-screen', methods=['POST'])
+def capture_screen():
+    """
+    Capture the screen and analyze it
+    ---
+    responses:
+      200:
+        description: Screen captured and analyzed
+    """
+    try:
+        sc = ScreenCapture()
+        filepath = sc.capture_factions_screen()
+        if not filepath:
+            return jsonify({'error': 'Failed to capture screen'}), 500
+        
+        faction, points = analyze_screenshot(filepath)
+        
+        return jsonify({
+            'faction': faction,
+            'points': points,
+            'image_path': filepath
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     app.run(debug=app.config['DEBUG'], port=5000)

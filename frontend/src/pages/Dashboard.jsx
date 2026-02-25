@@ -21,6 +21,7 @@ const Dashboard = () => {
   const [newValue, setNewValue] = useState('');
   const [chartData, setChartData] = useState({ datasets: [] });
   const [factionColorsMap, setFactionColorsMap] = useState({});
+  const [isCapturing, setIsCapturing] = useState(false);
 
   useEffect(() => {
     loadFactions();
@@ -123,6 +124,29 @@ const Dashboard = () => {
     }
   };
 
+  const handleCaptureScreen = async () => {
+    setIsCapturing(true);
+    try {
+      const response = await axios.post('/api/capture-screen');
+      const { faction, points } = response.data;
+      
+      if (faction && points) {
+        if (window.confirm(`Detected ${faction} with ${points.toLocaleString()} points. Save this entry?`)) {
+          await submitEntry(faction, points);
+        }
+      } else if (faction) {
+        alert(`Detected ${faction}, but could not extract points.`);
+      } else {
+        alert('Could not detect faction or points.');
+      }
+    } catch (error) {
+      console.error('Error capturing screen:', error);
+      alert('Failed to capture screen.');
+    } finally {
+      setIsCapturing(false);
+    }
+  };
+
   const chartOptions = {
     responsive: true,
     maintainAspectRatio: false,
@@ -164,6 +188,29 @@ const Dashboard = () => {
       <h1>STFC Reputation Tracker</h1>
 
       <div className="container">
+        <h2>Auto Capture</h2>
+        <p style={{ marginBottom: '1rem', fontSize: '0.9rem', color: '#666' }}>
+          Click the button below to automatically locate Star Trek Fleet Command, 
+          switch to the Factions screen, and take a screenshot for processing.
+        </p>
+        <button 
+          onClick={handleCaptureScreen} 
+          disabled={isCapturing}
+          style={{ 
+            width: '100%', 
+            padding: '1rem', 
+            fontSize: '1.1rem',
+            backgroundColor: isCapturing ? '#ccc' : '#2196F3',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: isCapturing ? 'not-allowed' : 'pointer',
+            marginBottom: '2rem'
+          }}
+        >
+          {isCapturing ? 'Capturing...' : 'Capture Factions Screen'}
+        </button>
+
         <h2>Add New Entry</h2>
         <form onSubmit={handleAddEntry}>
           <div className="form-group">
