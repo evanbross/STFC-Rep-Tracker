@@ -43,7 +43,7 @@ class ScreenCapture:
         except Exception as e:
             logger.error(f"Error while searching for STFC window: {e}")
         
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         filepath = os.path.join(self.output_dir, f"capture_{timestamp}.png")
         
         try:

@@ -5,6 +5,8 @@ from app.database import reputations_dao
 class FactionsDAO:
     def __init__(self, db):
         self.db = db
+        self.reputations_dao = None
+
 
     def create_table(self, cursor):
         """Create factions table and handle migrations"""
@@ -87,8 +89,7 @@ class FactionsDAO:
                 'reputation_table_name': reputation_table_name,
                 'on_chart': on_chart,
                 'display_order': display_order,
-                'on_column': on_column,
-                'faction_type': code,
+                'on_column': on_column
             }
         except sqlite3.IntegrityError:
             conn.close()
@@ -128,8 +129,7 @@ class FactionsDAO:
                 'reputation_table_name': reputation_table_name,
                 'on_chart': on_chart,
                 'display_order': display_order,
-                'on_column': on_column,
-                'faction_type': code,
+                'on_column': on_column
             }
         except sqlite3.IntegrityError:
             conn.close()
@@ -147,16 +147,6 @@ class FactionsDAO:
         conn = self.db.get_connection()
         cursor = conn.cursor()
 
-        # Get all reputations to find current level
-        cursor.execute('SELECT Name, low_limit, high_limit FROM fkr_reputations')
-        reputations_general = cursor.fetchall()
-        
-        cursor.execute('SELECT Name, low_limit, high_limit FROM augment_reputations')
-        reputations_augment = cursor.fetchall()
-
-        cursor.execute('SELECT Name, low_limit, high_limit FROM rogue_reputations')
-        reputations_rogue = cursor.fetchall()
-
         cursor.execute('''
             SELECT f.id, f.name, f.code, f.on_chart, f.color, f.reputation_table_name, f.display_order
             FROM factions f
@@ -166,9 +156,10 @@ class FactionsDAO:
 
         result = []
         for faction_id, name, faction_type_code, on_chart, color, reputation_table_name, display_order in factions_list:
+
             # Get latest entries (up to 2 for calculation)
             cursor.execute('''
-                SELECT value, value_delta, timestamp
+                SELECT value, timestamp
                 FROM stat_entries
                 WHERE faction_id = ?
                 ORDER BY timestamp DESC
@@ -189,85 +180,93 @@ class FactionsDAO:
 
             # Calculate status
             status = {
-                'minutes': 0.0,
-                'delta': 0,
-                'value_change': 0,
-                'raw_change_per_minute': 0.0,
-                'avg_change_per_minute': 0.0,
-                'minutes_to_goal': 0.0
+                'time_delta': 0,
+                'value_delta': 0,
+                'raw_value_delta_per_minute': 0.0,
+                'avg_value_delta_per_minute': 0.0,
+                'minutes_to_goal': 0.0,
+                'reputation_level': 'Unknown'
             }
 
             current_value = latest[0] if latest else 0
             
-            # Use appropriate reputations list
-            reputations = []
-            try:
-                if reputation_table_name:
-                    # Map old names to new ones if necessary
-                    table_map = {
-                        'AugmentReputations': 'augment_reputations',
-                        'RogueReputations': 'rogue_reputations',
-                        'Reputations': 'fkr_reputations',
-                        'fkr_reputations': 'fkr_reputations'
-                    }
-                    mapped_table = table_map.get(reputation_table_name, reputation_table_name)
-                    reps_data = reputations_dao.get_all(self.db, mapped_table)
-                    reputations = [(r['name'], r['low_limit'], r['high_limit']) for r in reps_data]
-                else:
-                    reputations = reputations_general
-            except Exception:
-                reputations = reputations_general
+            # # Use appropriate reputations list
+            # reputations = []
+            # try:
+            #     if reputation_table_name:
+            #         # Map old names to new ones if necessary
+            #         table_map = {
+            #             'AugmentReputations': 'augment_reputations',
+            #             'RogueReputations': 'rogue_reputations',
+            #             'Reputations': 'fkr_reputations',
+            #             'fkr_reputations': 'fkr_reputations'
+            #         }
+            #         mapped_table = table_map.get(reputation_table_name, reputation_table_name)
+            #         reps_data = reputations_dao.get_all(self.db, mapped_table)
+            #         reputations = [(r['name'], r['low_limit'], r['high_limit']) for r in reps_data]
+            #     else:
+            #         reputations = reputations_general
+            # except Exception:
+            #     reputations = reputations_general
+            #
+            # # Find current reputation level and next goal
+            # rep_level = "Unknown"
+            # current_low_limit = None
+            # current_high_limit = None
+            #
+            # if latest: # Only set if there's at least one entry
+            #     for rep_name, low_limit, high_limit in reputations:
+            #         if high_limit is not None:
+            #             if low_limit <= current_value <= high_limit:
+            #                 rep_level = rep_name
+            #                 current_low_limit = low_limit
+            #                 current_high_limit = high_limit
+            #                 break
+            #         else:
+            #             if current_value >= low_limit:
+            #                 rep_level = rep_name
+            #                 current_low_limit = low_limit
+            #                 current_high_limit = None
+            #                 break
+            #
+            # # Special case for the very last tier fallback
+            # if latest and rep_level == "Unknown" and reputations:
+            #     sorted_reps = sorted(reputations, key=lambda x: x[1], reverse=True)
+            #     for rep_name, low_limit, high_limit in sorted_reps:
+            #         if current_value >= low_limit:
+            #             rep_level = rep_name
+            #             current_low_limit = low_limit
+            #             current_high_limit = high_limit
+            #             break
 
-            # Find current reputation level and next goal
             rep_level = "Unknown"
-            current_low_limit = None
-            current_high_limit = None
-            
-            if latest: # Only set if there's at least one entry
-                for rep_name, low_limit, high_limit in reputations:
-                    if high_limit is not None:
-                        if low_limit <= current_value <= high_limit:
-                            rep_level = rep_name
-                            current_low_limit = low_limit
-                            current_high_limit = high_limit
-                            break
-                    else:
-                        if current_value >= low_limit:
-                            rep_level = rep_name
-                            current_low_limit = low_limit
-                            current_high_limit = None
-                            break
-            
-            # Special case for the very last tier fallback
-            if latest and rep_level == "Unknown" and reputations:
-                sorted_reps = sorted(reputations, key=lambda x: x[1], reverse=True)
-                for rep_name, low_limit, high_limit in sorted_reps:
-                    if current_value >= low_limit:
-                        rep_level = rep_name
-                        current_low_limit = low_limit
-                        current_high_limit = high_limit
-                        break
-
+            value_delta = 0
             if latest and previous:
-                t1 = datetime.fromisoformat(previous[2])
-                t2 = datetime.fromisoformat(latest[2])
-                diff = t2 - t1
-                update_interval_minutes = diff.total_seconds() / 60.0
-                
-                if update_interval_minutes > 0:
-                    status['delta'] = latest[0] - previous[0]
-                    status['value_change'] = status['delta']
-                    status['raw_change_per_minute'] = round(status['delta'] / update_interval_minutes, 2)
-                    status['avg_change_per_minute'] = status['raw_change_per_minute']
+                # get the appropriate reputation table for this faction
+                if self.reputations_dao is None:
+                    self.reputations_dao = reputations_dao.ReputationsDAO(conn,
+                                                                          reputation_table_name)
+                reputation_row = self.reputations_dao.find_reputation_by_value(conn, latest[0])
+
+                # get the time delta in minutes
+                t1 = datetime.fromisoformat(previous[1])
+                t2 = datetime.fromisoformat(latest[1])
+                time_diff_mins = (t2 - t1).total_seconds() / 60
+                value_delta = latest[0] - previous[0]
+                rep_level = reputation_row[0] if reputation_row else "Unknown"
+
+                if time_diff_mins > 0:
+                    status['time_delta'] = time_diff_mins
+                    status['value_delta'] = value_delta
+                    status['raw_value_delta_per_minute'] = round(value_delta / time_diff_mins, 2)
+                    status['avg_value_delta_per_minute'] = 'not yet' #round(value_delta / time_diff_mins, 2)
                     
                     # Calculate minutes to goal
-                    if status['raw_change_per_minute'] > 0 and current_high_limit is not None:
-                        dist = current_high_limit - current_value
-                        status['minutes_to_goal'] = round(dist / status['raw_change_per_minute'], 2)
-                        status['minutes'] = status['minutes_to_goal']
-                    elif status['raw_change_per_minute'] < 0 and current_low_limit is not None:
-                        dist = current_value - current_low_limit
-                        status['minutes_to_goal'] = round(dist / abs(status['raw_change_per_minute']), 2)
+                    if reputation_row is not None:
+                        status['reputation_level'] = reputation_row[0]
+                    if status['raw_value_delta_per_minute'] > 0 and reputation_row[2] is not None:
+                        dist = reputation_row[2] - current_value
+                        status['minutes_to_goal'] = round(dist / status['raw_value_delta_per_minute'], 2)
                         status['minutes'] = status['minutes_to_goal']
                     else:
                         status['minutes_to_goal'] = 0.0
@@ -282,8 +281,8 @@ class FactionsDAO:
                 'color': color,
                 'current_value': current_value,
                 'rep_level': rep_level,
-                'last_delta': latest[1] if latest else 0,
-                'last_updated': latest[2] if latest else None,
+                'last_delta': value_delta,
+                'last_updated': latest[1] if latest else None,
                 'entry_count': entry_count,
                 'status': status
             })

@@ -5,35 +5,9 @@ class FKRReputationsDAO(ReputationsDAO):
     def __init__(self, db):
         super().__init__(db, 'fkr_reputations')
 
-    def create_table(self, cursor):
-        """Create fkr_reputations table and handle migrations"""
-        # Create fkr_reputations table (formerly Reputations)
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='Reputations'")
-        if cursor.fetchone():
-            cursor.execute('ALTER TABLE Reputations RENAME TO fkr_reputations')
-
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS fkr_reputations (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                Name TEXT NOT NULL UNIQUE,
-                low_limit INTEGER NOT NULL,
-                high_limit INTEGER
-            )
-        ''')
-
-        # Ensure high_limit exists for fkr_reputations
-        cursor.execute("PRAGMA table_info('fkr_reputations')")
-        columns = [row[1] for row in cursor.fetchall()]
-        if 'high_limit' not in columns:
-            cursor.execute('ALTER TABLE fkr_reputations ADD COLUMN high_limit INTEGER')
-
-        # Apply initial reputation levels
-        self.apply_initial_fkr_reputations(cursor)
-
-
-    def apply_initial_fkr_reputations(self, cursor):
+    def get_initial_reputations(self):
         """Apply initial reputation levels to the fkr_reputations table"""
-        initial_reputations = [
+        return [
             ('Enemy', -2000000, -500000),
             ('Hostile', -500000, -25000),
             ('Untrustworthy', -25000, -500),
@@ -52,17 +26,3 @@ class FKRReputationsDAO(ReputationsDAO):
             ('Glorified', 440000000, 1000000000),
             ('Champion (Lock 2)', 1000000000, 1100000000)
         ]
-        
-        for name, low_limit, high_limit in initial_reputations:
-            # Try to insert
-            cursor.execute('''
-                INSERT OR IGNORE INTO fkr_reputations (Name, low_limit, high_limit)
-                VALUES (?, ?, ?)
-            ''', (name, low_limit, high_limit))
-            
-            # Update high_limit if it's currently NULL or different (for existing records)
-            cursor.execute('''
-                UPDATE fkr_reputations 
-                SET high_limit = ? 
-                WHERE Name = ? AND (high_limit IS NULL OR high_limit != ?)
-            ''', (high_limit, name, high_limit))

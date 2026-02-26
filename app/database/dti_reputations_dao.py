@@ -18,12 +18,12 @@ class DTIReputationsDAO(ReputationsDAO):
         ''')
         
         # Apply initial dti reputations
-        self.apply_initial_dti_reputations(cursor)
+        self.apply_initial_reputations(cursor)
 
 
-    def apply_initial_dti_reputations(self, cursor):
+    def get_initial_reputations(self):
         """Apply initial dti reputation levels to the dti_reputations table"""
-        initial_reputations = [
+        return [
             ('Outsider', 0, 0, 0),
             ('Consort I', 180, 20, 500000),
             ('Associate I', 240, 70, 2000000),
@@ -41,6 +41,9 @@ class DTIReputationsDAO(ReputationsDAO):
             ('Icon', 1675, 3900, 8100000000),
             ('Legend', 1800, 4500, 15000000000)
         ]
+
+    def apply_initial_reputations(self, cursor):
+        initial_reputations = self.get_initial_reputations()
         
         for name, low_limit, messages_count, credit_amount in initial_reputations:
             # Try to insert

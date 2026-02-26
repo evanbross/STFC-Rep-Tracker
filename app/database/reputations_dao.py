@@ -6,7 +6,7 @@ class ReputationsDAO:
     def __init__(self, db, table_name):
         self.db = db
         self.table_name = table_name
-        db.get_daos()[table_name] = self
+        #database.get_daos()[table_name] = self
 
     def get_all(self):
         """Get list of all reputations from the table"""
@@ -74,18 +74,28 @@ class ReputationsDAO:
             raise ValueError(f"Error fetching reputations from {self.table_name}: {e}")
 
     def create_table(self, cursor):
-        """Create augment_reputations table and handle migrations"""
+        """Create reputation table and handle migrations"""
+        # We try to use a case-insensitive check for the name column
+        cursor.execute(f"PRAGMA table_info('{self.table_name}')")
+        columns = [row[1].lower() for row in cursor.fetchall()]
+
+        name_col = 'Name'
+        if 'reputation_name' in columns:
+            name_col = 'reputation_name'
+        elif 'name' in columns:
+            name_col = 'name'
+
         cursor.execute(f'''
                        CREATE TABLE IF NOT EXISTS {self.table_name}
                        (
                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                           Name TEXT NOT NULL UNIQUE,
+                           {name_col} TEXT NOT NULL UNIQUE,
                            low_limit INTEGER NOT NULL,
                            high_limit INTEGER
                        )
                 ''')
 
-        # Apply initial augment reputations
+        # Apply initial reputations
         self.apply_initial_reputations(cursor)
 
 
@@ -94,29 +104,59 @@ class ReputationsDAO:
         pass
 
     def apply_initial_reputations(self, cursor):
-        for name, low_limit, high_limit in self.get_initial_reputations():
-            # Try to insert
-            cursor.execute(f'''
-                           INSERT
-                           OR IGNORE INTO
-                           {self.table_name}
-                           (
-                           Name,
-                           low_limit,
-                           high_limit
-                           )
-                           VALUES
-                           (
-                           ?,
-                           ?,
-                           ?
-                           )
-                           ''', (name, low_limit, high_limit))
+        # We try to use a case-insensitive check for the name column
+        cursor.execute(f"PRAGMA table_info('{self.table_name}')")
+        columns = [row[1].lower() for row in cursor.fetchall()]
 
-            # Update values if it already exists (ensures data matches requirements)
-            cursor.execute(f'''
-                           UPDATE {self.table_name}
-                           SET low_limit  = ?,
-                               high_limit = ?
-                           WHERE Name = ?
-                           ''', (low_limit, high_limit, name))
+        name_col = 'Name'
+        if 'reputation_name' in columns:
+            name_col = 'reputation_name'
+        elif 'name' in columns:
+            name_col = 'name'
+
+        # Check if high_limit exists (some special tables like DTI might not have it yet or at all)
+        has_high_limit = 'high_limit' in columns
+
+        for entry in self.get_initial_reputations():
+            if has_high_limit and len(entry) >= 3:
+                name, low_limit, high_limit = entry[0], entry[1], entry[2]
+                # Try to insert
+                cursor.execute(f'''
+                               INSERT OR IGNORE INTO {self.table_name} ({name_col}, low_limit, high_limit)
+                               VALUES (?, ?, ?)
+                               ''', (name, low_limit, high_limit))
+
+                # Update values if it already exists
+                cursor.execute(f'''
+                               UPDATE {self.table_name}
+                               SET low_limit  = ?,
+                                   high_limit = ?
+                               WHERE {name_col} = ?
+                               ''', (low_limit, high_limit, name))
+            else:
+                # Handle cases with fewer columns or missing high_limit
+                name, low_limit = entry[0], entry[1]
+                cursor.execute(f'''
+                               INSERT OR IGNORE INTO {self.table_name} ({name_col}, low_limit)
+                               VALUES (?, ?)
+                               ''', (name, low_limit))
+                cursor.execute(f'''
+                               UPDATE {self.table_name}
+                               SET low_limit  = ?
+                               WHERE {name_col} = ?
+                               ''', (low_limit, name))
+
+    def find_reputation_by_value(self, conn, value):
+        cursor = conn.cursor()
+        cursor.execute(f'''
+                       SELECT rep.name, rep.low_limit, rep.high_limit
+                       FROM {self.table_name} AS rep
+                       WHERE rep.low_limit <= ? AND rep.high_limit >= ?
+                       ''', (value, value))
+        result = cursor.fetchone()
+        if cursor.rowcount == 0:
+            return f'Unknown {self.table_name} for reputation value {value}'
+        elif cursor.rowcount > 1:
+            return f'Ambiguous {self.table_name} for reputation value {value}'
+
+        return result

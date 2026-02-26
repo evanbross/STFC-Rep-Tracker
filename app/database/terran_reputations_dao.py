@@ -5,29 +5,9 @@ class TerranReputationsDAO(ReputationsDAO):
     def __init__(self, db):
         super().__init__(db, 'terran_reputations')
 
-    def create_table(self, cursor):
-        """Create terran_reputations table and handle migrations"""
-        # Migration: Check if old table exists and rename it
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='TerranReputations'")
-        if cursor.fetchone():
-            cursor.execute("ALTER TABLE TerranReputations RENAME TO terran_reputations")
-
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS terran_reputations (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                Name TEXT NOT NULL UNIQUE,
-                low_limit INTEGER NOT NULL,
-                high_limit INTEGER
-            )
-        ''')
-        
-        # Apply initial terran reputations
-        self.apply_initial_terran_reputations(cursor)
-
-
-    def apply_initial_terran_reputations(self, cursor):
+    def get_initial_reputations(self):
         """Apply initial terran reputation levels to the terran_reputations table"""
-        initial_reputations = [
+        return [
             ('Outsider', 0, 179),
             ('Lackey', 180, 899),
             ('Collaborator', 900, 2699),
@@ -39,17 +19,3 @@ class TerranReputationsDAO(ReputationsDAO):
             ('Exhalted', 18000, 22499),
             ('Renowned', 22500, 23000)
         ]
-        
-        for name, low_limit, high_limit in initial_reputations:
-            # Try to insert
-            cursor.execute('''
-                INSERT OR IGNORE INTO terran_reputations (Name, low_limit, high_limit)
-                VALUES (?, ?, ?)
-            ''', (name, low_limit, high_limit))
-            
-            # Update values if it already exists (ensures data matches requirements)
-            cursor.execute('''
-                UPDATE terran_reputations 
-                SET low_limit = ?, high_limit = ? 
-                WHERE Name = ?
-            ''', (low_limit, high_limit, name))

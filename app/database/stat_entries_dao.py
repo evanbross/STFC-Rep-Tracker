@@ -115,21 +115,24 @@ class StatEntriesDAO:
         result = {}
         for faction_id, name in factions:
             cursor.execute('''
-                SELECT timestamp, value, value_delta, faction_id
+                SELECT timestamp, value, faction_id
                 FROM stat_entries
                 WHERE faction_id = ?
-                ORDER BY timestamp ASC
+                ORDER BY id DESC
+                LIMIT 2
             ''', (
                 faction_id,
             ))
 
             entries = []
-            for row in cursor.fetchall():
+            rows = cursor.fetchall()
+            if len(rows) >= 2:
+                latest_row = rows[0]
+                prev_row = rows[1]
                 entries.append({
-                    'timestamp': row[0],
-                    'value': row[1],
-                    'value_delta': row[2],
-                    'faction_id': row[3]
+                    'timestamp': latest_row[0],
+                    'value': latest_row[1],
+                    'faction_id': latest_row[2]
                 })
 
             result[name] = entries
