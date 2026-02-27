@@ -1,65 +1,87 @@
 import sqlite3
 from datetime import datetime
+
 from app.database import reputations_dao
+
 
 class FactionsDAO:
     def __init__(self, db):
         self.db = db
         self.reputations_dao = None
 
-
     def create_table(self, cursor):
         """Create factions table and handle migrations"""
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS factions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL UNIQUE,
-                on_chart INTEGER NOT NULL DEFAULT 0,
-                display_order INTEGER,
-                on_column INTEGER NOT NULL DEFAULT 0,
-                code TEXT,
-                color TEXT,
-                reputation_table_name TEXT
-            )
-        ''')
+        cursor.execute("""
+                       CREATE TABLE IF NOT EXISTS factions
+                       (
+                           id
+                           INTEGER
+                           PRIMARY
+                           KEY
+                           AUTOINCREMENT,
+                           name
+                           TEXT
+                           NOT
+                           NULL
+                           UNIQUE,
+                           on_chart
+                           INTEGER
+                           NOT
+                           NULL
+                           DEFAULT
+                           0,
+                           display_order
+                           INTEGER,
+                           code
+                           TEXT,
+                           color
+                           TEXT,
+                           reputation_table_name
+                           TEXT,
+                           reputation_dao_name
+                           TEXT
+                       )
+                       """)
 
         # Ensure required columns exist for existing databases
         cursor.execute("PRAGMA table_info('factions')")
         columns = [row[1] for row in cursor.fetchall()]
-        if 'on_chart' not in columns:
-            cursor.execute('ALTER TABLE factions ADD COLUMN on_chart INTEGER NOT NULL DEFAULT 0')
-        if 'display_order' not in columns:
-            cursor.execute('ALTER TABLE factions ADD COLUMN display_order INTEGER')
-        if 'on_column' not in columns:
-            cursor.execute('ALTER TABLE factions ADD COLUMN on_column INTEGER NOT NULL DEFAULT 0')
-        if 'code' not in columns:
-            cursor.execute('ALTER TABLE factions ADD COLUMN code TEXT')
-        if 'color' not in columns:
-            cursor.execute('ALTER TABLE factions ADD COLUMN color TEXT')
-        if 'reputation_table_name' not in columns:
-            cursor.execute('ALTER TABLE factions ADD COLUMN reputation_table_name TEXT')
+        if "on_chart" not in columns:
+            cursor.execute(
+                "ALTER TABLE factions ADD COLUMN on_chart INTEGER NOT NULL DEFAULT 0"
+            )
+        if "display_order" not in columns:
+            cursor.execute("ALTER TABLE factions ADD COLUMN display_order INTEGER")
+        if "code" not in columns:
+            cursor.execute("ALTER TABLE factions ADD COLUMN code TEXT")
+        if "color" not in columns:
+            cursor.execute("ALTER TABLE factions ADD COLUMN color TEXT")
+        if "reputation_table_name" not in columns:
+            cursor.execute("ALTER TABLE factions ADD COLUMN reputation_table_name TEXT")
+        if "reputation_dao_name" not in columns:
+            cursor.execute("ALTER TABLE factions ADD COLUMN reputation_dao_name TEXT")
 
     def get_all_factions(self):
         """Get list of all factions"""
         conn = self.db.get_connection()
         cursor = conn.cursor()
 
-        cursor.execute('''
-            SELECT f.id, f.name, f.code, f.on_chart, f.color, f.reputation_table_name, f.display_order, f.on_column
-            FROM factions f
-            ORDER BY f.display_order
-        ''')
+        cursor.execute("""
+                       SELECT f.id, f.name, f.code, f.on_chart, f.color, f.reputation_table_name, f.display_order, f.reputation_dao_name
+                       FROM factions f
+                       ORDER BY f.display_order
+                       """)
         factions = [
             {
-                'id': row[0],
-                'name': row[1],
-                'code': row[2],
-                'on_chart': row[3],
-                'color': row[4],
-                'reputation_table_name': row[5],
-                'display_order': row[6],
-                'on_column': row[7],
-                'faction_type': row[2], # Map code to faction_type for compatibility
+                "id": row[0],
+                "name": row[1],
+                "code": row[2],
+                "on_chart": row[3],
+                "color": row[4],
+                "reputation_table_name": row[5],
+                "display_order": row[6],
+                "reputation_dao_name": row[7],
+                "faction_type": row[2],  # Map code to faction_type for compatibility
             }
             for row in cursor.fetchall()
         ]
@@ -67,29 +89,49 @@ class FactionsDAO:
         conn.close()
         return factions
 
-    def add_faction(self, name, code, color=None, reputation_table_name=None, on_chart=0, display_order=None, on_column=0):
+    def add_faction(
+        self,
+        name,
+        code,
+        color=None,
+        reputation_table_name=None,
+        on_chart=0,
+        display_order=None,
+        reputation_dao_name=None,
+    ):
         """Add a new faction"""
         conn = self.db.get_connection()
         cursor = conn.cursor()
 
         try:
-            cursor.execute('''
-                INSERT INTO factions (name, code, color, reputation_table_name, on_chart, display_order, on_column)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            ''', (name, code, color, reputation_table_name, on_chart, display_order, on_column))
+            cursor.execute(
+                """
+                           INSERT INTO factions (name, code, color, reputation_table_name, on_chart, display_order, reputation_dao_name)
+                           VALUES (?, ?, ?, ?, ?, ?, ?)
+                           """,
+                (
+                    name,
+                    code,
+                    color,
+                    reputation_table_name,
+                    on_chart,
+                    display_order,
+                    reputation_dao_name,
+                ),
+            )
 
             faction_id = cursor.lastrowid
             conn.commit()
 
             result = {
-                'id': faction_id,
-                'name': name,
-                'code': code,
-                'color': color,
-                'reputation_table_name': reputation_table_name,
-                'on_chart': on_chart,
-                'display_order': display_order,
-                'on_column': on_column
+                "id": faction_id,
+                "name": name,
+                "code": code,
+                "color": color,
+                "reputation_table_name": reputation_table_name,
+                "on_chart": on_chart,
+                "display_order": display_order,
+                "reputation_dao_name": reputation_dao_name,
             }
         except sqlite3.IntegrityError:
             conn.close()
@@ -101,35 +143,63 @@ class FactionsDAO:
         conn.close()
         return result
 
-    def update_faction(self, id, name, code, color=None, reputation_table_name=None, on_chart=0, display_order=None, on_column=0):
+    def update_faction(
+        self,
+        id,
+        name,
+        code,
+        color=None,
+        reputation_table_name=None,
+        on_chart=0,
+        display_order=None,
+        reputation_dao_name=None,
+    ):
         """Update an existing faction"""
         conn = self.db.get_connection()
         cursor = conn.cursor()
 
         # Check if faction exists
-        cursor.execute('SELECT id FROM factions WHERE id = ?', (id,))
+        cursor.execute("SELECT id FROM factions WHERE id = ?", (id,))
         if not cursor.fetchone():
             conn.close()
             raise ValueError(f"Faction with id {id} not found")
 
         try:
-            cursor.execute('''
-                UPDATE factions
-                SET name = ?, code = ?, color = ?, reputation_table_name = ?, on_chart = ?, display_order = ?, on_column = ?
-                WHERE id = ?
-            ''', (name, code, color, reputation_table_name, on_chart, display_order, on_column, id))
+            cursor.execute(
+                """
+                           UPDATE factions
+                           SET name                  = ?,
+                               code                  = ?,
+                               color                 = ?,
+                               reputation_table_name = ?,
+                               on_chart              = ?,
+                               display_order         = ?,
+                               reputation_dao_name   = ?
+                           WHERE id = ?
+                           """,
+                (
+                    name,
+                    code,
+                    color,
+                    reputation_table_name,
+                    on_chart,
+                    display_order,
+                    reputation_dao_name,
+                    id,
+                ),
+            )
 
             conn.commit()
 
             result = {
-                'id': id,
-                'name': name,
-                'code': code,
-                'color': color,
-                'reputation_table_name': reputation_table_name,
-                'on_chart': on_chart,
-                'display_order': display_order,
-                'on_column': on_column
+                "id": id,
+                "name": name,
+                "code": code,
+                "color": color,
+                "reputation_table_name": reputation_table_name,
+                "on_chart": on_chart,
+                "display_order": display_order,
+                "reputation_dao_name": reputation_dao_name,
             }
         except sqlite3.IntegrityError:
             conn.close()
@@ -140,56 +210,70 @@ class FactionsDAO:
 
         conn.close()
         return result
-
 
     def get_faction_summary(self, sort_by=None):
         """Get summary data for all factions including latest value and delta"""
         conn = self.db.get_connection()
         cursor = conn.cursor()
 
-        cursor.execute('''
-            SELECT f.id, f.name, f.code, f.on_chart, f.color, f.reputation_table_name, f.display_order
-            FROM factions f
-            ORDER BY f.display_order
-        ''')
+        cursor.execute("""
+                       SELECT f.id, f.name, f.code, f.on_chart, f.color, f.reputation_table_name, f.display_order, f.reputation_dao_name
+                       FROM factions f
+                       ORDER BY f.display_order
+                       """)
         factions_list = cursor.fetchall()
 
         result = []
-        for faction_id, name, faction_type_code, on_chart, color, reputation_table_name, display_order in factions_list:
+        for (
+            faction_id,
+            name,
+            faction_type_code,
+            on_chart,
+            color,
+            reputation_table_name,
+            display_order,
+            reputation_dao_name,
+        ) in factions_list:
 
             # Get latest entries (up to 2 for calculation)
-            cursor.execute('''
-                SELECT value, timestamp
-                FROM stat_entries
-                WHERE faction_id = ?
-                ORDER BY timestamp DESC
-                LIMIT 2
-            ''', (faction_id,))
+            cursor.execute(
+                """
+                           SELECT value, timestamp
+                           FROM stat_entries
+                           WHERE faction_id = ?
+                           ORDER BY timestamp DESC
+                               LIMIT 2
+                           """,
+                (faction_id,),
+            )
 
             entries = cursor.fetchall()
             latest = entries[0] if len(entries) > 0 else None
             previous = entries[1] if len(entries) > 1 else None
 
             # Get total count of entries
-            cursor.execute('''
-                SELECT COUNT(*)
-                FROM stat_entries
-                WHERE faction_id = ?
-            ''', (faction_id,))
+            cursor.execute(
+                """
+                           SELECT COUNT(*)
+                           FROM stat_entries
+                           WHERE faction_id = ?
+                           """,
+                (faction_id,),
+            )
             entry_count = cursor.fetchone()[0]
 
             # Calculate status
             status = {
-                'time_delta': 0,
-                'value_delta': 0,
-                'raw_value_delta_per_minute': 0.0,
-                'avg_value_delta_per_minute': 0.0,
-                'minutes_to_goal': 0.0,
-                'reputation_level': 'Unknown'
+                "time_delta": 0,
+                "value_delta": 0,
+                "raw_value_delta_per_minute": 0.0,
+                "avg_value_delta_per_minute": 0.0,
+                "minutes_to_goal": 0.0,
+                "reputation_level": "Unknown",
             }
 
             current_value = latest[0] if latest else 0
-            
+
             # # Use appropriate reputations list
             # reputations = []
             # try:
@@ -244,9 +328,12 @@ class FactionsDAO:
             if latest and previous:
                 # get the appropriate reputation table for this faction
                 if self.reputations_dao is None:
-                    self.reputations_dao = reputations_dao.ReputationsDAO(conn,
-                                                                          reputation_table_name)
-                reputation_row = self.reputations_dao.find_reputation_by_value(conn, latest[0])
+                    self.reputations_dao = reputations_dao.ReputationsDAO(
+                        conn, reputation_table_name
+                    )
+                reputation_row = self.reputations_dao.find_reputation_by_value(
+                    conn, latest[0]
+                )
 
                 # get the time delta in minutes
                 t1 = datetime.fromisoformat(previous[1])
@@ -256,62 +343,82 @@ class FactionsDAO:
                 rep_level = reputation_row[0] if reputation_row else "Unknown"
 
                 if time_diff_mins > 0:
-                    status['time_delta'] = time_diff_mins
-                    status['value_delta'] = value_delta
-                    status['raw_value_delta_per_minute'] = round(value_delta / time_diff_mins, 2)
-                    status['avg_value_delta_per_minute'] = 'not yet' #round(value_delta / time_diff_mins, 2)
-                    
+                    status["time_delta"] = time_diff_mins
+                    status["value_delta"] = value_delta
+                    status["raw_value_delta_per_minute"] = round(
+                        value_delta / time_diff_mins, 2
+                    )
+                    status["avg_value_delta_per_minute"] = (
+                        "not yet"  # round(value_delta / time_diff_mins, 2)
+                    )
+
                     # Calculate minutes to goal
                     if reputation_row is not None:
-                        status['reputation_level'] = reputation_row[0]
-                    if status['raw_value_delta_per_minute'] > 0 and reputation_row[2] is not None:
+                        status["reputation_level"] = reputation_row[0]
+                    if (
+                        status["raw_value_delta_per_minute"] > 0
+                        and reputation_row[2] is not None
+                    ):
                         dist = reputation_row[2] - current_value
-                        status['minutes_to_goal'] = round(dist / status['raw_value_delta_per_minute'], 2)
-                        status['minutes'] = status['minutes_to_goal']
+                        status["minutes_to_goal"] = round(
+                            dist / status["raw_value_delta_per_minute"], 2
+                        )
+                        status["minutes"] = status["minutes_to_goal"]
                     else:
-                        status['minutes_to_goal'] = 0.0
-                        status['minutes'] = 0.0
-            
-            result.append({
-                'id': faction_id,
-                'name': name,
-                'faction_type': faction_type_code,
-                'on_chart': on_chart,
-                'display_order': display_order,
-                'color': color,
-                'current_value': current_value,
-                'rep_level': rep_level,
-                'last_delta': value_delta,
-                'last_updated': latest[1] if latest else None,
-                'entry_count': entry_count,
-                'status': status
-            })
+                        status["minutes_to_goal"] = 0.0
+                        status["minutes"] = 0.0
+
+            result.append(
+                {
+                    "id": faction_id,
+                    "name": name,
+                    "faction_type": faction_type_code,
+                    "on_chart": on_chart,
+                    "display_order": display_order,
+                    "reputation_table_name": reputation_table_name,
+                    "reputation_dao_name": reputation_dao_name,
+                    "color": color,
+                    "current_value": current_value,
+                    "rep_level": rep_level,
+                    "last_delta": value_delta,
+                    "last_updated": latest[1] if latest else None,
+                    "entry_count": entry_count,
+                    "status": status,
+                }
+            )
 
         conn.close()
 
         if sort_by:
             reverse = False
-            if sort_by.startswith('-'):
+            if sort_by.startswith("-"):
                 reverse = True
                 sort_by = sort_by[1:]
-            
-            if sort_by == 'name':
-                result.sort(key=lambda x: x['name'].lower(), reverse=reverse)
-            elif sort_by == 'display_order':
-                result.sort(key=lambda x: x['display_order'] if x['display_order'] is not None else 999999, reverse=reverse)
-            elif sort_by == 'current_value':
-                result.sort(key=lambda x: x['current_value'], reverse=reverse)
-            elif sort_by == 'last_delta':
-                result.sort(key=lambda x: x['last_delta'], reverse=reverse)
-            elif sort_by == 'remaining_time':
-                result.sort(key=lambda x: x['status']['minutes'], reverse=reverse)
-            elif sort_by == 'change_rate':
-                result.sort(key=lambda x: x['status']['raw_change_per_minute'], reverse=reverse)
-            elif sort_by == 'rep_level':
-                result.sort(key=lambda x: x['rep_level'].lower(), reverse=reverse)
-            elif sort_by == 'last_updated':
-                result.sort(key=lambda x: x['last_updated'] or '', reverse=reverse)
-            elif sort_by == 'entry_count':
-                result.sort(key=lambda x: x['entry_count'], reverse=reverse)
+
+            if sort_by == "name":
+                result.sort(key=lambda x: x["name"].lower(), reverse=reverse)
+            elif sort_by == "display_order":
+                result.sort(
+                    key=lambda x: (
+                        x["display_order"] if x["display_order"] is not None else 999999
+                    ),
+                    reverse=reverse,
+                )
+            elif sort_by == "current_value":
+                result.sort(key=lambda x: x["current_value"], reverse=reverse)
+            elif sort_by == "last_delta":
+                result.sort(key=lambda x: x["last_delta"], reverse=reverse)
+            elif sort_by == "remaining_time":
+                result.sort(key=lambda x: x["status"]["minutes"], reverse=reverse)
+            elif sort_by == "change_rate":
+                result.sort(
+                    key=lambda x: x["status"]["raw_change_per_minute"], reverse=reverse
+                )
+            elif sort_by == "rep_level":
+                result.sort(key=lambda x: x["rep_level"].lower(), reverse=reverse)
+            elif sort_by == "last_updated":
+                result.sort(key=lambda x: x["last_updated"] or "", reverse=reverse)
+            elif sort_by == "entry_count":
+                result.sort(key=lambda x: x["entry_count"], reverse=reverse)
 
         return result

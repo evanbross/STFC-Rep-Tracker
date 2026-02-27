@@ -1,5 +1,5 @@
-import sqlite3
 from datetime import datetime
+
 
 class StatEntriesDAO:
     def __init__(self, db):
@@ -8,15 +8,39 @@ class StatEntriesDAO:
     def create_table(self, cursor):
         """Create stat_entries table"""
         cursor.execute('''
-            CREATE TABLE IF NOT EXISTS stat_entries (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                faction_id INTEGER NOT NULL,
-                timestamp TEXT NOT NULL,
-                value INTEGER NOT NULL,
-                value_delta INTEGER NOT NULL,
-                FOREIGN KEY (faction_id) REFERENCES factions(id)
-            )
-        ''')
+                       CREATE TABLE IF NOT EXISTS stat_entries
+                       (
+                           id
+                           INTEGER
+                           PRIMARY
+                           KEY
+                           AUTOINCREMENT,
+                           faction_id
+                           INTEGER
+                           NOT
+                           NULL,
+                           timestamp
+                           TEXT
+                           NOT
+                           NULL,
+                           value
+                           INTEGER
+                           NOT
+                           NULL,
+                           value_delta
+                           INTEGER
+                           NOT
+                           NULL,
+                           FOREIGN
+                           KEY
+                       (
+                           faction_id
+                       ) REFERENCES factions
+                       (
+                           id
+                       )
+                           )
+                       ''')
 
     def add_stat_entry(self, faction_name, value):
         """Add a new stat entry for a faction"""
@@ -25,12 +49,12 @@ class StatEntriesDAO:
 
         # Get faction_id
         cursor.execute('''
-            SELECT f.id
-            FROM factions f
-            WHERE f.name = ?
-        ''', (
-            faction_name,
-        ))
+                       SELECT f.id
+                       FROM factions f
+                       WHERE f.name = ?
+                       ''', (
+                           faction_name,
+                       ))
         result = cursor.fetchone()
 
         if not result:
@@ -40,29 +64,28 @@ class StatEntriesDAO:
         faction_id = result[0]
 
         # Calculate delta from previous entry
-        cursor.execute('''
-            SELECT value FROM stat_entries
-            WHERE faction_id = ?
-            ORDER BY timestamp DESC
-            LIMIT 1
-        ''', (
-            faction_id,
-        ))
-
-        previous = cursor.fetchone()
-        value_delta = value - previous[0] if previous else value
+        # cursor.execute('''
+        #     SELECT value FROM stat_entries
+        #     WHERE faction_id = ?
+        #     ORDER BY timestamp DESC
+        #     LIMIT 1
+        # ''', (
+        #     faction_id,
+        # ))
+        #
+        # previous = cursor.fetchone()
+        # value_delta = value - previous[0] if previous else value
 
         # Insert new entry
         timestamp = datetime.now().isoformat()
         cursor.execute('''
-            INSERT INTO stat_entries (faction_id, timestamp, value, value_delta)
-            VALUES (?, ?, ?, ?)
-        ''', (
-            faction_id,
-            timestamp,
-            value,
-            value_delta,
-        ))
+                       INSERT INTO stat_entries (faction_id, timestamp, value)
+                       VALUES (?, ?, ?)
+                       ''', (
+                           faction_id,
+                           timestamp,
+                           value,
+                       ))
 
         conn.commit()
         conn.close()
@@ -70,8 +93,7 @@ class StatEntriesDAO:
         return {
             'faction_id': faction_id,
             'timestamp': timestamp,
-            'value': value,
-            'value_delta': value_delta
+            'value': value  # ,
         }
 
     def get_faction_entries(self, faction_name):
@@ -80,14 +102,14 @@ class StatEntriesDAO:
         cursor = conn.cursor()
 
         cursor.execute('''
-            SELECT se.timestamp, se.value, se.value_delta, se.faction_id
-            FROM stat_entries se
-            JOIN factions f ON se.faction_id = f.id
-            WHERE f.name = ?
-            ORDER BY se.timestamp ASC
-        ''', (
-            faction_name,
-        ))
+                       SELECT se.timestamp, se.value, se.value_delta, se.faction_id
+                       FROM stat_entries se
+                                JOIN factions f ON se.faction_id = f.id
+                       WHERE f.name = ?
+                       ORDER BY se.timestamp ASC
+                       ''', (
+                           faction_name,
+                       ))
 
         entries = []
         for row in cursor.fetchall():
@@ -107,22 +129,22 @@ class StatEntriesDAO:
         cursor = conn.cursor()
 
         cursor.execute('''
-            SELECT f.id, f.name
-            FROM factions f
-        ''')
+                       SELECT f.id, f.name
+                       FROM factions f
+                       ''')
         factions = cursor.fetchall()
 
         result = {}
         for faction_id, name in factions:
             cursor.execute('''
-                SELECT timestamp, value, faction_id
-                FROM stat_entries
-                WHERE faction_id = ?
-                ORDER BY id DESC
-                LIMIT 2
-            ''', (
-                faction_id,
-            ))
+                           SELECT timestamp, value, faction_id
+                           FROM stat_entries
+                           WHERE faction_id = ?
+                           ORDER BY id DESC
+                               LIMIT 2
+                           ''', (
+                               faction_id,
+                           ))
 
             entries = []
             rows = cursor.fetchall()

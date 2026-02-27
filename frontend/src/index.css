@@ -10,7 +10,7 @@ body {
     background-color: white;
     padding: 20px;
     border-radius: 8px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     margin-bottom: 20px;
 }
 
@@ -24,6 +24,9 @@ nav {
     padding: 10px;
     border-radius: 8px;
     margin-bottom: 20px;
+    position: sticky;
+    top: 10px;
+    z-index: 1000;
 }
 
 nav a {
@@ -146,7 +149,7 @@ tr:hover {
     background-color: white;
     padding: 20px;
     border-radius: 8px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     position: relative;
     height: 400px;
 }

@@ -3,16 +3,17 @@ import numpy as np
 import pytesseract
 from PIL import Image
 
+
 # If on Windows, set tesseract path:
 # pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
-FACTION_NAMES = [
-    "Federation", "Klingon", "Romulan", "Augment",
-    "Rogue", "Bajoran", "Ex-Borg", "Section 31", "Terran", "DTI"
-]
+# FACTION_NAMES = [
+#    "Federation", "Klingon", "Romulan", "Augment",
+#    "Rogue", "Bajoran", "Ex-Borg", "Section 31", "Terran", "DTI"
+# ]
 
 
-def find_highlighted_faction(image_path):
+def find_highlighted_faction(image_path, faction_names):
     img = cv2.imread(image_path)
     if img is None:
         raise FileNotFoundError(f"Could not load image: {image_path}")
@@ -27,13 +28,13 @@ def find_highlighted_faction(image_path):
     gray = cv2.cvtColor(faction_panel, cv2.COLOR_BGR2GRAY)
 
     # Divide into rows (one per faction)
-    num_factions = len(FACTION_NAMES)
+    num_factions = len(faction_names)
     row_height = height // num_factions
 
     best_faction = None
     best_brightness = -1
 
-    for i, faction in enumerate(FACTION_NAMES):
+    for i, faction in enumerate(faction_names):
         y1 = i * row_height
         y2 = y1 + row_height
         row = gray[y1:y2, :]
@@ -80,8 +81,8 @@ def extract_points(image_path):
     return None
 
 
-def analyze_screenshot(image_path):
-    faction = find_highlighted_faction(image_path)
+def analyze_screenshot(image_path, faction_names):
+    faction = find_highlighted_faction(image_path, faction_names)
     points = extract_points(image_path)
 
     print(f"Highlighted Faction: {faction}")
