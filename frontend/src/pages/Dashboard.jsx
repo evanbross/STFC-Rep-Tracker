@@ -1,15 +1,15 @@
 import React, {useEffect, useState} from 'react';
 import axios from 'axios';
 import {
-  CategoryScale,
-  Chart as ChartJS,
-  Legend,
-  LinearScale,
-  LineElement,
-  PointElement,
-  TimeScale,
-  Title,
-  Tooltip
+    CategoryScale,
+    Chart as ChartJS,
+    Legend,
+    LinearScale,
+    LineElement,
+    PointElement,
+    TimeScale,
+    Title,
+    Tooltip
 } from 'chart.js';
 import {Line} from 'react-chartjs-2';
 import 'chartjs-adapter-date-fns';
@@ -24,6 +24,14 @@ ChartJS.register(
     Legend,
     TimeScale
 );
+
+const formatMinutes = (minutes) => {
+    const m = Math.round(minutes || 0);
+    if (!m) return "0";
+    const h = Math.floor(m / 60);
+    const mins = m % 60;
+    return h > 0 ? `${h}h ${mins}m` : `${mins}m`;
+};
 
 const Dashboard = () => {
     const [factions, setFactions] = useState([]);
@@ -63,7 +71,7 @@ const Dashboard = () => {
 
     const loadEntries = async () => {
         try {
-            const response = await axios.get('/api/entries');
+            const response = await axios.get('/api/status_entries/');
             updateChart(response.data);
         } catch (error) {
             console.error('Error loading entries:', error);
@@ -112,7 +120,7 @@ const Dashboard = () => {
 
     const submitEntry = async (factionName, value) => {
         try {
-            await axios.post('/api/entries', {
+            await axios.post('/api/status_entries/', {
                 faction: factionName,
                 value: parseInt(value)
             });
@@ -226,20 +234,14 @@ const Dashboard = () => {
                                                 className="status-value">{faction.last_delta >= 0 ? '+' : ''}{faction.last_delta?.toLocaleString()}</span>
                                         </div>
                                         <div className="status-item full-width">
-                                            <span className="status-label">Change Rate:</span>
+                                            <span className="status-label">Avg Change Rate:</span>
                                             <span
-                                                className="status-value">{Math.round(faction.status?.raw_change_per_minute || 0)}/min</span>
+                                                className="status-value">{Math.round(faction.status?.avg_value_delta_per_minute || 0)}/min</span>
                                         </div>
                                         <div className="status-item full-width">
-                                            <span className="status-label">Remaining Time:</span>
-                                            <span className="status-value">
-                        {(() => {
-                            const totalMinutes = Math.round(faction.status?.minutes || 0);
-                            const hours = Math.floor(totalMinutes / 60);
-                            const mins = totalMinutes % 60;
-                            return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
-                        })()}
-                      </span>
+                                            <span className="status-label">Avg Time To Goal:</span>
+                                            <span
+                                                className="status-value">{formatMinutes(faction.status?.minutes_to_goal)}</span>
                                         </div>
                                     </div>
                                     <div className="quick-edit" onClick={e => e.stopPropagation()}>

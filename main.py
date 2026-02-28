@@ -9,7 +9,7 @@ from app.database.database import Database
 from app.handlers.capture_handler import capture_bp
 from app.handlers.factions_handler import factions_bp
 from app.handlers.reputations_handler import reputations_bp
-from app.handlers.status_entries_handler import entries_bp
+from app.handlers.status_entries_view import status_entries_bp
 from app.handlers.system_handler import system_bp
 from config import get_config
 
@@ -31,7 +31,7 @@ swagger = Swagger(app)
 db = Database(app.config["DATABASE_PATH"])
 app.config["DATABASE"] = db
 app.register_blueprint(capture_bp, url_prefix="/api/capture-screen")
-app.register_blueprint(entries_bp, url_prefix="/api/entries")
+app.register_blueprint(status_entries_bp, url_prefix="/api/status_entries")
 app.register_blueprint(factions_bp, url_prefix="/api/factions")
 app.register_blueprint(reputations_bp, url_prefix="/api/reputations")
 app.register_blueprint(system_bp, url_prefix="/api/system")
@@ -255,7 +255,7 @@ app.register_blueprint(system_bp, url_prefix="/api/system")
 #     parameters:
 #       - name: table_name
 #         in: path
-#         type: string
+# type: string
 #         required: true
 #         description: Name of the reputation table
 #     responses:

@@ -13,6 +13,8 @@ def capture_screen():
     """
     Capture the screen and analyze it
     ---
+    tags:
+      - Capture
     responses:
       200:
         description: Screen captured and analyzed

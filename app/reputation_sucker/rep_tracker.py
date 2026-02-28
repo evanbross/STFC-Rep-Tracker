@@ -1,7 +1,7 @@
 import logging
 import time
 
-from app.database.stat_entries_dao import StatEntriesDAO
+from app.database.status_entries_dao import StatusEntriesDAO
 from app.reputation_sucker.image_to_rep import analyze_screenshot
 from app.reputation_sucker.screen_capture import ScreenCapture
 
@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 class RepTrackerOrchestrator:
     def __init__(self, db):
         self.sc = ScreenCapture()
-        self.stat_dao = StatEntriesDAO(db)
+        self.stat_dao = StatusEntriesDAO(db)
         self.factions_dao = db.factions
 
     def capture_and_analyze(self):
@@ -86,7 +86,7 @@ class RepTrackerOrchestrator:
                     logger.warning(f"Detected faction ({detected_faction}) does not match expected ({faction_name})")
 
                 try:
-                    entry = self.stat_dao.add_stat_entry(faction_name, points)
+                    entry = self.stat_dao.add_status_entry(faction_name, points)
                     results.append({
                         "faction": faction_name,
                         "points": points,

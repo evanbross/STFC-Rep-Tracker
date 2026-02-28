@@ -239,7 +239,7 @@ class FactionsDAO:
             cursor.execute(
                 """
                            SELECT value, timestamp
-                           FROM stat_entries
+                           FROM status_entries
                            WHERE faction_id = ?
                            ORDER BY timestamp DESC
                                LIMIT 2
@@ -255,7 +255,7 @@ class FactionsDAO:
             cursor.execute(
                 """
                            SELECT COUNT(*)
-                           FROM stat_entries
+                           FROM status_entries
                            WHERE faction_id = ?
                            """,
                 (faction_id,),
@@ -341,29 +341,27 @@ class FactionsDAO:
                 time_diff_mins = (t2 - t1).total_seconds() / 60
                 value_delta = latest[0] - previous[0]
                 rep_level = reputation_row[0] if reputation_row else "Unknown"
+                raw_value_delta_per_minute = value_delta / time_diff_mins
+                avg_value_delta_per_minute = value_delta / time_diff_mins
 
                 if time_diff_mins > 0:
                     status["time_delta"] = time_diff_mins
                     status["value_delta"] = value_delta
-                    status["raw_value_delta_per_minute"] = round(
-                        value_delta / time_diff_mins, 2
-                    )
-                    status["avg_value_delta_per_minute"] = (
-                        "not yet"  # round(value_delta / time_diff_mins, 2)
-                    )
+                    status["raw_value_delta_per_minute"] = raw_value_delta_per_minute
+                    status["avg_value_delta_per_minute"] = avg_value_delta_per_minute
 
                     # Calculate minutes to goal
                     if reputation_row is not None:
                         status["reputation_level"] = reputation_row[0]
-                    if (
-                        status["raw_value_delta_per_minute"] > 0
-                        and reputation_row[2] is not None
-                    ):
-                        dist = reputation_row[2] - current_value
-                        status["minutes_to_goal"] = round(
-                            dist / status["raw_value_delta_per_minute"], 2
-                        )
-                        status["minutes"] = status["minutes_to_goal"]
+                        if (
+                            avg_value_delta_per_minute > 0
+                            and reputation_row[2] is not None
+                        ):
+                            dist = reputation_row[2] - current_value
+                            status["minutes_to_goal"] = round(
+                                dist / avg_value_delta_per_minute, 2
+                            )
+                            status["minutes"] = status["minutes_to_goal"]
                     else:
                         status["minutes_to_goal"] = 0.0
                         status["minutes"] = 0.0

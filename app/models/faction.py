@@ -12,7 +12,7 @@ class Faction:
         on_chart=0,
         display_order=0,
         reputation_dao_name=None,
-        stat_entries=None,
+        status_entries=None,
         status=None,
     ):
         self.id = id
@@ -23,7 +23,7 @@ class Faction:
         self.reputation_dao_name = reputation_dao_name
         self.on_chart = on_chart
         self.display_order = display_order
-        self.stat_entries = stat_entries if stat_entries is not None else []
+        self.status_entries = status_entries if status_entries is not None else []
         self.status = status if status is not None else FactionStatus()
 
     def to_dict(self):
