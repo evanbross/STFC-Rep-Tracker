@@ -8,7 +8,8 @@ logger = logging.getLogger(__name__)
 
 capture_bp = Blueprint("capture", __name__)
 
-@capture_bp.route("/api/capture-screen", methods=["POST"])
+
+@capture_bp.route("/", methods=["POST"])
 def capture_screen():
     """
     Capture the screen and analyze it
@@ -24,16 +25,18 @@ def capture_screen():
         if not db:
             # Fallback if not in config, though it should be
             from main import db as main_db
+
             db = main_db
-            
+
         orchestrator = RepTrackerOrchestrator(db)
-        result = orchestrator.capture_and_analyze()
+        try:
+            result = orchestrator.capture_and_analyze()
+            return jsonify(result)
+        except Exception as e:
+            logger.exception(f"Error during screen capture and analysis")
+            status_code = 404 if "not found" in str(e).lower() else 500
+            return jsonify({"error": str(e)}), status_code
 
-        if "error" in result:
-            status_code = 404 if "not found" in result["error"].lower() else 500
-            return jsonify(result), status_code
-
-        return jsonify(result)
     except Exception as e:
         logger.exception("Error during screen capture and analysis")
         return jsonify({"error": str(e)}), 500

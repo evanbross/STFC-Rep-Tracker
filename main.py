@@ -6,7 +6,7 @@ from flask import Flask, send_from_directory
 from flask_cors import CORS
 
 from app.database.database import Database
-from app.handlers.capture_handler import capture_bp
+from app.handlers.capture_screen_view import capture_bp
 from app.handlers.factions_handler import factions_bp
 from app.handlers.reputations_handler import reputations_bp
 from app.handlers.status_entries_view import status_entries_bp

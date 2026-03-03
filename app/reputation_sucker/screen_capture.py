@@ -6,8 +6,7 @@ from datetime import datetime
 import cv2
 import numpy as np
 import pyautogui
-# import pygetwindow as gw
-import pywinctl as gw
+import pygetwindow as gw
 
 # Configure logging
 logging.basicConfig(
@@ -49,25 +48,37 @@ class ScreenCapture:
 
     def activate_window(self, window):
         """Brings the window to the front."""
+        import win32api
+        import win32con
+        import win32gui
+        import win32process
+
         if not window:
-            logger.warning("Window is None")
-            return False
-        try:
-            if window.isMinimized:
-                logger.info(f"activate_window: Restoring window: {window.title}")
-                window.restore()
-        except Exception as e:
-            logger.warning(f"activate_window: Could not restore window: {e}")
-            return False
+            raise Exception("activate_window: Window is None")
 
-        try:
-            window.activate()
-        except Exception as e:
-            logger.warning(f"activate_window: Could not activate window: {e}")
-            return False
+        hwnd = window._hWnd
 
-        time.sleep(1.0)  # Wait for focus
-        return True
+        if win32gui.IsIconic(hwnd):
+            logger.info(f"activate_window: Restoring minimized window: {window.title}")
+            win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+            time.sleep(0.5)
+
+        # Windows blocks focus changes from background processes unless the calling
+        # thread is attached to the current foreground thread's input queue.
+        fg_hwnd = win32gui.GetForegroundWindow()
+        fg_thread = win32process.GetWindowThreadProcessId(fg_hwnd)[0]
+        app_thread = win32api.GetCurrentThreadId()
+
+        if fg_thread != app_thread:
+            win32process.AttachThreadInput(fg_thread, app_thread, True)
+            win32gui.BringWindowToTop(hwnd)
+            win32gui.SetForegroundWindow(hwnd)
+            win32process.AttachThreadInput(fg_thread, app_thread, False)
+        else:
+            win32gui.SetForegroundWindow(hwnd)
+
+        logger.info(f"activate_window: Activated window: {window.title}")
+        time.sleep(1.0)
 
     def is_faction_store_open(self, window_region):
         """Checks if the faction store is already open using a header snippet."""
@@ -137,6 +148,102 @@ class ScreenCapture:
         screenshot = pyautogui.screenshot(region=(left, top, width, height))
         screenshot.save(filepath)
         logger.info(f"Screenshot saved to {filepath}")
+        return filepath
+
+    def capture_window_mss(self, window):
+        """
+        Captures the window region using mss.
+        mss is faster than pyautogui and handles multi-monitor setups correctly,
+        but requires the window to be visible (not covered by other windows).
+        """
+        import mss
+
+        left, top, width, height = window.left, window.top, window.width, window.height
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        filepath = os.path.join(self.output_dir, f"capture_{timestamp}.png")
+
+        monitor = {"left": left, "top": top, "width": width, "height": height}
+        with mss.mss() as sct:
+            img = sct.grab(monitor)
+            img_np = np.array(img)
+            img_bgr = cv2.cvtColor(img_np, cv2.COLOR_BGRA2BGR)
+            cv2.imwrite(filepath, img_bgr)
+
+        logger.info(f"Screenshot (mss) saved to {filepath}")
+        return filepath
+
+    def capture_window_dxcam(self, window):
+        """
+        Captures the window region using dxcam (DirectX Desktop Duplication API).
+        Very fast and works with GPU-rendered/DirectX content, but requires the
+        window to be visible and on screen (not minimized or fully occluded).
+        """
+        import dxcam
+
+        left, top, width, height = window.left, window.top, window.width, window.height
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        filepath = os.path.join(self.output_dir, f"capture_{timestamp}.png")
+
+        region = (left, top, left + width, top + height)
+        camera = dxcam.create(output_color="BGR")
+        try:
+            frame = camera.grab(region=region)
+            if frame is None:
+                logger.warning(
+                    "dxcam returned None — window may be occluded or off-screen"
+                )
+                return None
+            cv2.imwrite(filepath, frame)
+        finally:
+            del camera
+
+        logger.info(f"Screenshot (dxcam) saved to {filepath}")
+        return filepath
+
+    def capture_window_hidden(self, window):
+        """
+        Captures the window using the Win32 PrintWindow API.
+        Works even when the window is occluded or partially off-screen.
+        Requires pywin32 (pip install pywin32).
+        """
+        import win32gui
+        import win32ui
+        from ctypes import windll
+
+        # PW_RENDERFULLCONTENT (0x2) captures hardware-accelerated / DX content
+        PW_CLIENTONLY = 0x1
+        PW_RENDERFULLCONTENT = 0x2
+
+        hwnd = window._hWnd
+        left, top, width, height = window.left, window.top, window.width, window.height
+
+        hwnd_dc = win32gui.GetWindowDC(hwnd)
+        mfc_dc = win32ui.CreateDCFromHandle(hwnd_dc)
+        save_dc = mfc_dc.CreateCompatibleDC()
+
+        save_bitmap = win32ui.CreateBitmap()
+        save_bitmap.CreateCompatibleBitmap(mfc_dc, width, height)
+        save_dc.SelectObject(save_bitmap)
+
+        result = windll.user32.PrintWindow(
+            hwnd, save_dc.GetSafeHdc(), PW_RENDERFULLCONTENT
+        )
+        if not result:
+            logger.warning("PrintWindow returned 0 — image may be blank")
+
+        bmp_str = save_bitmap.GetBitmapBits(True)
+        img = np.frombuffer(bmp_str, dtype=np.uint8).reshape(height, width, 4)
+        img_bgr = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+
+        win32gui.DeleteObject(save_bitmap.GetHandle())
+        save_dc.DeleteDC()
+        mfc_dc.DeleteDC()
+        win32gui.ReleaseDC(hwnd, hwnd_dc)
+
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        filepath = os.path.join(self.output_dir, f"capture_{timestamp}.png")
+        cv2.imwrite(filepath, img_bgr)
+        logger.info(f"Screenshot (PrintWindow) saved to {filepath}")
         return filepath
 
     def find_image_on_screen(self, template_filename, region=None, threshold=0.8):

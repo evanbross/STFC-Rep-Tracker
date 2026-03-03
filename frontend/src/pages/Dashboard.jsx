@@ -71,8 +71,13 @@ const Dashboard = () => {
 
     const loadEntries = async () => {
         try {
-            const response = await axios.get('/api/status_entries/');
-            updateChart(response.data);
+            const response = await axios.get('/api/status_entries/all');
+            const grouped = {};
+            for (const entry of response.data) {
+                if (!grouped[entry.faction_name]) grouped[entry.faction_name] = [];
+                grouped[entry.faction_name].push(entry);
+            }
+            updateChart(grouped);
         } catch (error) {
             console.error('Error loading entries:', error);
         }

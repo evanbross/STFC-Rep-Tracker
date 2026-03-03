@@ -211,6 +211,15 @@ class FactionsDAO:
         conn.close()
         return result
 
+    def get_faction_names(self):
+        """Get a list of all faction names ordered by display_order"""
+        conn = self.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT name FROM factions ORDER BY display_order")
+        names = [row[0] for row in cursor.fetchall()]
+        conn.close()
+        return names
+
     def get_faction_summary(self, sort_by=None):
         """Get summary data for all factions including latest value and delta"""
         conn = self.db.get_connection()
