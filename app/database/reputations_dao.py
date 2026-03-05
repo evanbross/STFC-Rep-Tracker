@@ -248,5 +248,35 @@ class ReputationsDAO:
 
         return result
 
+    def get_last(self, table_name: str = None) -> Dict[str, Any] | None:
+        """Get the final entry (highest low_limit) from the table, returning name and high_limit."""
+        table_name = table_name if table_name is not None else self.table_name
+        conn = self.db.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(f"PRAGMA table_info('{table_name}')")
+            columns = [row[1].lower() for row in cursor.fetchall()]
+
+            name_col = "Name"
+            if "reputation_name" in columns:
+                name_col = "reputation_name"
+            elif "name" in columns:
+                name_col = "name"
+
+            if "high_limit" in columns:
+                cursor.execute(
+                    f"SELECT {name_col}, high_limit FROM {table_name} ORDER BY low_limit DESC LIMIT 1"
+                )
+                row = cursor.fetchone()
+                return {"name": row[0], "high_limit": row[1]} if row else None
+            else:
+                cursor.execute(
+                    f"SELECT {name_col} FROM {table_name} ORDER BY low_limit DESC LIMIT 1"
+                )
+                row = cursor.fetchone()
+                return {"name": row[0], "high_limit": None} if row else None
+        finally:
+            conn.close()
+
     def get_table_name(self):
         return self.table_name

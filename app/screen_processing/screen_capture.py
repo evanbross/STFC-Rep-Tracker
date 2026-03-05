@@ -4,16 +4,114 @@ import time
 from datetime import datetime
 
 import cv2
+import easyocr
 import numpy as np
 import pyautogui
 import pygetwindow as gw
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - [%(funcName)s] %(message)s",
-)
 logger = logging.getLogger(__name__)
+
+_SNIPPETS_DIR = os.path.join(os.path.dirname(__file__), "..", "screen_snippets")
+_BUTTON_MATCH_THRESHOLD = 0.85
+
+_ocr_reader = None
+
+
+def match_template(filename, img):
+    """Returns (template, max_val, max_loc) or None if the file can't be loaded."""
+    template_path = os.path.normpath(os.path.join(_SNIPPETS_DIR, filename))
+    if not os.path.isfile(template_path):
+        raise FileNotFoundError(f"Template image not found: {template_path}")
+    template = cv2.imread(template_path)
+    if template is None:
+        return None
+    result = cv2.matchTemplate(img, template, cv2.TM_CCOEFF_NORMED)
+    _, max_val, _, max_loc = cv2.minMaxLoc(result)
+    return template, max_val, max_loc
+
+
+def is_template_visible(filename, img):
+    """Return True if the template image is found in img above the match threshold."""
+    if not (match := match_template(filename, img)):
+        return False
+    _, max_val, _ = match
+    return max_val >= _BUTTON_MATCH_THRESHOLD
+
+
+def show_reticle(x, y, duration_ms=5000, radius=20):
+    """Briefly flash a crosshair reticle at absolute screen position (x, y)."""
+    import threading
+    import tkinter as tk
+
+    def _run():
+        root = tk.Tk()
+        root.overrideredirect(True)
+        root.wm_attributes("-topmost", True)
+        root.wm_attributes("-transparentcolor", "black")
+        root.configure(bg="black")
+        size = radius * 2 + 10
+        offset = size // 2
+        root.geometry(f"{size}x{size}+{x - offset}+{y - offset}")
+        canvas = tk.Canvas(
+            root, width=size, height=size, bg="black", highlightthickness=0
+        )
+        canvas.pack()
+        cx = cy = size // 2
+        canvas.create_oval(
+            cx - radius, cy - radius, cx + radius, cy + radius, outline="red", width=2
+        )
+        canvas.create_line(cx - radius, cy, cx - 4, cy, fill="red", width=2)
+        canvas.create_line(cx + 4, cy, cx + radius, cy, fill="red", width=2)
+        canvas.create_line(cx, cy - radius, cx, cy - 4, fill="red", width=2)
+        canvas.create_line(cx, cy + 4, cx, cy + radius, fill="red", width=2)
+        root.after(duration_ms, root.destroy)
+        root.mainloop()
+
+    threading.Thread(target=_run, daemon=True).start()
+
+
+def is_button_visible(button_filename, img, screen_offset=(0, 0), on_found=None):
+    """Returns (template, max_val, max_loc) if the button is visible in img, else None."""
+    if not (match := match_template(button_filename, img)):
+        return None
+
+    template, max_val, max_loc = match
+    if max_val < _BUTTON_MATCH_THRESHOLD:
+        return None
+
+    if on_found:
+        on_found()
+    return match
+
+
+def click_button_if_visible(button_filename, img, screen_offset=(0, 0), on_found=None):
+    """If the button template image is visible in img, click it. Returns True if clicked.
+
+    on_found: optional callable invoked with (center_x, center_y) after the click.
+    """
+    if not (match := is_button_visible(button_filename, img, screen_offset)):
+        return False
+    template, max_val, max_loc = match
+
+    th, tw = template.shape[:2]
+    center_x = screen_offset[0] + max_loc[0] + tw // 2
+    center_y = screen_offset[1] + max_loc[1] + th // 2
+
+    logger.info(
+        f"Clicking {button_filename} button at {center_x}, {center_y}, match % {max_val:.2f}"
+    )
+    # _show_reticle(center_x, center_y)
+    pyautogui.click(center_x, center_y)
+    if on_found:
+        on_found(center_x, center_y)
+    return True
+
+
+def get_reader():
+    global _ocr_reader
+    if _ocr_reader is None:
+        _ocr_reader = easyocr.Reader(["en"], gpu=False)
+    return _ocr_reader
 
 
 class ScreenCapture:
@@ -79,6 +177,19 @@ class ScreenCapture:
 
         logger.info(f"activate_window: Activated window: {window.title}")
         time.sleep(1.0)
+
+    def get_and_activate_window(self):
+        """Find the STFC window and bring it to the foreground.
+
+        Returns the window object on success.
+        Raises RuntimeError if the window cannot be found or activated.
+        """
+        window = self.get_stfc_window()
+        if not window:
+            raise RuntimeError("STFC window not found")
+        logger.info(f"get_and_activate_window: Found STFC window: {window.title}")
+        self.activate_window(window)
+        return window
 
     def is_faction_store_open(self, window_region):
         """Checks if the faction store is already open using a header snippet."""
@@ -147,7 +258,7 @@ class ScreenCapture:
 
         screenshot = pyautogui.screenshot(region=(left, top, width, height))
         screenshot.save(filepath)
-        logger.info(f"Screenshot saved to {filepath}")
+        logger.debug(f"Screenshot saved to {filepath}")
         return filepath
 
     def capture_window_mss(self, window):

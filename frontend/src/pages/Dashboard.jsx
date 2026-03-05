@@ -137,20 +137,33 @@ const Dashboard = () => {
         }
     };
 
-    const handleCaptureScreen = async () => {
+    const handleCaptureScreen = async (screen) => {
+        const urlMap = {
+            reputations: '/api/capture-screen',
+            away_team: '/api/capture-screen/away-team',
+            gifts: '/api/capture-screen/gifts',
+            event_rewards: '/api/capture-screen/event-rewards',
+        };
         setIsCapturing(true);
         try {
-            const response = await axios.post('/api/capture-screen');
-            const {faction, points} = response.data;
+            const response = await axios.post(urlMap[screen] ?? '/api/capture-screen');
+            const data = response.data;
 
-            if (faction && points) {
-                if (window.confirm(`Detected ${faction} with ${points.toLocaleString()} points. Save this entry?`)) {
-                    await submitEntry(faction, points);
+            if (data.saved && Array.isArray(data.saved)) {
+                // Full faction sweep — entries already saved automatically
+                const count = data.saved.length;
+                if (count > 0) {
+                    await loadFactions();
+                    await loadEntries();
+                    const summary = data.saved
+                        .map(s => `${s.faction}: ${s.points.toLocaleString()}`)
+                        .join('\n');
+                    alert(`Saved ${count} faction(s):\n${summary}`);
+                } else {
+                    alert('Scan complete — no reputation values could be read.');
                 }
-            } else if (faction) {
-                alert(`Detected ${faction}, but could not extract points.`);
             } else {
-                alert('Could not detect faction or points.');
+                alert(data.error || 'Capture returned an unexpected response.');
             }
         } catch (error) {
             console.error('Error capturing screen:', error);
@@ -280,25 +293,75 @@ const Dashboard = () => {
 
                 <h2 style={{marginTop: '2rem'}}>Auto Capture</h2>
                 <p style={{marginBottom: '1rem', fontSize: '0.9rem', color: '#666'}}>
-                    Click the button below to automatically locate Star Trek Fleet Command,
-                    switch to the Factions screen, and take a screenshot for processing.
+                    Click a button below to automatically locate Star Trek Fleet Command,
+                    switch to the selected screen, and take a screenshot for processing.
                 </p>
-                <button
-                    onClick={handleCaptureScreen}
-                    disabled={isCapturing}
-                    style={{
-                        width: '100%',
-                        padding: '1rem',
-                        fontSize: '1.1rem',
-                        backgroundColor: isCapturing ? '#ccc' : '#2196F3',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: isCapturing ? 'not-allowed' : 'pointer'
-                    }}
-                >
-                    {isCapturing ? 'Capturing...' : 'Capture Factions Screen'}
-                </button>
+                <div style={{display: 'flex', gap: '0.75rem'}}>
+                    <button
+                        onClick={() => handleCaptureScreen('reputations')}
+                        disabled={isCapturing}
+                        style={{
+                            flex: 1,
+                            padding: '1rem',
+                            fontSize: '1.1rem',
+                            backgroundColor: isCapturing ? '#ccc' : '#2196F3',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: isCapturing ? 'not-allowed' : 'pointer'
+                        }}
+                    >
+                        Reputations
+                    </button>
+                    <button
+                        onClick={() => handleCaptureScreen('away_team')}
+                        disabled={isCapturing}
+                        style={{
+                            flex: 1,
+                            padding: '1rem',
+                            fontSize: '1.1rem',
+                            backgroundColor: isCapturing ? '#ccc' : '#4CAF50',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: isCapturing ? 'not-allowed' : 'pointer'
+                        }}
+                    >
+                        Away Team
+                    </button>
+                    <button
+                        onClick={() => handleCaptureScreen('gifts')}
+                        disabled={isCapturing}
+                        style={{
+                            flex: 1,
+                            padding: '1rem',
+                            fontSize: '1.1rem',
+                            backgroundColor: isCapturing ? '#ccc' : '#9C27B0',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: isCapturing ? 'not-allowed' : 'pointer'
+                        }}
+                    >
+                        Gifts
+                    </button>
+                    <button
+                        onClick={() => handleCaptureScreen('event_rewards')}
+                        disabled={isCapturing}
+                        style={{
+                            flex: 1,
+                            padding: '1rem',
+                            fontSize: '1.1rem',
+                            backgroundColor: isCapturing ? '#ccc' : '#E65100',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: isCapturing ? 'not-allowed' : 'pointer'
+                        }}
+                    >
+                        Event Rewards
+                    </button>
+                </div>
             </div>
 
             <div className="chart-container">

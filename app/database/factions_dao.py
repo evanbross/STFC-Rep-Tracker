@@ -283,55 +283,6 @@ class FactionsDAO:
 
             current_value = latest[0] if latest else 0
 
-            # # Use appropriate reputations list
-            # reputations = []
-            # try:
-            #     if reputation_table_name:
-            #         # Map old names to new ones if necessary
-            #         table_map = {
-            #             'AugmentReputations': 'augment_reputations',
-            #             'RogueReputations': 'rogue_reputations',
-            #             'Reputations': 'fkr_reputations',
-            #             'fkr_reputations': 'fkr_reputations'
-            #         }
-            #         mapped_table = table_map.get(reputation_table_name, reputation_table_name)
-            #         reps_data = reputations_dao.get_all(self.db, mapped_table)
-            #         reputations = [(r['name'], r['low_limit'], r['high_limit']) for r in reps_data]
-            #     else:
-            #         reputations = reputations_general
-            # except Exception:
-            #     reputations = reputations_general
-            #
-            # # Find current reputation level and next goal
-            # rep_level = "Unknown"
-            # current_low_limit = None
-            # current_high_limit = None
-            #
-            # if latest: # Only set if there's at least one entry
-            #     for rep_name, low_limit, high_limit in reputations:
-            #         if high_limit is not None:
-            #             if low_limit <= current_value <= high_limit:
-            #                 rep_level = rep_name
-            #                 current_low_limit = low_limit
-            #                 current_high_limit = high_limit
-            #                 break
-            #         else:
-            #             if current_value >= low_limit:
-            #                 rep_level = rep_name
-            #                 current_low_limit = low_limit
-            #                 current_high_limit = None
-            #                 break
-            #
-            # # Special case for the very last tier fallback
-            # if latest and rep_level == "Unknown" and reputations:
-            #     sorted_reps = sorted(reputations, key=lambda x: x[1], reverse=True)
-            #     for rep_name, low_limit, high_limit in sorted_reps:
-            #         if current_value >= low_limit:
-            #             rep_level = rep_name
-            #             current_low_limit = low_limit
-            #             current_high_limit = high_limit
-            #             break
-
             rep_level = "Unknown"
             value_delta = 0
             if latest and previous:

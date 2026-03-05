@@ -2,8 +2,8 @@ import logging
 import time
 
 from app.database.status_entries_dao import StatusEntriesDAO
-from app.reputation_sucker.image_to_rep import analyze_screenshot
-from app.reputation_sucker.screen_capture import ScreenCapture
+from app.screen_processing.process_factions import analyze_screenshot
+from app.screen_processing.screen_capture import ScreenCapture
 
 logger = logging.getLogger(__name__)
 
@@ -18,18 +18,11 @@ class RepTrackerOrchestrator:
         """
         Capture the current STFC window and analyze it for a single faction/points.
         """
-        window = self.sc.get_stfc_window()
-        if not window:
-            logger.error("capture_and_analyze: STFC window not found.")
-            return {"error": "STFC window not found"}
-        logger.info(f"capture_and_analyze: Found STFC window: {window.title}")
-
         try:
-            self.sc.activate_window(window)
-            logger.error("capture_and_analyze: Success activating STFC window.")
-        except Exception as e:
-            logger.error(f"capture_and_analyze: Failed to activate STFC window: {e}")
-            return {"error": "Could not activate STFC window"}
+            window = self.sc.get_and_activate_window()
+        except RuntimeError as e:
+            logger.error(f"capture_and_analyze: {e}")
+            return {"error": str(e)}
 
         try:
             filepath = self.sc.capture_window(window)
@@ -38,14 +31,40 @@ class RepTrackerOrchestrator:
             logger.error(f"capture_and_analyze: Failed to capture screen: {e}")
             return {"error": "Failed to capture screen"}
 
-        # factions = self.factions_dao.get_all_factions()
-        # faction_names = [f["name"] for f in factions]
-        faction_names = self.factions_dao.get_faction_names()
-        logger.info(f"capture_and_analyze: Faction names: {faction_names}")
+        results = analyze_screenshot(window, filepath, self.factions_dao)
 
-        faction, points = analyze_screenshot(window, filepath, faction_names)
+        # Save an entry for every faction where points were successfully read.
+        # Factions with no reputation value (points=None) are skipped silently.
+        saved = []
+        for item in results or []:
+            points = item.get("points")
+            if points is None:
+                continue
+            try:
+                self.stat_dao.add_status_entry(item["faction"], points)
+                saved.append({"faction": item["faction"], "points": points})
+                logger.info(f"capture_and_analyze: saved {item['faction']}: {points:,}")
+            except Exception as e:
+                logger.error(
+                    f"capture_and_analyze: failed to save {item['faction']}: {e}"
+                )
 
-        return {"faction": faction, "points": points, "image_path": filepath}
+        return {"saved": saved, "results": results}
+
+    def capture_event_rewards(self):
+        """
+        Activate the STFC window and capture the Event Rewards screen.
+        Navigation logic to be implemented.
+        """
+        try:
+            window = self.sc.get_and_activate_window()
+        except RuntimeError as e:
+            logger.error(f"capture_event_rewards: {e}")
+            return {"error": str(e)}
+
+        filepath = self.sc.capture_window(window)
+        logger.info(f"capture_event_rewards: Captured screenshot: {filepath}")
+        return {"image_path": filepath}
 
     def track_all_factions(self):
         """
@@ -103,7 +122,7 @@ class RepTrackerOrchestrator:
                         }
                     )
                     logger.info(
-                        f"track_all_factions: Successfully saved {faction_name}: {points}"
+                        f"track_all_factions: Successfully saved {faction_name}: {points:,}"
                     )
                 except Exception as e:
                     results.append(

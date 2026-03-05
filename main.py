@@ -1,22 +1,22 @@
 import logging
+import logging.config
 import os
 
+import yaml
 from flasgger import Swagger
 from flask import Flask, send_from_directory
 from flask_cors import CORS
 
 from app.database.database import Database
-from app.handlers.capture_screen_view import capture_bp
-from app.handlers.factions_handler import factions_bp
-from app.handlers.reputations_handler import reputations_bp
-from app.handlers.status_entries_view import status_entries_bp
-from app.handlers.system_handler import system_bp
+from app.views.capture_screen_view import capture_bp
+from app.views.factions_view import factions_bp
+from app.views.reputations_view import reputations_bp
+from app.views.status_entries_view import status_entries_bp
+from app.views.system_view import system_bp
 from config import get_config
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - [%(funcName)s] %(message)s",
-)
+with open("logging.yaml") as f:
+    logging.config.dictConfig(yaml.safe_load(f))
 logger = logging.getLogger(__name__)
 
 app = Flask(
