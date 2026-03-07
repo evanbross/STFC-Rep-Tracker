@@ -97,7 +97,7 @@ def click_button_if_visible(button_filename, img, screen_offset=(0, 0), on_found
     center_x = screen_offset[0] + max_loc[0] + tw // 2
     center_y = screen_offset[1] + max_loc[1] + th // 2
 
-    logger.info(
+    logger.debug(
         f"Clicking {button_filename} button at {center_x}, {center_y}, match % {max_val:.2f}"
     )
     # _show_reticle(center_x, center_y)
@@ -115,7 +115,18 @@ def get_reader():
 
 
 class ScreenCapture:
+    _instance = None
+
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
     def __init__(self, output_dir="Screenshots", snippets_dir="app/screen_snippets"):
+        if hasattr(self, "_initialized"):
+            return
+        self._initialized = True
+
         self.output_dir = output_dir
         self.snippets_dir = snippets_dir
         try:
@@ -220,7 +231,7 @@ class ScreenCapture:
             )
             pyautogui.click(f_abs_x, f_abs_y)
 
-        time.sleep(2.0)  # Wait for navigation
+        time.sleep(1.0)  # Wait for navigation
 
         # Verify it opened
         if self.is_faction_store_open(window_region):
@@ -417,3 +428,88 @@ class ScreenCapture:
             pyautogui.click(coords[0], coords[1])
             return True
         return False
+
+    def navigate_to_home_screen(
+        self,
+        window,
+        target_templates,
+        nav_buttons,
+        busy_templates=None,
+        max_retries=8,
+        wait_after_click=1.0,
+    ):
+        """Navigate to a target screen by looping until a target template appears.
+
+        Each iteration:
+          1. Captures a fresh screenshot.
+          2. Checks target_templates — any match means we have arrived; returns the img.
+          3. Checks busy_templates — any match means the game is loading; waits and retries.
+          4. Tries nav_buttons in order, clicking the first one that is visible, then waits.
+          5. Raises RuntimeError if no button could be acted on.
+
+        Args:
+            window:           STFC window object.
+            target_templates: Snippet filenames — any one visible means success.
+            nav_buttons:      Snippet filenames to click (first visible one wins per iteration).
+            busy_templates:   Snippets that indicate a loading/busy state; matching causes a
+                              wait without clicking a nav button.
+            max_retries:      Maximum capture-and-check cycles before giving up.
+            wait_after_click: Seconds to pause after clicking a nav button.
+
+        Returns:
+            The numpy BGR image of the screenshot where the target was confirmed.
+
+        Raises:
+            RuntimeError: Target screen not reached, or no known buttons found.
+        """
+        screen_offset = (window.left, window.top)
+        busy_templates = busy_templates or []
+
+        for attempt in range(1, max_retries + 1):
+            img_path = self.capture_window(window)
+            img = cv2.imread(img_path)
+            if img is None:
+                logger.warning(
+                    f"navigate_to_screen: could not read screenshot (attempt {attempt}/{max_retries})"
+                )
+                time.sleep(0.5)
+                continue
+
+            # ── Success check ──────────────────────────────────────────────────
+            for template in target_templates:
+                if is_template_visible(template, img):
+                    logger.info(
+                        f"navigate_to_screen: reached target ({template}) after {attempt} attempt(s)"
+                    )
+                    return img
+
+            logger.info(
+                f"navigate_to_screen: not on target screen (attempt {attempt}/{max_retries})"
+            )
+
+            # ── Busy/loading check — wait and retry without clicking ───────────
+            for template in busy_templates:
+                if is_template_visible(template, img):
+                    logger.info(
+                        f"navigate_to_screen: busy screen detected ({template}), waiting..."
+                    )
+                    time.sleep(1.5)
+                    break  # skip nav buttons this iteration
+            else:
+                # ── Navigation — click the first visible nav button ────────────
+                for button in nav_buttons:
+                    if click_button_if_visible(button, img, screen_offset):
+                        logger.info(
+                            f"navigate_to_screen: clicked {button}, waiting {wait_after_click}s"
+                        )
+                        time.sleep(wait_after_click)
+                        break
+                else:
+                    raise RuntimeError(
+                        f"navigate_to_screen: no known navigation buttons visible "
+                        f"(attempt {attempt}/{max_retries})"
+                    )
+
+        raise RuntimeError(
+            f"navigate_to_screen: target screen not reached after {max_retries} attempts"
+        )

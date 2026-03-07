@@ -3,8 +3,12 @@ import logging
 from flask import Blueprint, jsonify, current_app
 
 from app.screen_processing.process_away_teams import AwayTeamOrchestrator
+from app.screen_processing.process_event_rewards import EventRewardsOrchestrator
 from app.screen_processing.process_gifts import GiftsOrchestrator
-from app.screen_processing.process_reputations import RepTrackerOrchestrator
+from app.screen_processing.process_reputations import (
+    ProcessReputationsOrchestrator,
+    capture_and_identify_faction,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +25,7 @@ def _get_db():
 
 
 @capture_bp.route("/", methods=["POST"])
-def capture_screen():
+def capture_reputations():
     """
     Capture the screen and analyze it
     ---
@@ -32,7 +36,7 @@ def capture_screen():
         description: Screen captured and analyzed
     """
     try:
-        orchestrator = RepTrackerOrchestrator(_get_db())
+        orchestrator = ProcessReputationsOrchestrator(_get_db())
         try:
             result = orchestrator.capture_and_analyze()
             return jsonify(result)
@@ -42,6 +46,25 @@ def capture_screen():
             return jsonify({"error": str(e)}), status_code
     except Exception as e:
         logger.exception("Error during screen capture and analysis")
+        return jsonify({"error": str(e)}), 500
+
+
+@capture_bp.route("/identify-faction", methods=["POST"])
+def identify_faction():
+    """
+    Capture the screen and identify which faction is currently highlighted
+    ---
+    tags:
+      - Capture
+    responses:
+      200:
+        description: Faction identified
+    """
+    try:
+        result = capture_and_identify_faction(_get_db())
+        return jsonify(result)
+    except Exception as e:
+        logger.exception("Error identifying faction")
         return jsonify({"error": str(e)}), 500
 
 
@@ -107,7 +130,7 @@ def capture_event_rewards():
         description: Event Rewards screen captured
     """
     try:
-        orchestrator = RepTrackerOrchestrator(_get_db())
+        orchestrator = EventRewardsOrchestrator(_get_db())
         try:
             result = orchestrator.capture_event_rewards()
             return jsonify(result)

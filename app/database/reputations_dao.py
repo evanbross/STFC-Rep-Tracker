@@ -230,6 +230,18 @@ class ReputationsDAO:
                     (low_limit, name),
                 )
 
+    def find_next_reputation_name(self, conn, current_high_limit):
+        """Return the name of the tier that starts where the current tier ends, or None."""
+        if current_high_limit is None:
+            return None
+        cursor = conn.cursor()
+        cursor.execute(
+            f"SELECT name FROM {self.table_name} WHERE low_limit = ? LIMIT 1",
+            (current_high_limit,),
+        )
+        row = cursor.fetchone()
+        return row[0] if row else None
+
     def find_reputation_by_value(self, conn, value):
         cursor = conn.cursor()
         cursor.execute(

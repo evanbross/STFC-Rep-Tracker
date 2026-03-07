@@ -11,6 +11,7 @@ import {
     Title,
     Tooltip
 } from 'chart.js';
+import annotationPlugin from 'chartjs-plugin-annotation';
 import {Line} from 'react-chartjs-2';
 import 'chartjs-adapter-date-fns';
 
@@ -22,7 +23,8 @@ ChartJS.register(
     Title,
     Tooltip,
     Legend,
-    TimeScale
+    TimeScale,
+    annotationPlugin
 );
 
 const formatMinutes = (minutes) => {
@@ -173,6 +175,24 @@ const Dashboard = () => {
         }
     };
 
+    const handleIdentifyFaction = async () => {
+        setIsCapturing(true);
+        try {
+            const response = await axios.post('/api/capture-screen/identify-faction');
+            const data = response.data;
+            if (data.faction) {
+                alert(`Highlighted faction: ${data.faction}`);
+            } else {
+                alert(data.error || 'Could not identify faction.');
+            }
+        } catch (error) {
+            console.error('Error identifying faction:', error);
+            alert('Failed to identify faction.');
+        } finally {
+            setIsCapturing(false);
+        }
+    };
+
     const chartOptions = {
         responsive: true,
         maintainAspectRatio: false,
@@ -205,6 +225,24 @@ const Dashboard = () => {
             tooltip: {
                 mode: 'index',
                 intersect: false
+            },
+            annotation: {
+                annotations: {
+                    tenMillion: {
+                        type: 'line',
+                        yMin: 10000000,
+                        yMax: 10000000,
+                        borderColor: 'rgba(255, 255, 255, 0.6)',
+                        borderWidth: 3,
+                        label: {
+                            display: true,
+                            content: '10M',
+                            position: 'end',
+                            color: 'rgba(255, 255, 255, 0.8)',
+                            font: {size: 11}
+                        }
+                    }
+                }
             }
         }
     };
@@ -257,7 +295,7 @@ const Dashboard = () => {
                                                 className="status-value">{Math.round(faction.status?.avg_value_delta_per_minute || 0)}/min</span>
                                         </div>
                                         <div className="status-item full-width">
-                                            <span className="status-label">Avg Time To Goal:</span>
+                                            <span className="status-label">Time to {faction.status?.next_rep_level || 'Goal'}:</span>
                                             <span
                                                 className="status-value">{formatMinutes(faction.status?.minutes_to_goal)}</span>
                                         </div>
@@ -296,6 +334,23 @@ const Dashboard = () => {
                     Click a button below to automatically locate Star Trek Fleet Command,
                     switch to the selected screen, and take a screenshot for processing.
                 </p>
+                <div style={{display: 'flex', gap: '0.75rem', marginBottom: '0.75rem'}}>
+                    <button
+                        onClick={handleIdentifyFaction}
+                        disabled={isCapturing}
+                        style={{
+                            padding: '0.6rem 1.2rem',
+                            fontSize: '0.9rem',
+                            backgroundColor: isCapturing ? '#ccc' : '#607D8B',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: isCapturing ? 'not-allowed' : 'pointer'
+                        }}
+                    >
+                        Identify Highlighted Faction
+                    </button>
+                </div>
                 <div style={{display: 'flex', gap: '0.75rem'}}>
                     <button
                         onClick={() => handleCaptureScreen('reputations')}

@@ -313,6 +313,9 @@ class FactionsDAO:
                     # Calculate minutes to goal
                     if reputation_row is not None:
                         status["reputation_level"] = reputation_row[0]
+                        status["next_rep_level"] = self.reputations_dao.find_next_reputation_name(
+                            conn, reputation_row[2]
+                        )
                         if (
                             avg_value_delta_per_minute > 0
                             and reputation_row[2] is not None
