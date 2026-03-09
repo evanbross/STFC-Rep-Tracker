@@ -1,0 +1,48 @@
+stfc_config:
+  # Directory where screenshots are saved
+  screenshots_dir: Screenshots
+  # Max poll attempts waiting for a screen transition (collect, list indicator, etc.)
+  screen_wait_retries: 8
+  # Seconds between each poll attempt
+  screen_wait_delay: 0.25
+
+
+  # Directory containing template snippet images
+  snippets_dir: app/screen_snippets
+
+  # STFC window title substrings to search for (first match wins)
+  window_titles:
+    - "Star Trek Fleet Command"
+    - STFC
+
+  # Minimum template match confidence to consider a button "visible"
+  button_match_threshold: 0.85
+
+  navigation:
+    # Max capture-and-check cycles before giving up
+    max_retries: 8
+    # Seconds to pause after clicking a nav button
+    wait_after_click: 1.0
+    # Seconds to wait when a busy/loading screen is detected
+    busy_wait: 1.5
+
+  factions:
+    # Minimum match score for SelectedRow snippets to identify highlighted faction
+    snippet_threshold: 0.70
+    # Retries / interval (seconds) waiting for a faction to become active after clicking
+    confirm_retries: 8
+    confirm_delay: 0.25
+    # Fraction of snippet height used for template matching on RepButton/SelectedRow snippets.
+    # Set < 1.0 to exclude the reputation tier label (e.g. "RESPECTED") from the match,
+    # so snippets remain valid after a tier change. The full height is still used for clicks.
+    snippet_name_height_frac: 0.60
+    # Fallback threshold for clicking a faction button that is already in its selected
+    # (brighter) state and scores below the normal button_match_threshold.
+    button_selected_threshold: 0.60
+
+  ocr:
+    # Upscale factor applied to the region before Tesseract runs
+    scale_factor: 3
+    # Fraction of the window height / width to crop for the Points region
+    points_height_frac: 0.20
+    points_width_frac: 0.22

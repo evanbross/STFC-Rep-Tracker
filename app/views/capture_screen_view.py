@@ -24,21 +24,25 @@ def _get_db():
     return db
 
 
-@capture_bp.route("/", methods=["POST"])
+@capture_bp.route("/reputations", methods=["POST"])
 def capture_reputations():
     """
-    Capture the screen and analyze it
+    Navigate to the Faction Store and capture reputation points for all factions
     ---
     tags:
       - Capture
     responses:
       200:
-        description: Screen captured and analyzed
+        description: Reputation points captured and saved for all factions
+      404:
+        description: Game window not found
+      500:
+        description: Unexpected error during capture
     """
     try:
         orchestrator = ProcessReputationsOrchestrator(_get_db())
         try:
-            result = orchestrator.capture_and_analyze()
+            result = orchestrator.process_reputations()
             return jsonify(result)
         except Exception as e:
             logger.exception("Error during screen capture and analysis")
@@ -52,13 +56,17 @@ def capture_reputations():
 @capture_bp.route("/identify-faction", methods=["POST"])
 def identify_faction():
     """
-    Capture the screen and identify which faction is currently highlighted
+    Capture the current Faction Store screen and identify which faction is highlighted
     ---
     tags:
       - Capture
     responses:
       200:
-        description: Faction identified
+        description: Highlighted faction identified
+      404:
+        description: Game window not found
+      500:
+        description: Unexpected error during capture
     """
     try:
         result = capture_and_identify_faction(_get_db())
@@ -71,13 +79,17 @@ def identify_faction():
 @capture_bp.route("/away-team", methods=["POST"])
 def capture_away_team():
     """
-    Navigate to the Away Team screen and capture it
+    Navigate to the Away Team screen and capture mission results
     ---
     tags:
       - Capture
     responses:
       200:
-        description: Away Team screen captured
+        description: Away Team mission results captured and saved
+      404:
+        description: Game window not found
+      500:
+        description: Unexpected error during capture
     """
     try:
         orchestrator = AwayTeamOrchestrator(_get_db())
@@ -96,13 +108,17 @@ def capture_away_team():
 @capture_bp.route("/gifts", methods=["POST"])
 def capture_gifts():
     """
-    Navigate to the Gifts screen and capture it
+    Navigate to the Gifts screen and capture gift data
     ---
     tags:
       - Capture
     responses:
       200:
-        description: Gifts screen captured
+        description: Gift data captured and saved
+      404:
+        description: Game window not found
+      500:
+        description: Unexpected error during capture
     """
     try:
         orchestrator = GiftsOrchestrator(_get_db())
@@ -121,13 +137,17 @@ def capture_gifts():
 @capture_bp.route("/event-rewards", methods=["POST"])
 def capture_event_rewards():
     """
-    Navigate to the Event Rewards screen and capture it
+    Navigate to the Event Rewards screen and capture reward data
     ---
     tags:
       - Capture
     responses:
       200:
-        description: Event Rewards screen captured
+        description: Event reward data captured and saved
+      404:
+        description: Game window not found
+      500:
+        description: Unexpected error during capture
     """
     try:
         orchestrator = EventRewardsOrchestrator(_get_db())

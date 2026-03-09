@@ -17,9 +17,9 @@ class GiftsOrchestrator:
         try:
             window = self.sc.get_and_activate_window()
         except RuntimeError as e:
-            logger.error(f"capture_gifts: {e}")
+            logger.error(f"{e}")
             return {"error": str(e)}
 
         filepath = self.sc.capture_window(window)
-        logger.info(f"capture_gifts: Captured screenshot: {filepath}")
+        logger.info(f"Captured screenshot: {filepath}")
         return {"image_path": filepath}

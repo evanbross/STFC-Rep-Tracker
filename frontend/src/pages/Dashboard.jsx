@@ -141,17 +141,19 @@ const Dashboard = () => {
 
     const handleCaptureScreen = async (screen) => {
         const urlMap = {
-            reputations: '/api/capture-screen',
+            reputations: '/api/capture-screen/reputations',
             away_team: '/api/capture-screen/away-team',
             gifts: '/api/capture-screen/gifts',
             event_rewards: '/api/capture-screen/event-rewards',
         };
         setIsCapturing(true);
         try {
-            const response = await axios.post(urlMap[screen] ?? '/api/capture-screen');
+            const response = await axios.post(urlMap[screen] ?? '/api/capture-screen/reputations');
             const data = response.data;
 
-            if (data.saved && Array.isArray(data.saved)) {
+            if (data.error) {
+                alert(`Error: ${data.error}`);
+            } else if (data.saved && Array.isArray(data.saved)) {
                 // Full faction sweep — entries already saved automatically
                 const count = data.saved.length;
                 if (count > 0) {
@@ -164,8 +166,15 @@ const Dashboard = () => {
                 } else {
                     alert('Scan complete — no reputation values could be read.');
                 }
+            } else if (data.reports_clicked !== undefined) {
+                // Away team result
+                alert(
+                    `Away Team complete.\n` +
+                    `Reports collected: ${data.collected}\n` +
+                    `Expeditions started: ${data.expeditions_started}`
+                );
             } else {
-                alert(data.error || 'Capture returned an unexpected response.');
+                alert('Capture returned an unexpected response.');
             }
         } catch (error) {
             console.error('Error capturing screen:', error);

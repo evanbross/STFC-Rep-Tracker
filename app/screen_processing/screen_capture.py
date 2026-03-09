@@ -9,29 +9,57 @@ import numpy as np
 import pyautogui
 import pygetwindow as gw
 
+from app.app_config import capture_cfg
+
 logger = logging.getLogger(__name__)
 
-_SNIPPETS_DIR = os.path.join(os.path.dirname(__file__), "..", "screen_snippets")
-_BUTTON_MATCH_THRESHOLD = 0.85
+_PROJECT_ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
+_SNIPPETS_DIR = os.path.join(
+    _PROJECT_ROOT, capture_cfg("snippets_dir", default="app/screen_snippets")
+)
+_BUTTON_MATCH_THRESHOLD = capture_cfg("button_match_threshold", default=0.85)
 
 _ocr_reader = None
 
 
-def match_template(filename, img):
-    """Returns (template, max_val, max_loc) or None if the file can't be loaded."""
+def match_template(filename, img, crop_h_frac=1.0):
+    """Run template matching for filename against img.
+
+    Returns (template, max_val, max_loc), or None if the template image could not be loaded.
+    Raises FileNotFoundError if the snippet file does not exist.
+
+    crop_h_frac: if < 1.0, only the top fraction of the template height is used for
+    matching. The full (uncropped) template is still returned so callers can compute
+    click positions based on the real button size. Use this for snippets whose bottom
+    portion contains text that changes over time (e.g. reputation tier labels).
+    """
     template_path = os.path.normpath(os.path.join(_SNIPPETS_DIR, filename))
     if not os.path.isfile(template_path):
-        raise FileNotFoundError(f"Template image not found: {template_path}")
+        msg = f"Template image not found: {template_path}"
+        logger.error(msg)
+        raise FileNotFoundError(msg)
+
     template = cv2.imread(template_path)
     if template is None:
         return None
-    result = cv2.matchTemplate(img, template, cv2.TM_CCOEFF_NORMED)
+
+    match_tmpl = template
+    if crop_h_frac < 1.0:
+        crop_h = max(1, int(template.shape[0] * crop_h_frac))
+        match_tmpl = template[:crop_h, :]
+    result = cv2.matchTemplate(img, match_tmpl, cv2.TM_CCOEFF_NORMED)
     _, max_val, _, max_loc = cv2.minMaxLoc(result)
-    return template, max_val, max_loc
+    return (
+        template,
+        max_val,
+        max_loc,
+    )  # always return full template for size/click calcs
 
 
 def is_template_visible(filename, img):
     """Return True if the template image is found in img above the match threshold."""
+    if not filename:
+        return False
     if not (match := match_template(filename, img)):
         return False
     _, max_val, _ = match
@@ -39,7 +67,7 @@ def is_template_visible(filename, img):
 
 
 def show_reticle(x, y, duration_ms=5000, radius=20):
-    """Briefly flash a crosshair reticle at absolute screen position (x, y)."""
+    """Flash a crosshair at absolute screen position (x, y) for debug purposes."""
     import threading
     import tkinter as tk
 
@@ -70,13 +98,22 @@ def show_reticle(x, y, duration_ms=5000, radius=20):
     threading.Thread(target=_run, daemon=True).start()
 
 
-def is_button_visible(button_filename, img, screen_offset=(0, 0), on_found=None):
-    """Returns (template, max_val, max_loc) if the button is visible in img, else None."""
-    if not (match := match_template(button_filename, img)):
+def is_button_visible(
+    button_filename,
+    img,
+    screen_offset=(0, 0),
+    on_found=None,
+    crop_h_frac=1.0,
+    threshold=None,
+):
+    """Return (template, max_val, max_loc) if the button is visible in img, else None."""
+    if threshold is None:
+        threshold = _BUTTON_MATCH_THRESHOLD
+    if not (match := match_template(button_filename, img, crop_h_frac=crop_h_frac)):
         return None
 
     template, max_val, max_loc = match
-    if max_val < _BUTTON_MATCH_THRESHOLD:
+    if max_val < threshold:
         return None
 
     if on_found:
@@ -84,12 +121,30 @@ def is_button_visible(button_filename, img, screen_offset=(0, 0), on_found=None)
     return match
 
 
-def click_button_if_visible(button_filename, img, screen_offset=(0, 0), on_found=None):
-    """If the button template image is visible in img, click it. Returns True if clicked.
+def click_button_if_visible(
+    button_filename,
+    img,
+    screen_offset=(0, 0),
+    on_found=None,
+    crop_h_frac=1.0,
+    threshold=None,
+):
+    """Click the button if its template is visible in img. Returns True if clicked.
 
     on_found: optional callable invoked with (center_x, center_y) after the click.
+    crop_h_frac: fraction of template height used for matching; full height used for
+    click position. Useful for faction buttons whose tier label changes over time.
+    threshold: match confidence required; defaults to _BUTTON_MATCH_THRESHOLD.
     """
-    if not (match := is_button_visible(button_filename, img, screen_offset)):
+    if not (
+        match := is_button_visible(
+            button_filename,
+            img,
+            screen_offset,
+            crop_h_frac=crop_h_frac,
+            threshold=threshold,
+        )
+    ):
         return False
     template, max_val, max_loc = match
 
@@ -100,11 +155,78 @@ def click_button_if_visible(button_filename, img, screen_offset=(0, 0), on_found
     logger.debug(
         f"Clicking {button_filename} button at {center_x}, {center_y}, match % {max_val:.2f}"
     )
-    # _show_reticle(center_x, center_y)
     pyautogui.click(center_x, center_y)
     if on_found:
         on_found(center_x, center_y)
     return True
+
+
+def wait_for_template(filename, sc, window, max_retries=None, delay=None):
+    """Poll until filename is visible. Returns the image it was found in, or None.
+
+    Captures a fresh screenshot on each attempt. If the template does not appear
+    within max_retries attempts, logs a warning and returns None.
+    """
+    if max_retries is None:
+        max_retries = capture_cfg("screen_wait_retries", default=8)
+    if delay is None:
+        delay = capture_cfg("screen_wait_delay", default=0.25)
+    for _ in range(max_retries):
+        img_path = sc.capture_window(window, delay=delay)
+        img = cv2.imread(img_path)
+        if img is not None and is_template_visible(filename, img):
+            return img
+    logger.warning(f"'{filename}' not detected after {max_retries} attempts")
+    return None
+
+
+def wait_for_any_template(filenames, sc, window, max_retries=None, delay=None):
+    """Poll until any template in filenames is visible.
+
+    Returns (matched_filename, img) for the first template found, or (None, None)
+    if none appear within max_retries attempts.
+    """
+    logger.debug(f"Waiting for any of: {filenames!r}")
+    if max_retries is None:
+        max_retries = capture_cfg("screen_wait_retries", default=8)
+    if delay is None:
+        delay = capture_cfg("screen_wait_delay", default=0.25)
+    for _ in range(max_retries):
+        img_path = sc.capture_window(window, delay=delay)
+        img = cv2.imread(img_path)
+        if img is None:
+            continue
+        for filename in filenames:
+            if is_template_visible(filename, img):
+                return filename, img
+    logger.warning(f"None of {filenames!r} detected after {max_retries} attempts")
+    return None, None
+
+
+def wait_and_click(
+    filename, sc, window, screen_offset=(0, 0), max_retries=None, delay=None
+):
+    """Wait for filename to appear then click it. Returns True if clicked."""
+    img = wait_for_template(filename, sc, window, max_retries=max_retries, delay=delay)
+    if img is None:
+        return False
+    return click_button_if_visible(filename, img, screen_offset)
+
+
+def wait_and_click_any(
+    filenames, sc, window, screen_offset=(0, 0), max_retries=None, delay=None
+):
+    """Wait for any template in filenames to appear, then click the first one visible.
+
+    Returns the filename that was clicked, or None if none appeared within the retry limit.
+    """
+    matched, img = wait_for_any_template(
+        filenames, sc, window, max_retries=max_retries, delay=delay
+    )
+    if matched is None:
+        return None
+    click_button_if_visible(matched, img, screen_offset)
+    return matched
 
 
 def get_reader():
@@ -122,29 +244,25 @@ class ScreenCapture:
             cls._instance = super().__new__(cls)
         return cls._instance
 
-    def __init__(self, output_dir="Screenshots", snippets_dir="app/screen_snippets"):
+    def __init__(self):
         if hasattr(self, "_initialized"):
             return
         self._initialized = True
 
-        self.output_dir = output_dir
-        self.snippets_dir = snippets_dir
+        self.output_dir = capture_cfg("screenshots_dir", default="Screenshots")
+        self.snippets_dir = capture_cfg("snippets_dir", default="app/screen_snippets")
         try:
             if not os.path.exists(self.output_dir):
                 os.makedirs(self.output_dir)
         except Exception as e:
             logger.error(f"Failed to create output directory {self.output_dir}: {e}")
 
-        # Relative coordinates (0.0 to 1.0) for buttons within the STFC window
-        # These may need adjustment depending on the game's UI layout
-        self.factions_button_rel = (0.04, 0.35)  # Typical Factions icon in sidebar
-        self.federation_button_rel = (0.22, 0.05)  # Top item in faction list
-
-        # Window title search
-        self.possible_titles = ["Star Trek Fleet Command", "STFC"]
+        self.possible_titles = capture_cfg(
+            "window_titles", default=["Star Trek Fleet Command", "STFC"]
+        )
 
     def get_stfc_window(self):
-        """Finds and returns the STFC window, or None if not found."""
+        """Find and return the STFC window, or None if not found."""
         try:
             for title in self.possible_titles:
                 windows = gw.getWindowsWithTitle(title)
@@ -156,7 +274,7 @@ class ScreenCapture:
         return None
 
     def activate_window(self, window):
-        """Brings the window to the front."""
+        """Bring the window to the foreground."""
         import win32api
         import win32con
         import win32gui
@@ -168,7 +286,7 @@ class ScreenCapture:
         hwnd = window._hWnd
 
         if win32gui.IsIconic(hwnd):
-            logger.info(f"activate_window: Restoring minimized window: {window.title}")
+            logger.info(f"Restoring minimized window: {window.title}")
             win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
             time.sleep(0.5)
 
@@ -186,98 +304,38 @@ class ScreenCapture:
         else:
             win32gui.SetForegroundWindow(hwnd)
 
-        logger.info(f"activate_window: Activated window: {window.title}")
+        logger.debug(f"Activated window: {window.title}")
         time.sleep(1.0)
 
     def get_and_activate_window(self):
         """Find the STFC window and bring it to the foreground.
 
-        Returns the window object on success.
-        Raises RuntimeError if the window cannot be found or activated.
+        Returns the window object. Raises RuntimeError if not found.
         """
         window = self.get_stfc_window()
         if not window:
             raise RuntimeError("STFC window not found")
-        logger.info(f"get_and_activate_window: Found STFC window: {window.title}")
+        logger.info(f"Found STFC window: {window.title}")
         self.activate_window(window)
         return window
 
-    def is_faction_store_open(self, window_region):
-        """Checks if the faction store is already open using a header snippet."""
-        result = (
-            self.find_image_on_screen("Faction Store Header.jpg", region=window_region)
-            is not None
-        )
-        logger.info(f"Faction Store is {'open' if result else 'closed'}")
-        return result
+    def capture_window(self, window, delay=None):
+        """Capture the window region and return the saved filepath."""
+        self.activate_window(window)
 
-    def navigate_to_faction_store(self, window):
-        """Navigates to the faction store from the main screen."""
-        left, top, width, height = window.left, window.top, window.width, window.height
-        window_region = (left, top, width, height)
-
-        if self.is_faction_store_open(window_region):
-            logger.info("Faction store already open.")
-            return True
-
-        logger.info("Navigating to faction store...")
-        # 1. Click on Factions button
-        if not self.click_image("FactionsButton.png", region=window_region):
-            fx, fy = self.factions_button_rel
-            f_abs_x = left + int(width * fx)
-            f_abs_y = top + int(height * fy)
-            logger.info(
-                f"Clicking Factions button (fallback) at ({f_abs_x}, {f_abs_y})"
-            )
-            pyautogui.click(f_abs_x, f_abs_y)
-
-        time.sleep(1.0)  # Wait for navigation
-
-        # Verify it opened
-        if self.is_faction_store_open(window_region):
-            return True
-
-        logger.warning("Failed to verify Faction Store is open.")
-        return False
-
-    def select_faction_row(self, faction_index, window, total_factions=10):
-        """Clicks on a faction row based on its index (0-based)."""
-        left, top, width, height = window.left, window.top, window.width, window.height
-
-        # The faction list is on the left.
-        num_factions = total_factions
-        row_height_rel = 1.0 / num_factions
-
-        # Click in the middle of the row, left side
-        target_rel_x = 0.22  # roughly horizontal center of the left panel
-        target_rel_y = (faction_index + 0.5) * row_height_rel
-
-        abs_x = left + int(width * target_rel_x)
-        abs_y = top + int(height * target_rel_y)
-
-        logger.info(
-            f"Selecting faction at index {faction_index} (coords: {abs_x}, {abs_y})"
-        )
-        pyautogui.click(abs_x, abs_y)
-        time.sleep(1.0)  # Wait for UI update
-
-    def capture_window(self, window):
-        """Captures the window region and returns the filepath."""
         left, top, width, height = window.left, window.top, window.width, window.height
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         filepath = os.path.join(self.output_dir, f"capture_{timestamp}.png")
 
+        if delay:
+            time.sleep(delay)
         screenshot = pyautogui.screenshot(region=(left, top, width, height))
         screenshot.save(filepath)
         logger.debug(f"Screenshot saved to {filepath}")
         return filepath
 
     def capture_window_mss(self, window):
-        """
-        Captures the window region using mss.
-        mss is faster than pyautogui and handles multi-monitor setups correctly,
-        but requires the window to be visible (not covered by other windows).
-        """
+        """Capture the window using mss (faster than pyautogui, handles multi-monitor)."""
         import mss
 
         left, top, width, height = window.left, window.top, window.width, window.height
@@ -295,11 +353,7 @@ class ScreenCapture:
         return filepath
 
     def capture_window_dxcam(self, window):
-        """
-        Captures the window region using dxcam (DirectX Desktop Duplication API).
-        Very fast and works with GPU-rendered/DirectX content, but requires the
-        window to be visible and on screen (not minimized or fully occluded).
-        """
+        """Capture the window using dxcam (DirectX Desktop Duplication API)."""
         import dxcam
 
         left, top, width, height = window.left, window.top, window.width, window.height
@@ -323,17 +377,11 @@ class ScreenCapture:
         return filepath
 
     def capture_window_hidden(self, window):
-        """
-        Captures the window using the Win32 PrintWindow API.
-        Works even when the window is occluded or partially off-screen.
-        Requires pywin32 (pip install pywin32).
-        """
+        """Capture the window using Win32 PrintWindow (works when occluded or off-screen)."""
         import win32gui
         import win32ui
         from ctypes import windll
 
-        # PW_RENDERFULLCONTENT (0x2) captures hardware-accelerated / DX content
-        PW_CLIENTONLY = 0x1
         PW_RENDERFULLCONTENT = 0x2
 
         hwnd = window._hWnd
@@ -369,16 +417,11 @@ class ScreenCapture:
         return filepath
 
     def find_image_on_screen(self, template_filename, region=None, threshold=0.8):
-        """
-        Takes a screenshot (of a region if specified), searches for the template image using OpenCV,
-        and returns the (x, y) center coordinates of the best match if it exceeds the threshold.
-        """
+        """Search for template_filename in a screenshot and return its center (x, y), or None."""
         try:
-            # 1. Capture the screenshot
             screenshot = pyautogui.screenshot(region=region)
             screenshot_cv = cv2.cvtColor(np.array(screenshot), cv2.COLOR_RGB2BGR)
 
-            # 2. Load the template
             template_path = os.path.join(self.snippets_dir, template_filename)
             if not os.path.exists(template_path):
                 logger.error(f"Template image not found: {template_path}")
@@ -389,7 +432,6 @@ class ScreenCapture:
                 logger.error(f"Failed to load template image: {template_path}")
                 return None
 
-            # 3. Perform template matching
             res = cv2.matchTemplate(screenshot_cv, template, cv2.TM_CCOEFF_NORMED)
             min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
 
@@ -397,17 +439,12 @@ class ScreenCapture:
                 logger.info(
                     f"Found match for {template_filename} with confidence {max_val:.2f}"
                 )
-
-                # Get coordinates relative to the screenshot/region
                 h, w = template.shape[:2]
                 center_x = max_loc[0] + w // 2
                 center_y = max_loc[1] + h // 2
-
-                # Adjust if region was used
                 if region:
                     center_x += region[0]
                     center_y += region[1]
-
                 return (center_x, center_y)
             else:
                 logger.info(
@@ -415,13 +452,11 @@ class ScreenCapture:
                 )
                 return None
         except Exception as e:
-            logger.error(f"Error in find_image_on_screen: {e}", exc_info=True)
+            logger.error(f"{e}", exc_info=True)
             return None
 
     def click_image(self, template_filename, region=None, threshold=0.8):
-        """
-        Locates an image on screen and clicks it.
-        """
+        """Locate template_filename on screen and click it. Returns True if clicked."""
         coords = self.find_image_on_screen(template_filename, region, threshold)
         if coords:
             logger.info(f"Clicking {template_filename} at {coords}")
@@ -432,84 +467,75 @@ class ScreenCapture:
     def navigate_to_home_screen(
         self,
         window,
-        target_templates,
-        nav_buttons,
+        target_templates=None,
+        nav_buttons=None,
         busy_templates=None,
-        max_retries=8,
-        wait_after_click=1.0,
+        max_retries=None,
+        wait_after_click=None,
+        delay=0,
     ):
-        """Navigate to a target screen by looping until a target template appears.
+        """Loop until a target template is visible, clicking nav buttons each iteration.
 
-        Each iteration:
-          1. Captures a fresh screenshot.
-          2. Checks target_templates — any match means we have arrived; returns the img.
-          3. Checks busy_templates — any match means the game is loading; waits and retries.
-          4. Tries nav_buttons in order, clicking the first one that is visible, then waits.
-          5. Raises RuntimeError if no button could be acted on.
-
-        Args:
-            window:           STFC window object.
-            target_templates: Snippet filenames — any one visible means success.
-            nav_buttons:      Snippet filenames to click (first visible one wins per iteration).
-            busy_templates:   Snippets that indicate a loading/busy state; matching causes a
-                              wait without clicking a nav button.
-            max_retries:      Maximum capture-and-check cycles before giving up.
-            wait_after_click: Seconds to pause after clicking a nav button.
-
-        Returns:
-            The numpy BGR image of the screenshot where the target was confirmed.
-
-        Raises:
-            RuntimeError: Target screen not reached, or no known buttons found.
+        Checks target_templates first (success), then busy_templates (wait and retry),
+        then clicks the first visible nav button. Raises RuntimeError if the target is
+        not reached within max_retries attempts.
         """
         screen_offset = (window.left, window.top)
-        busy_templates = busy_templates or []
+        if target_templates is None:
+            target_templates = [
+                "Home Screen Buttons 1.jpg",
+                "Home Screen Buttons 2.jpg",
+            ]
+        if nav_buttons is None:
+            nav_buttons = [
+                "TopLeftBackArrow.jpg",
+                "Nav Left Arrow Mission Screen.jpg",
+                "collect.jpg",
+                "Done.jpg",
+            ]
+        busy_templates = busy_templates or ["STFC busy screen.jpg"]
+        if max_retries is None:
+            max_retries = capture_cfg("navigation", "max_retries", default=8)
+        if wait_after_click is None:
+            wait_after_click = capture_cfg(
+                "navigation", "wait_after_click", default=1.0
+            )
 
         for attempt in range(1, max_retries + 1):
             img_path = self.capture_window(window)
             img = cv2.imread(img_path)
             if img is None:
                 logger.warning(
-                    f"navigate_to_screen: could not read screenshot (attempt {attempt}/{max_retries})"
+                    f"could not read screenshot (attempt {attempt}/{max_retries})"
                 )
                 time.sleep(0.5)
                 continue
 
-            # ── Success check ──────────────────────────────────────────────────
             for template in target_templates:
                 if is_template_visible(template, img):
                     logger.info(
-                        f"navigate_to_screen: reached target ({template}) after {attempt} attempt(s)"
+                        f"reached target ({template}) after {attempt} attempt(s)"
                     )
+                    if delay:
+                        time.sleep(delay)
                     return img
 
-            logger.info(
-                f"navigate_to_screen: not on target screen (attempt {attempt}/{max_retries})"
-            )
+            logger.info(f"not on home screen (attempt {attempt}/{max_retries})")
 
-            # ── Busy/loading check — wait and retry without clicking ───────────
             for template in busy_templates:
                 if is_template_visible(template, img):
-                    logger.info(
-                        f"navigate_to_screen: busy screen detected ({template}), waiting..."
-                    )
-                    time.sleep(1.5)
-                    break  # skip nav buttons this iteration
+                    logger.info(f"busy screen detected ({template}), waiting...")
+                    time.sleep(capture_cfg("navigation", "busy_wait", default=1.5))
+                    break
             else:
-                # ── Navigation — click the first visible nav button ────────────
                 for button in nav_buttons:
                     if click_button_if_visible(button, img, screen_offset):
-                        logger.info(
-                            f"navigate_to_screen: clicked {button}, waiting {wait_after_click}s"
-                        )
+                        logger.info(f"clicked {button}, waiting {wait_after_click}s")
                         time.sleep(wait_after_click)
                         break
                 else:
-                    raise RuntimeError(
-                        f"navigate_to_screen: no known navigation buttons visible "
-                        f"(attempt {attempt}/{max_retries})"
+                    logger.warning(
+                        f"no known navigation buttons visible (attempt {attempt}/{max_retries})"
                     )
 
-        raise RuntimeError(
-            f"navigate_to_screen: target screen not reached after {max_retries} attempts"
-        )
+        raise RuntimeError(f"target screen not reached after {max_retries} attempts")

@@ -39,6 +39,12 @@ class FactionsDAO:
                            reputation_table_name
                            TEXT,
                            reputation_dao_name
+                           TEXT,
+                           snippet_selected_button
+                           TEXT,
+                           snippet_selected_desc
+                           TEXT,
+                           snippet_unselected
                            TEXT
                        )
                        """)
@@ -60,6 +66,27 @@ class FactionsDAO:
             cursor.execute("ALTER TABLE factions ADD COLUMN reputation_table_name TEXT")
         if "reputation_dao_name" not in columns:
             cursor.execute("ALTER TABLE factions ADD COLUMN reputation_dao_name TEXT")
+        # Rename old columns if they exist (SQLite 3.25+)
+        # snippet_selected → snippet_selected_button
+        if "snippet_selected_button_button" in columns and "snippet_selected_button" not in columns:
+            # Fix earlier double-rename corruption
+            cursor.execute("ALTER TABLE factions RENAME COLUMN snippet_selected_button_button TO snippet_selected_button")
+        elif "snippet_selected" in columns and "snippet_selected_button" not in columns:
+            cursor.execute("ALTER TABLE factions RENAME COLUMN snippet_selected TO snippet_selected_button")
+        elif "snippet_selected_button" not in columns:
+            cursor.execute("ALTER TABLE factions ADD COLUMN snippet_selected_button TEXT")
+        # snippet_selected_2 → snippet_selected_desc
+        if "snippet_selected_2" in columns and "snippet_selected_desc" not in columns:
+            cursor.execute("ALTER TABLE factions RENAME COLUMN snippet_selected_2 TO snippet_selected_desc")
+        elif "snippet_selected_desc" not in columns:
+            cursor.execute("ALTER TABLE factions ADD COLUMN snippet_selected_desc TEXT")
+        if "snippet_unselected" not in columns:
+            cursor.execute("ALTER TABLE factions ADD COLUMN snippet_unselected TEXT")
+        cursor.execute("""
+            UPDATE factions
+            SET snippet_unselected = 'RepButton' || upper(substr(code, 1, 1)) || lower(substr(code, 2)) || '.jpg'
+            WHERE snippet_unselected IS NULL AND code IS NOT NULL
+        """)
 
     def get_all_factions(self):
         """Get list of all factions"""
@@ -67,7 +94,7 @@ class FactionsDAO:
         cursor = conn.cursor()
 
         cursor.execute("""
-                       SELECT f.id, f.name, f.code, f.on_chart, f.color, f.reputation_table_name, f.display_order, f.reputation_dao_name
+                       SELECT f.id, f.name, f.code, f.on_chart, f.color, f.reputation_table_name, f.display_order, f.reputation_dao_name, f.snippet_selected_button, f.snippet_selected_desc, f.snippet_unselected
                        FROM factions f
                        ORDER BY f.display_order
                        """)
@@ -81,6 +108,9 @@ class FactionsDAO:
                 "reputation_table_name": row[5],
                 "display_order": row[6],
                 "reputation_dao_name": row[7],
+                "snippet_selected_button": row[8],
+                "snippet_selected_desc": row[9],
+                "snippet_unselected": row[10],
                 "faction_type": row[2],  # Map code to faction_type for compatibility
             }
             for row in cursor.fetchall()
@@ -98,6 +128,9 @@ class FactionsDAO:
         on_chart=0,
         display_order=None,
         reputation_dao_name=None,
+        snippet_selected_button=None,
+        snippet_selected_desc=None,
+        snippet_unselected=None,
     ):
         """Add a new faction"""
         conn = self.db.get_connection()
@@ -106,8 +139,8 @@ class FactionsDAO:
         try:
             cursor.execute(
                 """
-                           INSERT INTO factions (name, code, color, reputation_table_name, on_chart, display_order, reputation_dao_name)
-                           VALUES (?, ?, ?, ?, ?, ?, ?)
+                           INSERT INTO factions (name, code, color, reputation_table_name, on_chart, display_order, reputation_dao_name, snippet_selected_button, snippet_selected_desc, snippet_unselected)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                            """,
                 (
                     name,
@@ -117,6 +150,9 @@ class FactionsDAO:
                     on_chart,
                     display_order,
                     reputation_dao_name,
+                    snippet_selected_button,
+                    snippet_selected_desc,
+                    snippet_unselected,
                 ),
             )
 
@@ -132,6 +168,9 @@ class FactionsDAO:
                 "on_chart": on_chart,
                 "display_order": display_order,
                 "reputation_dao_name": reputation_dao_name,
+                "snippet_selected_button": snippet_selected_button,
+                "snippet_selected_desc": snippet_selected_desc,
+                "snippet_unselected": snippet_unselected,
             }
         except sqlite3.IntegrityError:
             conn.close()
@@ -153,6 +192,9 @@ class FactionsDAO:
         on_chart=0,
         display_order=None,
         reputation_dao_name=None,
+        snippet_selected_button=None,
+        snippet_selected_desc=None,
+        snippet_unselected=None,
     ):
         """Update an existing faction"""
         conn = self.db.get_connection()
@@ -174,7 +216,10 @@ class FactionsDAO:
                                reputation_table_name = ?,
                                on_chart              = ?,
                                display_order         = ?,
-                               reputation_dao_name   = ?
+                               reputation_dao_name   = ?,
+                               snippet_selected_button      = ?,
+                               snippet_selected_desc    = ?,
+                               snippet_unselected    = ?
                            WHERE id = ?
                            """,
                 (
@@ -185,6 +230,9 @@ class FactionsDAO:
                     on_chart,
                     display_order,
                     reputation_dao_name,
+                    snippet_selected_button,
+                    snippet_selected_desc,
+                    snippet_unselected,
                     id,
                 ),
             )
@@ -200,6 +248,9 @@ class FactionsDAO:
                 "on_chart": on_chart,
                 "display_order": display_order,
                 "reputation_dao_name": reputation_dao_name,
+                "snippet_selected_button": snippet_selected_button,
+                "snippet_selected_desc": snippet_selected_desc,
+                "snippet_unselected": snippet_unselected,
             }
         except sqlite3.IntegrityError:
             conn.close()
