@@ -9,6 +9,7 @@ from app.screen_processing.screen_capture import (
     is_template_visible,
     wait_and_click,
     wait_for_template,
+    wait_and_click_any,
 )
 
 logger = logging.getLogger(__name__)
@@ -85,7 +86,7 @@ class AwayTeamOrchestrator:
             if not click_button_if_visible(
                 "Away Teams Tab Unselected.jpg", img, screen_offset
             ):
-                logger.error("Away Teams Tab not found")
+                logger.error("Away Teams Tab Unselected not found")
                 return {
                     "error": "Away Teams Tab Unselected not found — add Away Teams Tab Unselected.jpg to app/screen_snippets/"
                 }

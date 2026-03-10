@@ -226,8 +226,8 @@ def _extract_points(image_path):
 
     results = get_reader().readtext(preprocessed, detail=0)
     text = " ".join(results)
-    logger.info(f"Raw OCR results from points region: {results!r}")
-    logger.info(f"Joined OCR text: {text!r}")
+    logger.debug(f"Raw OCR results from points region: {results!r}")
+    logger.debug(f"Joined OCR text: {text!r}")
 
     # Parse out the number after "Points" — support negative values (e.g. "-1,234")
     # and allow common OCR substitutions in the label (e.g. "Polnts", "P0ints").
@@ -242,7 +242,7 @@ def _extract_points(image_path):
         preprocessed, detail=0, allowlist="0123456789,-"
     )
     digit_text = " ".join(digit_results)
-    logger.info(f"Digit-only OCR results: {digit_results!r}")
+    logger.debug(f"Digit-only OCR results: {digit_results!r}")
 
     # Try the Points pattern again with a fuzzier label match, then pull the
     # number from the digit-only pass which is more reliable.

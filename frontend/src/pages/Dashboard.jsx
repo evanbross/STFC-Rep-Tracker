@@ -30,9 +30,12 @@ ChartJS.register(
 const formatMinutes = (minutes) => {
     const m = Math.round(minutes || 0);
     if (!m) return "0";
-    const h = Math.floor(m / 60);
+    const d = Math.floor(m / 1440);
+    const h = Math.floor((m % 1440) / 60);
     const mins = m % 60;
-    return h > 0 ? `${h}h ${mins}m` : `${mins}m`;
+    if (d > 0) return `${d}d ${h}h ${mins}m`;
+    if (h > 0) return `${h}h ${mins}m`;
+    return `${mins}m`;
 };
 
 const Dashboard = () => {

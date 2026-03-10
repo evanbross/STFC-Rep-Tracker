@@ -294,14 +294,14 @@ class FactionsDAO:
             reputation_dao_name,
         ) in factions_list:
 
-            # Get latest entries (up to 2 for calculation)
+            # Get latest entries (up to 5 for avg calculation)
             cursor.execute(
                 """
                            SELECT value, timestamp
                            FROM status_entries
                            WHERE faction_id = ?
                            ORDER BY timestamp DESC
-                               LIMIT 2
+                               LIMIT 5
                            """,
                 (faction_id,),
             )
@@ -349,7 +349,16 @@ class FactionsDAO:
                 value_delta = latest[0] - previous[0]
                 rep_level = reputation_row[0] if reputation_row else "Unknown"
                 raw_value_delta_per_minute = value_delta / time_diff_mins
-                avg_value_delta_per_minute = value_delta / time_diff_mins
+
+                # Average per-minute rate across all consecutive pairs in the last 5 entries
+                interval_rates = []
+                for i in range(len(entries) - 1):
+                    v_new, t_new = entries[i]
+                    v_old, t_old = entries[i + 1]
+                    dt = (datetime.fromisoformat(t_new) - datetime.fromisoformat(t_old)).total_seconds() / 60
+                    if dt > 0:
+                        interval_rates.append((v_new - v_old) / dt)
+                avg_value_delta_per_minute = sum(interval_rates) / len(interval_rates) if interval_rates else raw_value_delta_per_minute
 
                 if time_diff_mins > 0:
                     status["time_delta"] = time_diff_mins

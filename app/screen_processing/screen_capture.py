@@ -445,6 +445,7 @@ class ScreenCapture:
             target_templates = [
                 "Home Screen Buttons 1.jpg",
                 "Home Screen Buttons 2.jpg",
+                "Home Screen Buttons 3.jpg",
             ]
         if nav_buttons is None:
             nav_buttons = [
