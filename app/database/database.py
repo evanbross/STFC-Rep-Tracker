@@ -29,6 +29,9 @@ class Database:
 
         ReputationsDAO.initialize_dao_instances(conn, self.factions_dao)
 
+        for dao in ReputationsDAO.get_all_dao_by_class_name().values():
+            dao.create_table(cursor)
+
         conn.commit()
         conn.close()
 

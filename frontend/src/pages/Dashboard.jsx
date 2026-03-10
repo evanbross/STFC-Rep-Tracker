@@ -299,6 +299,11 @@ const Dashboard = () => {
                                                 className="status-value">{faction.last_delta >= 0 ? '+' : ''}{faction.last_delta?.toLocaleString()}</span>
                                         </div>
                                         <div className="status-item full-width">
+                                            <span className="status-label">Last Change Rate:</span>
+                                            <span
+                                                className="status-value">{Math.round(faction.status?.raw_value_delta_per_minute || 0)}/min</span>
+                                        </div>
+                                        <div className="status-item full-width">
                                             <span className="status-label">Avg Change Rate:</span>
                                             <span
                                                 className="status-value">{Math.round(faction.status?.avg_value_delta_per_minute || 0)}/min</span>

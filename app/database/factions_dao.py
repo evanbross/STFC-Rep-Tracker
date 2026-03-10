@@ -7,7 +7,6 @@ from app.database import reputations_dao
 class FactionsDAO:
     def __init__(self, db):
         self.db = db
-        self.reputations_dao = None
 
     def create_table(self, cursor):
         """Create factions table and handle migrations"""
@@ -337,14 +336,11 @@ class FactionsDAO:
             rep_level = "Unknown"
             value_delta = 0
             if latest and previous:
-                # get the appropriate reputation table for this faction
-                if self.reputations_dao is None:
-                    self.reputations_dao = reputations_dao.ReputationsDAO(
-                        conn, reputation_table_name
-                    )
-                reputation_row = self.reputations_dao.find_reputation_by_value(
-                    conn, latest[0]
-                )
+                # get the appropriate reputation DAO for this faction
+                rep_dao = reputations_dao.ReputationsDAO.get_dao_by_faction_name(name)
+                if rep_dao is None:
+                    rep_dao = reputations_dao.ReputationsDAO(conn, reputation_table_name)
+                reputation_row = rep_dao.find_reputation_by_value(conn, latest[0])
 
                 # get the time delta in minutes
                 t1 = datetime.fromisoformat(previous[1])
@@ -364,7 +360,7 @@ class FactionsDAO:
                     # Calculate minutes to goal
                     if reputation_row is not None:
                         status["reputation_level"] = reputation_row[0]
-                        status["next_rep_level"] = self.reputations_dao.find_next_reputation_name(
+                        status["next_rep_level"] = rep_dao.find_next_reputation_name(
                             conn, reputation_row[2]
                         )
                         if (

@@ -47,9 +47,7 @@ class AwayTeamOrchestrator:
 
         if img is not None and is_template_visible("Away Teams Tab Selected.jpg", img):
             # Already on the Away Teams page — nothing to do
-            logger.info(
-                "already on Away Teams page, skipping navigation"
-            )
+            logger.info("already on Away Teams page, skipping navigation")
         elif img is not None and is_template_visible(
             "Away Teams Tab Unselected.jpg", img
         ):
@@ -57,9 +55,7 @@ class AwayTeamOrchestrator:
             if not click_button_if_visible(
                 "Away Teams Tab Unselected.jpg", img, screen_offset
             ):
-                logger.error(
-                    "could not click Away Teams Tab Unselected"
-                )
+                logger.error("could not click Away Teams Tab Unselected")
                 return {"error": "Away Teams Tab Unselected not clickable"}
             logger.info("clicked Away Teams Tab Unselected")
             time.sleep(0.5)
@@ -116,9 +112,7 @@ class AwayTeamOrchestrator:
             # Wait for screen to return to the away team list
             wait_for_template("Away Teams Tab Selected.jpg", self.sc, window)
 
-        logger.info(
-            f"{reports_clicked} report(s), {collected} collected"
-        )
+        logger.info(f"{reports_clicked} report(s), {collected} collected")
 
         # ── 3. Start new expeditions: START → AUTO → START ───────────────────
         expeditions_started = 0
@@ -135,13 +129,18 @@ class AwayTeamOrchestrator:
                 break
             logger.info("clicked START (opening expedition setup)")
 
-            if not wait_and_click("Away Teams Auto.jpg", self.sc, window, screen_offset):
+            if not wait_and_click(
+                "Away Teams Auto.jpg", self.sc, window, screen_offset
+            ):
                 logger.warning("AUTO button not detected, stopping")
                 break
             logger.info("clicked AUTO")
 
-            if not wait_and_click(
-                "Away Teams Start Green.jpg", self.sc, window, screen_offset
+            if not wait_and_click_any(
+                ["Away Teams Start Green.jpg", "Away Teams Start Charts.jpg"],
+                self.sc,
+                window,
+                screen_offset,
             ):
                 logger.warning("Green START button not detected, stopping")
                 break

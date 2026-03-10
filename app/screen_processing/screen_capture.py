@@ -334,87 +334,47 @@ class ScreenCapture:
         logger.debug(f"Screenshot saved to {filepath}")
         return filepath
 
-    def capture_window_mss(self, window):
-        """Capture the window using mss (faster than pyautogui, handles multi-monitor)."""
-        import mss
+    # def capture_window_mss(self, window):
+    #     """Capture the window using mss (faster than pyautogui, handles multi-monitor)."""
+    #     import mss
+    #
+    #     left, top, width, height = window.left, window.top, window.width, window.height
+    #     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    #     filepath = os.path.join(self.output_dir, f"capture_{timestamp}.png")
+    #
+    #     monitor = {"left": left, "top": top, "width": width, "height": height}
+    #     with mss.mss() as sct:
+    #         img = sct.grab(monitor)
+    #         img_np = np.array(img)
+    #         img_bgr = cv2.cvtColor(img_np, cv2.COLOR_BGRA2BGR)
+    #         cv2.imwrite(filepath, img_bgr)
+    #
+    #     logger.info(f"Screenshot (mss) saved to {filepath}")
+    #     return filepath
 
-        left, top, width, height = window.left, window.top, window.width, window.height
-        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        filepath = os.path.join(self.output_dir, f"capture_{timestamp}.png")
-
-        monitor = {"left": left, "top": top, "width": width, "height": height}
-        with mss.mss() as sct:
-            img = sct.grab(monitor)
-            img_np = np.array(img)
-            img_bgr = cv2.cvtColor(img_np, cv2.COLOR_BGRA2BGR)
-            cv2.imwrite(filepath, img_bgr)
-
-        logger.info(f"Screenshot (mss) saved to {filepath}")
-        return filepath
-
-    def capture_window_dxcam(self, window):
-        """Capture the window using dxcam (DirectX Desktop Duplication API)."""
-        import dxcam
-
-        left, top, width, height = window.left, window.top, window.width, window.height
-        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        filepath = os.path.join(self.output_dir, f"capture_{timestamp}.png")
-
-        region = (left, top, left + width, top + height)
-        camera = dxcam.create(output_color="BGR")
-        try:
-            frame = camera.grab(region=region)
-            if frame is None:
-                logger.warning(
-                    "dxcam returned None — window may be occluded or off-screen"
-                )
-                return None
-            cv2.imwrite(filepath, frame)
-        finally:
-            del camera
-
-        logger.info(f"Screenshot (dxcam) saved to {filepath}")
-        return filepath
-
-    def capture_window_hidden(self, window):
-        """Capture the window using Win32 PrintWindow (works when occluded or off-screen)."""
-        import win32gui
-        import win32ui
-        from ctypes import windll
-
-        PW_RENDERFULLCONTENT = 0x2
-
-        hwnd = window._hWnd
-        left, top, width, height = window.left, window.top, window.width, window.height
-
-        hwnd_dc = win32gui.GetWindowDC(hwnd)
-        mfc_dc = win32ui.CreateDCFromHandle(hwnd_dc)
-        save_dc = mfc_dc.CreateCompatibleDC()
-
-        save_bitmap = win32ui.CreateBitmap()
-        save_bitmap.CreateCompatibleBitmap(mfc_dc, width, height)
-        save_dc.SelectObject(save_bitmap)
-
-        result = windll.user32.PrintWindow(
-            hwnd, save_dc.GetSafeHdc(), PW_RENDERFULLCONTENT
-        )
-        if not result:
-            logger.warning("PrintWindow returned 0 — image may be blank")
-
-        bmp_str = save_bitmap.GetBitmapBits(True)
-        img = np.frombuffer(bmp_str, dtype=np.uint8).reshape(height, width, 4)
-        img_bgr = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
-
-        win32gui.DeleteObject(save_bitmap.GetHandle())
-        save_dc.DeleteDC()
-        mfc_dc.DeleteDC()
-        win32gui.ReleaseDC(hwnd, hwnd_dc)
-
-        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        filepath = os.path.join(self.output_dir, f"capture_{timestamp}.png")
-        cv2.imwrite(filepath, img_bgr)
-        logger.info(f"Screenshot (PrintWindow) saved to {filepath}")
-        return filepath
+    # def capture_window_dxcam(self, window):
+    #     """Capture the window using dxcam (DirectX Desktop Duplication API)."""
+    #     import dxcam
+    #
+    #     left, top, width, height = window.left, window.top, window.width, window.height
+    #     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    #     filepath = os.path.join(self.output_dir, f"capture_{timestamp}.png")
+    #
+    #     region = (left, top, left + width, top + height)
+    #     camera = dxcam.create(output_color="BGR")
+    #     try:
+    #         frame = camera.grab(region=region)
+    #         if frame is None:
+    #             logger.warning(
+    #                 "dxcam returned None — window may be occluded or off-screen"
+    #             )
+    #             return None
+    #         cv2.imwrite(filepath, frame)
+    #     finally:
+    #         del camera
+    #
+    #     logger.info(f"Screenshot (dxcam) saved to {filepath}")
+    #     return filepath
 
     def find_image_on_screen(self, template_filename, region=None, threshold=0.8):
         """Search for template_filename in a screenshot and return its center (x, y), or None."""

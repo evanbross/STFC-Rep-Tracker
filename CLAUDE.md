@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 STFC Rep Tracker is a Star Trek Fleet Command reputation tracking tool. It consists of:
 - A **Flask REST API** (Python) that stores faction reputation data in SQLite
 - A **React SPA** (Vite) for viewing and managing reputation history
-- An **OCR screen capture module** that reads reputation values directly from the STFC game window using OpenCV + Tesseract
+- An **OCR screen capture module** that reads reputation values directly from the STFC game window using OpenCV + EasyOCR
 
 ## Running the App
 
@@ -32,7 +32,7 @@ npm run build
 
 **Environment**: Controlled by `FLASK_ENV` env var (`development` | `production` | `testing`). Defaults to `development`. See `config.py` for settings.
 
-**External dependency**: Tesseract OCR must be installed and on PATH for the screen capture feature to work. On Windows, set `pytesseract.pytesseract.tesseract_cmd` in `app/reputation_sucker/image_to_rep.py` if needed.
+**External dependency**: EasyOCR (bundled Python package) is used for screen capture OCR. No separate binary installation required.
 
 ## Architecture
 
@@ -55,10 +55,10 @@ npm run build
 
 API docs (Flasgger/Swagger UI) available at `/apidocs`.
 
-**Screen capture** (`app/reputation_sucker/`):
-- `screen_capture.py` — Finds and activates the STFC game window (PyGetWindow/PyAutoGUI), navigates to the Faction Store, captures screenshots to `Screenshots/`.
-- `image_to_rep.py` — Analyzes screenshots: uses brightness comparison across rows to detect the highlighted faction, and Tesseract OCR to read the points number.
-- `rep_tracker.py` — `RepTrackerOrchestrator` wires capture + analysis + DB persistence.
+**Screen capture** (`app/screen_processing/`):
+- `screen_capture.py` — Finds and activates the STFC game window (PyGetWindow/PyAutoGUI), navigates to the Faction Store, captures screenshots to `Screenshots/`. Initializes the EasyOCR reader (lazy singleton).
+- `process_reputations.py` — Analyzes screenshots: uses brightness comparison across rows to detect the highlighted faction, and EasyOCR to read the points number.
+- `process_away_teams.py`, `process_gifts.py`, `process_event_rewards.py` — Additional screen processors.
 
 ### Frontend (React + Vite)
 

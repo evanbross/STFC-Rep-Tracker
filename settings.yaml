@@ -41,7 +41,7 @@ stfc_config:
     button_selected_threshold: 0.60
 
   ocr:
-    # Upscale factor applied to the region before Tesseract runs
+    # Upscale factor applied to the region before OCR runs
     scale_factor: 3
     # Fraction of the window height / width to crop for the Points region
     points_height_frac: 0.20

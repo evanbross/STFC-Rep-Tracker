@@ -92,11 +92,7 @@ class ReputationsDAO:
             cursor.execute(f"PRAGMA table_info('{table_name}')")
             columns = [row[1].lower() for row in cursor.fetchall()]
 
-            name_col = "Name"
-            if "reputation_name" in columns:
-                name_col = "reputation_name"
-            elif "name" in columns:
-                name_col = "name"
+            name_col = "name" if "name" in columns else "Name"
 
             query = f"SELECT id, {name_col}, low_limit, high_limit FROM {table_name} ORDER BY low_limit"
 
@@ -152,11 +148,7 @@ class ReputationsDAO:
         cursor.execute(f"PRAGMA table_info('{self.table_name}')")
         columns = [row[1].lower() for row in cursor.fetchall()]
 
-        name_col = "Name"
-        if "reputation_name" in columns:
-            name_col = "reputation_name"
-        elif "name" in columns:
-            name_col = "name"
+        name_col = "name" if "name" in columns else "Name"
 
         cursor.execute(f"""
                        CREATE TABLE IF NOT EXISTS {self.table_name}
@@ -180,11 +172,7 @@ class ReputationsDAO:
         cursor.execute(f"PRAGMA table_info('{self.table_name}')")
         columns = [row[1].lower() for row in cursor.fetchall()]
 
-        name_col = "Name"
-        if "reputation_name" in columns:
-            name_col = "reputation_name"
-        elif "name" in columns:
-            name_col = "name"
+        name_col = "name" if "name" in columns else "Name"
 
         # Check if high_limit exists (some special tables like DTI might not have it yet or at all)
         has_high_limit = "high_limit" in columns
@@ -244,14 +232,18 @@ class ReputationsDAO:
 
     def find_reputation_by_value(self, conn, value):
         cursor = conn.cursor()
-        cursor.execute(
-            f"""
-                       SELECT rep.name, rep.low_limit, rep.high_limit
-                       FROM {self.table_name} AS rep
-                       WHERE rep.low_limit <= ? AND rep.high_limit >= ?
-                       """,
-            (value, value),
-        )
+        try:
+            cursor.execute(
+                f"""
+                           SELECT rep.name, rep.low_limit, rep.high_limit
+                           FROM {self.table_name} AS rep
+                           WHERE rep.low_limit <= ? AND rep.high_limit >= ?
+                           """,
+                (value, value),
+            )
+        except Exception as e:
+            logger.error(f"Error querying reputation for faction '{self.table_name}': {e}")
+            raise
         result = cursor.fetchone()
         if cursor.rowcount == 0:
             return f"Unknown {self.table_name} for reputation value {value}"
@@ -269,11 +261,7 @@ class ReputationsDAO:
             cursor.execute(f"PRAGMA table_info('{table_name}')")
             columns = [row[1].lower() for row in cursor.fetchall()]
 
-            name_col = "Name"
-            if "reputation_name" in columns:
-                name_col = "reputation_name"
-            elif "name" in columns:
-                name_col = "name"
+            name_col = "name" if "name" in columns else "Name"
 
             if "high_limit" in columns:
                 cursor.execute(

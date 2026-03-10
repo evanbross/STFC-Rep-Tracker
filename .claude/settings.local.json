@@ -2,8 +2,7 @@
   "permissions": {
     "allow": [
       "Bash(head:*)",
-      "Bash(cd:*)",
-      "Bash(cd:*2)"
+      "Bash(cd:*)"
     ]
   }
 }
