@@ -71,6 +71,29 @@ const SnippetsModal = ({ faction, onClose }) => {
         if (!newFilename) setNewFilename(file.name);
     };
 
+    const handleClipboardPaste = async () => {
+        try {
+            const items = await navigator.clipboard.read();
+            const imageItem = items.find(item => item.types.some(t => t.startsWith('image/')));
+            if (!imageItem) { alert('No image found in clipboard.'); return; }
+            const type = imageItem.types.find(t => t.startsWith('image/'));
+            const blob = await imageItem.getType(type);
+            const ext = type.split('/')[1] || 'png';
+            const file = new File([blob], 'pasted', { type });
+            const factionCode = (faction.code || faction.name).toUpperCase();
+            const prefix = `Selected-${newType}-${factionCode}-`;
+            const usedNumbers = snippets
+                .map(s => { const m = s.filename.match(new RegExp(`^${prefix}(\\d+)\\.`, 'i')); return m ? parseInt(m[1]) : 0; })
+                .filter(Boolean);
+            const next = usedNumbers.length > 0 ? Math.max(...usedNumbers) + 1 : 1;
+            clearPending();
+            setPendingFile({ file, previewUrl: URL.createObjectURL(blob) });
+            setNewFilename(`${prefix}${next}.${ext}`);
+        } catch (err) {
+            alert('Could not read clipboard. Make sure an image is copied and clipboard access is allowed.');
+        }
+    };
+
     const clearPending = () => {
         if (pendingFile) URL.revokeObjectURL(pendingFile.previewUrl);
         setPendingFile(null);
@@ -198,6 +221,11 @@ const SnippetsModal = ({ faction, onClose }) => {
                             onClick={() => fileInputRef.current.click()}
                             style={{ padding: '5px 14px', background: '#2a2a3e', border: '1px solid #555', borderRadius: 4, color: '#ccc', cursor: 'pointer' }}
                         >Browse…</button>
+
+                        <button
+                            onClick={handleClipboardPaste}
+                            style={{ padding: '5px 14px', background: '#2a2a3e', border: '1px solid #555', borderRadius: 4, color: '#ccc', cursor: 'pointer' }}
+                        >Paste from Clipboard</button>
 
                         {/* Paste toggle */}
                         <button

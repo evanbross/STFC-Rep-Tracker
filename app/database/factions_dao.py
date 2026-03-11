@@ -1,6 +1,7 @@
 import sqlite3
 from datetime import datetime
 
+from app.app_config import capture_cfg
 from app.database import reputations_dao
 
 
@@ -41,8 +42,6 @@ class FactionsDAO:
                            TEXT,
                            snippet_selected_button
                            TEXT,
-                           snippet_selected_desc
-                           TEXT,
                            snippet_unselected
                            TEXT
                        )
@@ -67,18 +66,37 @@ class FactionsDAO:
             cursor.execute("ALTER TABLE factions ADD COLUMN reputation_dao_name TEXT")
         # Rename old columns if they exist (SQLite 3.25+)
         # snippet_selected → snippet_selected_button
-        if "snippet_selected_button_button" in columns and "snippet_selected_button" not in columns:
+        if (
+            "snippet_selected_button_button" in columns
+            and "snippet_selected_button" not in columns
+        ):
             # Fix earlier double-rename corruption
-            cursor.execute("ALTER TABLE factions RENAME COLUMN snippet_selected_button_button TO snippet_selected_button")
+            cursor.execute(
+                "ALTER TABLE factions RENAME COLUMN snippet_selected_button_button TO snippet_selected_button"
+            )
         elif "snippet_selected" in columns and "snippet_selected_button" not in columns:
-            cursor.execute("ALTER TABLE factions RENAME COLUMN snippet_selected TO snippet_selected_button")
+            cursor.execute(
+                "ALTER TABLE factions RENAME COLUMN snippet_selected TO snippet_selected_button"
+            )
         elif "snippet_selected_button" not in columns:
-            cursor.execute("ALTER TABLE factions ADD COLUMN snippet_selected_button TEXT")
-        # snippet_selected_2 → snippet_selected_desc
-        if "snippet_selected_2" in columns and "snippet_selected_desc" not in columns:
-            cursor.execute("ALTER TABLE factions RENAME COLUMN snippet_selected_2 TO snippet_selected_desc")
-        elif "snippet_selected_desc" not in columns:
-            cursor.execute("ALTER TABLE factions ADD COLUMN snippet_selected_desc TEXT")
+            cursor.execute(
+                "ALTER TABLE factions ADD COLUMN snippet_selected_button TEXT"
+            )
+        # Drop legacy snippet_selected_desc — data now lives in faction_selected_snippets
+        if "snippet_selected_desc" in columns or "snippet_selected_2" in columns:
+            try:
+                old = (
+                    "snippet_selected_2"
+                    if "snippet_selected_2" in columns
+                    else "snippet_selected_desc"
+                )
+                if old == "snippet_selected_2":
+                    cursor.execute(
+                        "ALTER TABLE factions RENAME COLUMN snippet_selected_2 TO snippet_selected_desc"
+                    )
+                cursor.execute("ALTER TABLE factions DROP COLUMN snippet_selected_desc")
+            except Exception:
+                pass  # SQLite < 3.35 — column stays but is unused
         if "snippet_unselected" not in columns:
             cursor.execute("ALTER TABLE factions ADD COLUMN snippet_unselected TEXT")
         cursor.execute("""
@@ -88,15 +106,28 @@ class FactionsDAO:
         """)
 
     def get_all_factions(self):
-        """Get list of all factions"""
+        """Get list of all factions with their selected snippets."""
         conn = self.db.get_connection()
         cursor = conn.cursor()
 
         cursor.execute("""
-                       SELECT f.id, f.name, f.code, f.on_chart, f.color, f.reputation_table_name, f.display_order, f.reputation_dao_name, f.snippet_selected_button, f.snippet_selected_desc, f.snippet_unselected
+                       SELECT f.id, f.name, f.code, f.on_chart, f.color, f.reputation_table_name, f.display_order, f.reputation_dao_name, f.snippet_selected_button, f.snippet_unselected
                        FROM factions f
                        ORDER BY f.display_order
                        """)
+        rows = cursor.fetchall()
+
+        cursor.execute("""
+                       SELECT faction_id, id, filename, snippet_type
+                       FROM faction_selected_snippets
+                       ORDER BY faction_id, snippet_type, filename
+                       """)
+        snippets_by_faction = {}
+        for r in cursor.fetchall():
+            snippets_by_faction.setdefault(r[0], []).append(
+                {"id": r[1], "filename": r[2], "snippet_type": r[3]}
+            )
+
         factions = [
             {
                 "id": row[0],
@@ -108,11 +139,11 @@ class FactionsDAO:
                 "display_order": row[6],
                 "reputation_dao_name": row[7],
                 "snippet_selected_button": row[8],
-                "snippet_selected_desc": row[9],
-                "snippet_unselected": row[10],
-                "faction_type": row[2],  # Map code to faction_type for compatibility
+                "snippet_unselected": row[9],
+                "faction_type": row[2],
+                "selected_snippets": snippets_by_faction.get(row[0], []),
             }
-            for row in cursor.fetchall()
+            for row in rows
         ]
 
         conn.close()
@@ -128,7 +159,6 @@ class FactionsDAO:
         display_order=None,
         reputation_dao_name=None,
         snippet_selected_button=None,
-        snippet_selected_desc=None,
         snippet_unselected=None,
     ):
         """Add a new faction"""
@@ -138,8 +168,8 @@ class FactionsDAO:
         try:
             cursor.execute(
                 """
-                           INSERT INTO factions (name, code, color, reputation_table_name, on_chart, display_order, reputation_dao_name, snippet_selected_button, snippet_selected_desc, snippet_unselected)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                           INSERT INTO factions (name, code, color, reputation_table_name, on_chart, display_order, reputation_dao_name, snippet_selected_button, snippet_unselected)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                            """,
                 (
                     name,
@@ -150,7 +180,6 @@ class FactionsDAO:
                     display_order,
                     reputation_dao_name,
                     snippet_selected_button,
-                    snippet_selected_desc,
                     snippet_unselected,
                 ),
             )
@@ -168,7 +197,6 @@ class FactionsDAO:
                 "display_order": display_order,
                 "reputation_dao_name": reputation_dao_name,
                 "snippet_selected_button": snippet_selected_button,
-                "snippet_selected_desc": snippet_selected_desc,
                 "snippet_unselected": snippet_unselected,
             }
         except sqlite3.IntegrityError:
@@ -192,7 +220,6 @@ class FactionsDAO:
         display_order=None,
         reputation_dao_name=None,
         snippet_selected_button=None,
-        snippet_selected_desc=None,
         snippet_unselected=None,
     ):
         """Update an existing faction"""
@@ -217,7 +244,6 @@ class FactionsDAO:
                                display_order         = ?,
                                reputation_dao_name   = ?,
                                snippet_selected_button      = ?,
-                               snippet_selected_desc    = ?,
                                snippet_unselected    = ?
                            WHERE id = ?
                            """,
@@ -230,7 +256,6 @@ class FactionsDAO:
                     display_order,
                     reputation_dao_name,
                     snippet_selected_button,
-                    snippet_selected_desc,
                     snippet_unselected,
                     id,
                 ),
@@ -248,7 +273,6 @@ class FactionsDAO:
                 "display_order": display_order,
                 "reputation_dao_name": reputation_dao_name,
                 "snippet_selected_button": snippet_selected_button,
-                "snippet_selected_desc": snippet_selected_desc,
                 "snippet_unselected": snippet_unselected,
             }
         except sqlite3.IntegrityError:
@@ -294,14 +318,14 @@ class FactionsDAO:
             reputation_dao_name,
         ) in factions_list:
 
-            # Get latest entries (up to 5 for avg calculation)
+            avg_entries = capture_cfg("factions", "avg_entries", default=5)
             cursor.execute(
-                """
+                f"""
                            SELECT value, timestamp
                            FROM status_entries
                            WHERE faction_id = ?
                            ORDER BY timestamp DESC
-                               LIMIT 5
+                               LIMIT 3{int(avg_entries)}
                            """,
                 (faction_id,),
             )
@@ -339,7 +363,9 @@ class FactionsDAO:
                 # get the appropriate reputation DAO for this faction
                 rep_dao = reputations_dao.ReputationsDAO.get_dao_by_faction_name(name)
                 if rep_dao is None:
-                    rep_dao = reputations_dao.ReputationsDAO(conn, reputation_table_name)
+                    rep_dao = reputations_dao.ReputationsDAO(
+                        conn, reputation_table_name
+                    )
                 reputation_row = rep_dao.find_reputation_by_value(conn, latest[0])
 
                 # get the time delta in minutes
@@ -350,15 +376,14 @@ class FactionsDAO:
                 rep_level = reputation_row[0] if reputation_row else "Unknown"
                 raw_value_delta_per_minute = value_delta / time_diff_mins
 
-                # Average per-minute rate across all consecutive pairs in the last 5 entries
-                interval_rates = []
-                for i in range(len(entries) - 1):
-                    v_new, t_new = entries[i]
-                    v_old, t_old = entries[i + 1]
-                    dt = (datetime.fromisoformat(t_new) - datetime.fromisoformat(t_old)).total_seconds() / 60
-                    if dt > 0:
-                        interval_rates.append((v_new - v_old) / dt)
-                avg_value_delta_per_minute = sum(interval_rates) / len(interval_rates) if interval_rates else raw_value_delta_per_minute
+                # Average rate across the full retrieved window (first vs last entry)
+                oldest = entries[-1]
+                avg_span_mins = (t2 - datetime.fromisoformat(oldest[1])).total_seconds() / 60
+                avg_value_delta_per_minute = (
+                    (latest[0] - oldest[0]) / avg_span_mins
+                    if avg_span_mins > 0
+                    else raw_value_delta_per_minute
+                )
 
                 if time_diff_mins > 0:
                     status["time_delta"] = time_diff_mins

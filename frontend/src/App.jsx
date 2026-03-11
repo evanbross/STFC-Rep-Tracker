@@ -9,7 +9,7 @@ function App() {
     <Router>
       <div>
         <nav>
-          <NavLink to="/" className={({ isActive }) => isActive ? 'active' : ''}>Tracker</NavLink>
+          <NavLink to="/" className={({ isActive }) => isActive ? 'active' : ''}>Dashboard</NavLink>
           <NavLink to="/factions" className={({ isActive }) => isActive ? 'active' : ''}>Factions</NavLink>
           <NavLink to="/reputations" className={({ isActive }) => isActive ? 'active' : ''}>Reputations</NavLink>
         </nav>

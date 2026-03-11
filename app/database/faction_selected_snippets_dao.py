@@ -14,7 +14,7 @@ class FactionSelectedSnippetsDAO:
             )
         """)
 
-        # Migrate existing single-value snippet columns into the new table
+        # Migrate legacy snippet_selected_button column into the new table
         cursor.execute("""
             INSERT INTO faction_selected_snippets (faction_id, filename, snippet_type)
             SELECT id, snippet_selected_button, 'button'
@@ -24,17 +24,6 @@ class FactionSelectedSnippetsDAO:
                 SELECT 1 FROM faction_selected_snippets fss
                 WHERE fss.faction_id = factions.id
                   AND fss.filename = factions.snippet_selected_button
-              )
-        """)
-        cursor.execute("""
-            INSERT INTO faction_selected_snippets (faction_id, filename, snippet_type)
-            SELECT id, snippet_selected_desc, 'desc'
-            FROM factions
-            WHERE snippet_selected_desc IS NOT NULL
-              AND NOT EXISTS (
-                SELECT 1 FROM faction_selected_snippets fss
-                WHERE fss.faction_id = factions.id
-                  AND fss.filename = factions.snippet_selected_desc
               )
         """)
 

@@ -10,7 +10,6 @@ from app.screen_processing.screen_capture import (
     get_reader,
     match_template,
     wait_and_click_any,
-    wait_for_template,
     wait_for_any_template,
     wait_and_click,
 )
@@ -72,16 +71,10 @@ def _find_highlighted_faction(image_path, factions):
 
     Args:
         image_path: Path to a screenshot of the faction store.
-        factions:   List of faction dicts (must have 'name' and 'snippet_selected_button' keys).
+        factions:   List of faction dicts with a 'selected_snippets' list.
 
     Returns the name of the best-matching faction, or None if no snippet exceeds
-    the threshold.  Returns None (not a guess) so callers can decide how to handle
-    an inconclusive result.
-
-    Strategy:
-        1. Try snippet_selected_button for all factions — a crop of the faction's character
-           and description shown in the bottom portion of the screen.
-        2. If no match exceeds the threshold, retry using snippet_selected_desc.
+    the threshold.
     """
     img = cv2.imread(image_path)
     if img is None:
@@ -93,43 +86,31 @@ def _find_highlighted_faction(image_path, factions):
 
     for faction in factions:
         fname = faction.get("name", "<unknown>")
-        score = None
-        used_key = None
+        snippets = faction.get("selected_snippets", [])
 
-        s1 = faction.get("snippet_selected_button")
-        if s1:
+        faction_best = -1
+        faction_best_file = None
+        for s in snippets:
+            filename = s.get("filename")
+            if not filename:
+                continue
             try:
-                m = match_template(s1, img)
+                m = match_template(filename, img)
                 score = m[1] if m is not None else None
-                used_key = "snippet_selected_button"
-                logger.debug(f"'{fname}' snippet_selected_button score={score:.3f}")
+                if score is not None:
+                    logger.debug(f"'{fname}' {filename} score={score:.3f}")
+                    if score > faction_best:
+                        faction_best = score
+                        faction_best_file = filename
             except FileNotFoundError:
-                logger.debug(f"'{fname}' snippet_selected_button file missing ({s1})")
-        else:
-            logger.debug(f"'{fname}' no snippet_selected_button")
+                logger.debug(f"'{fname}' file missing ({filename})")
 
-        if score is None or score < threshold:
-            s2 = faction.get("snippet_selected_desc")
-            if s2:
-                try:
-                    m2 = match_template(s2, img)
-                    score2 = m2[1] if m2 is not None else None
-                    if score2 is not None:
-                        logger.debug(
-                            f"'{fname}' snippet_selected_desc score={score2:.3f}"
-                        )
-                        if score2 > (score or -1):
-                            score = score2
-                            used_key = "snippet_selected_desc"
-                except FileNotFoundError:
-                    logger.debug(f"'{fname}' snippet_selected_desc file missing ({s2})")
-            else:
-                logger.debug(f"'{fname}' no snippet_selected_desc")
-
-        if score is not None and score > best_score:
-            best_score = score
+        if faction_best > best_score:
+            best_score = faction_best
             best_name = fname
-            logger.debug(f"'{fname}' new best via {used_key} (score={score:.3f})")
+            logger.debug(
+                f"'{fname}' new best via {faction_best_file} (score={faction_best:.3f})"
+            )
 
     if best_name is not None and best_score >= threshold:
         logger.info(f"'{best_name}' (score={best_score:.3f})")
@@ -328,10 +309,20 @@ def click_all_faction_buttons(factions_dao, window, sc):
         name = faction.get("name", "<unknown>")
 
         unselected = faction.get("snippet_unselected")
-        selected = faction.get("snippet_selected_button")
-        desc = faction.get("snippet_selected_desc")
+        selected_snippets = faction.get("selected_snippets", [])
+        selected_filenames = [
+            s["filename"] for s in selected_snippets if s.get("filename")
+        ]
+        desc_filenames = [
+            s["filename"]
+            for s in selected_snippets
+            if s.get("snippet_type") == "desc" and s.get("filename")
+        ]
+        confirm_filenames = desc_filenames if desc_filenames else selected_filenames
+
         logger.info(
-            f"Selecting '{name}' — unselected={unselected} selected={selected} desc={desc}"
+            f"Selecting '{name}' — unselected={unselected} "
+            f"selected={selected_filenames} confirm={confirm_filenames}"
         )
 
         if not unselected:
@@ -346,11 +337,10 @@ def click_all_faction_buttons(factions_dao, window, sc):
             )
             continue
 
-        filename, img = wait_for_any_template([unselected, selected, desc], sc, window)
+        wait_templates = [unselected] + selected_filenames
+        filename, img = wait_for_any_template(wait_templates, sc, window)
         if filename is None:
-            logger.warning(
-                f"'{name}' — no indicator visible (unselected, selected, or desc) — skipping"
-            )
+            logger.warning(f"'{name}' — no indicator visible — skipping")
             results.append(
                 {
                     "faction": name,
@@ -380,8 +370,9 @@ def click_all_faction_buttons(factions_dao, window, sc):
                 continue
 
         points = None
-        if desc:
-            if wait_for_template(desc, sc, window) is not None:
+        if confirm_filenames:
+            confirm_file, _ = wait_for_any_template(confirm_filenames, sc, window)
+            if confirm_file is not None:
                 img_path = sc.capture_window(window)
                 points = _extract_points(img_path)
                 if points is None:
@@ -390,10 +381,10 @@ def click_all_faction_buttons(factions_dao, window, sc):
                     logger.info(f"'{name}' points = {points:,}")
             else:
                 logger.warning(
-                    f"'{name}' snippet_selected_desc not visible after click — skipping"
+                    f"'{name}' no confirm snippet visible after click — skipping"
                 )
         else:
-            logger.warning(f"'{name}' has no snippet_selected_desc — skipping points")
+            logger.warning(f"'{name}' has no selected snippets — skipping points")
 
         results.append(
             {"faction": name, "clicked": clicked, "points": points, "error": None}
