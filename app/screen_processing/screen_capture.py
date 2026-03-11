@@ -298,11 +298,18 @@ class ScreenCapture:
 
         if fg_thread != app_thread:
             win32process.AttachThreadInput(fg_thread, app_thread, True)
-            win32gui.BringWindowToTop(hwnd)
-            win32gui.SetForegroundWindow(hwnd)
+            try:
+                win32gui.BringWindowToTop(hwnd)
+            except Exception as e:
+                logger.warning(f"BringWindowToTop failed (likely privilege mismatch): {e}")
             win32process.AttachThreadInput(fg_thread, app_thread, False)
-        else:
+
+        try:
             win32gui.SetForegroundWindow(hwnd)
+        except Exception as e:
+            logger.warning(f"SetForegroundWindow failed, falling back to SwitchToThisWindow: {e}")
+            import ctypes
+            ctypes.windll.user32.SwitchToThisWindow(hwnd, True)
 
         logger.debug(f"Activated window: {window.title}")
         time.sleep(1.0)

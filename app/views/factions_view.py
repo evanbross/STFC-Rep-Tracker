@@ -1,6 +1,62 @@
-from flask import Blueprint, jsonify, request, current_app
+import os
+
+from flask import Blueprint, jsonify, request, current_app, send_from_directory
+from app.app_config import capture_cfg
 
 factions_bp = Blueprint("factions", __name__)
+
+
+def _snippets_dir():
+    return os.path.normpath(
+        os.path.join(
+            os.path.dirname(__file__), "..", "..",
+            capture_cfg("snippets_dir", default="app/screen_snippets"),
+        )
+    )
+
+
+@factions_bp.route("/<int:faction_id>/selected-snippets", methods=["GET"])
+def get_selected_snippets(faction_id):
+    db = current_app.config["DATABASE"]
+    snippets = db.selected_snippets.get_snippets_for_faction(faction_id)
+    return jsonify(snippets)
+
+
+@factions_bp.route("/<int:faction_id>/selected-snippets", methods=["POST"])
+def add_selected_snippet(faction_id):
+    """Upload an image file and register it as a selected snippet for a faction."""
+    db = current_app.config["DATABASE"]
+    if "file" not in request.files:
+        return jsonify({"error": "No file provided"}), 400
+
+    file = request.files["file"]
+    snippet_type = request.form.get("snippet_type") or None
+    custom_name = request.form.get("filename", "").strip()
+
+    filename = custom_name if custom_name else file.filename
+    if not filename:
+        return jsonify({"error": "No filename"}), 400
+
+    dest = os.path.join(_snippets_dir(), filename)
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    file.save(dest)
+
+    new_id = db.selected_snippets.add_snippet(faction_id, filename, snippet_type)
+    return jsonify({"id": new_id, "faction_id": faction_id, "filename": filename, "snippet_type": snippet_type}), 201
+
+
+@factions_bp.route("/selected-snippets/<int:snippet_id>", methods=["DELETE"])
+def delete_selected_snippet(snippet_id):
+    db = current_app.config["DATABASE"]
+    deleted = db.selected_snippets.delete_snippet(snippet_id)
+    if not deleted:
+        return jsonify({"error": "Snippet not found"}), 404
+    return jsonify({"deleted": snippet_id}), 200
+
+
+@factions_bp.route("/snippet-image/<path:filename>", methods=["GET"])
+def get_snippet_image(filename):
+    return send_from_directory(_snippets_dir(), filename)
 
 
 @factions_bp.route("/", methods=["GET"])

@@ -1,6 +1,7 @@
 import sqlite3
 
 from app.database import status_entries_dao, factions_dao
+from app.database.faction_selected_snippets_dao import FactionSelectedSnippetsDAO
 from app.database.reputations_dao import ReputationsDAO
 
 
@@ -13,6 +14,9 @@ class Database:
 
         self.status_entries_dao = status_entries_dao.StatusEntriesDAO(self)
         self.status_entries = self.status_entries_dao
+
+        self.selected_snippets_dao = FactionSelectedSnippetsDAO(self)
+        self.selected_snippets = self.selected_snippets_dao
 
         self.init_database()
 
@@ -39,6 +43,7 @@ class Database:
         """Create all required tables for the database"""
         self.factions_dao.create_table(cursor)
         self.status_entries_dao.create_table(cursor)
+        self.selected_snippets_dao.create_table(cursor)
 
     def get_factions_dao(self):
         return self.factions_dao

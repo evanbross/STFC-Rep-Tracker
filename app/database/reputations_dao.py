@@ -223,9 +223,11 @@ class ReputationsDAO:
         if current_high_limit is None:
             return None
         cursor = conn.cursor()
+        # Try exact boundary match (FKR-style: high_limit == next low_limit)
+        # then off-by-one match (DTI-style: high_limit == next low_limit - 1)
         cursor.execute(
-            f"SELECT name FROM {self.table_name} WHERE low_limit = ? LIMIT 1",
-            (current_high_limit,),
+            f"SELECT name FROM {self.table_name} WHERE low_limit IN (?, ?) ORDER BY low_limit LIMIT 1",
+            (current_high_limit, current_high_limit + 1),
         )
         row = cursor.fetchone()
         return row[0] if row else None
