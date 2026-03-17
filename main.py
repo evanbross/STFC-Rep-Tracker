@@ -1,6 +1,8 @@
+import ctypes
 import logging
 import logging.config
 import os
+import sys
 
 import yaml
 from flasgger import Swagger
@@ -294,5 +296,22 @@ def serve_react(path):
     return send_from_directory(app.static_folder, "index.html")
 
 
+def _is_admin():
+    try:
+        return ctypes.windll.shell32.IsUserAnAdmin()
+    except Exception:
+        return False
+
+
+def _relaunch_as_admin():
+    script = os.path.abspath(sys.argv[0])
+    params = " ".join(f'"{a}"' for a in sys.argv[1:])
+    ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, f'"{script}" {params}', None, 1)
+    sys.exit(0)
+
+
 if __name__ == "__main__":
+    if not app.config["DEBUG"] and not _is_admin():
+        logger.info("Not running as administrator — relaunching with elevation")
+        _relaunch_as_admin()
     app.run(debug=app.config["DEBUG"], port=5000)

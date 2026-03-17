@@ -9,9 +9,9 @@ from app.screen_processing.screen_capture import (
     click_button_if_visible,
     get_reader,
     match_template,
-    wait_and_click_any,
     wait_for_any_template,
     wait_and_click,
+    wait_and_click_any,
 )
 
 logger = logging.getLogger(__name__)
@@ -46,6 +46,8 @@ class ProcessReputationsOrchestrator:
         ):
             logger.error("Factions Button not found")
             return {"error": "Factions Button not found"}
+
+        # self.sc.press_key(window, "T")
 
         results = click_all_faction_buttons(self.factions_dao, window, self.sc)
 

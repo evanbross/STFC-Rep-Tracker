@@ -301,14 +301,19 @@ class ScreenCapture:
             try:
                 win32gui.BringWindowToTop(hwnd)
             except Exception as e:
-                logger.warning(f"BringWindowToTop failed (likely privilege mismatch): {e}")
+                logger.warning(
+                    f"BringWindowToTop failed (likely privilege mismatch): {e}"
+                )
             win32process.AttachThreadInput(fg_thread, app_thread, False)
 
         try:
             win32gui.SetForegroundWindow(hwnd)
         except Exception as e:
-            logger.warning(f"SetForegroundWindow failed, falling back to SwitchToThisWindow: {e}")
+            logger.warning(
+                f"SetForegroundWindow failed, falling back to SwitchToThisWindow: {e}"
+            )
             import ctypes
+
             ctypes.windll.user32.SwitchToThisWindow(hwnd, True)
 
         logger.debug(f"Activated window: {window.title}")
@@ -431,6 +436,39 @@ class ScreenCapture:
             return True
         return False
 
+    def press_key(self, window, key):
+        """Send the keypress to the STFC window to navigate to the home screen."""
+        self.activate_window(window)
+        pyautogui.press(key)
+        logger.debug(f"Sent {key} keypress to STFC window")
+        time.sleep(0.5)
+
+    # def navigate_to_home_screen_key(self, window):
+    #     """Send the F2 keypress to the STFC window to navigate to the home screen."""
+    #     self.activate_window(window)
+    #     pyautogui.press("f2")
+    #     logger.debug("Sent F2 keypress to STFC window")
+    #     time.sleep(0.5)
+
+    # def navigate_to_home_screen(
+    #             self,
+    #             window,
+    #             target_templates=None,
+    #             nav_buttons=None,
+    #             busy_templates=None,
+    #             max_retries=None,
+    #             wait_after_click=None,
+    #             delay=0,
+    #     ):
+    #         #return self.navigate_to_home_screen_key(window)
+    #         return self.navigate_to_home_screen_graphics(window,
+    #                                                      target_templates,
+    #                                                      nav_buttons,
+    #                                                      busy_templates,
+    #                                                      max_retries,
+    #                                                      wait_after_click,
+    #                                                      delay)
+
     def navigate_to_home_screen(
         self,
         window,
@@ -453,6 +491,7 @@ class ScreenCapture:
                 "Home Screen Buttons 1.jpg",
                 "Home Screen Buttons 2.jpg",
                 "Home Screen Buttons 3.jpg",
+                "Home Screen Buttons 4.jpg",
             ]
         if nav_buttons is None:
             nav_buttons = [

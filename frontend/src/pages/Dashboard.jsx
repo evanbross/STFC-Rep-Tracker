@@ -1,4 +1,4 @@
-import React, {useEffect, useState} from 'react';
+import React, {useEffect, useRef, useState} from 'react';
 import axios from 'axios';
 import {
     CategoryScale,
@@ -44,10 +44,11 @@ const Dashboard = () => {
     const [chartData, setChartData] = useState({datasets: []});
     const [factionColorsMap, setFactionColorsMap] = useState({});
     const [isCapturing, setIsCapturing] = useState(false);
+    const [hiddenDatasets, setHiddenDatasets] = useState({});
+    const chartRef = useRef(null);
 
     useEffect(() => {
-        loadFactions();
-        loadEntries();
+        loadFactions().then(list => loadEntries(list));
     }, []);
 
     const loadFactions = async () => {
@@ -69,15 +70,21 @@ const Dashboard = () => {
             });
             setFactionColorsMap(colors);
             setFactions(factionList);
+            return factionList;
         } catch (error) {
             console.error('Error loading factions:', error);
         }
     };
 
-    const loadEntries = async () => {
+    const loadEntries = async (factionList) => {
         try {
             const response = await axios.get('/api/status_entries/all');
             const grouped = {};
+            // Seed all on_chart factions so they appear in the legend even with no data
+            const list = factionList ?? factions;
+            for (const f of list) {
+                if (f.on_chart) grouped[f.name] = [];
+            }
             for (const entry of response.data) {
                 if (!grouped[entry.faction_name]) grouped[entry.faction_name] = [];
                 grouped[entry.faction_name].push(entry);
@@ -91,7 +98,8 @@ const Dashboard = () => {
     const updateChart = (data) => {
         const datasets = [];
         for (const [factionName, entries] of Object.entries(data)) {
-            if (entries.length > 0) {
+            const hasData = entries.length > 0 && entries.some(e => e.value !== 0);
+            {
                 const color = factionColorsMap[factionName] || 'rgb(128, 128, 128)';
 
                 let backgroundColor = color;
@@ -113,17 +121,19 @@ const Dashboard = () => {
                     borderColor: color,
                     backgroundColor: backgroundColor,
                     tension: 0.1,
-                    fill: false
+                    fill: false,
+                    hidden: !hasData
                 });
             }
         }
         setChartData({datasets});
+        setHiddenDatasets({});
     };
 
     // Re-update chart when factionColorsMap changes
     useEffect(() => {
         if (Object.keys(factionColorsMap).length > 0) {
-            loadEntries();
+            loadEntries(factions);
         }
     }, [factionColorsMap]);
 
@@ -134,8 +144,8 @@ const Dashboard = () => {
                 faction: factionName,
                 value: parseInt(value)
             });
-            await loadFactions();
-            await loadEntries();
+            const list = await loadFactions();
+            await loadEntries(list);
         } catch (error) {
             console.error('Error adding entry:', error);
             alert('Failed to add entry');
@@ -160,8 +170,8 @@ const Dashboard = () => {
                 // Full faction sweep — entries already saved automatically
                 const count = data.saved.length;
                 if (count > 0) {
-                    await loadFactions();
-                    await loadEntries();
+                    const list = await loadFactions();
+                    await loadEntries(list);
                     const summary = data.saved
                         .map(s => `${s.faction}: ${s.points.toLocaleString()}`)
                         .join('\n');
@@ -231,8 +241,7 @@ const Dashboard = () => {
         },
         plugins: {
             legend: {
-                display: true,
-                position: 'top'
+                display: false,
             },
             tooltip: {
                 mode: 'index',
@@ -437,7 +446,40 @@ const Dashboard = () => {
             </div>
 
             <div className="chart-container">
-                <Line options={chartOptions} data={chartData}/>
+                <div style={{display: 'flex', flexWrap: 'wrap', gap: '0.4rem 1rem', padding: '0.5rem 0.75rem', marginBottom: '0.5rem'}}>
+                    {chartData.datasets.map((ds, i) => {
+                        const isHidden = hiddenDatasets[i] ?? ds.hidden;
+                        return (
+                            <div
+                                key={ds.label}
+                                onClick={() => {
+                                    const chart = chartRef.current;
+                                    if (!chart) return;
+                                    const next = !isHidden;
+                                    chart.setDatasetVisibility(i, !next);
+                                    chart.update();
+                                    setHiddenDatasets(prev => ({...prev, [i]: next}));
+                                }}
+                                style={{
+                                    display: 'flex', alignItems: 'center', gap: '0.4rem',
+                                    cursor: 'pointer', opacity: isHidden ? 0.4 : 1,
+                                    fontSize: '0.8rem', userSelect: 'none'
+                                }}
+                            >
+                                <span style={{
+                                    display: 'inline-block', width: 12, height: 12,
+                                    borderRadius: 2, flexShrink: 0,
+                                    backgroundColor: isHidden ? 'transparent' : ds.borderColor,
+                                    border: `2px solid ${ds.borderColor}`
+                                }}/>
+                                <span style={{textDecoration: isHidden ? 'line-through' : 'none'}}>
+                                    {ds.label}
+                                </span>
+                            </div>
+                        );
+                    })}
+                </div>
+                <Line ref={chartRef} options={chartOptions} data={chartData}/>
             </div>
         </div>
     );
