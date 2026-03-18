@@ -72,7 +72,9 @@ class AwayTeamOrchestrator:
             # ── 1b. Mission button ────────────────────────────────────────────
             img_path = self.sc.capture_window(window)
             img = cv2.imread(img_path)
-            if not click_button_if_visible("Mission Button.jpg", img, screen_offset):
+            if not click_button_if_visible(
+                ["Mission Button.jpg", "Mission Button 2.jpg"], img, screen_offset
+            ):
                 logger.error("Mission Button not found")
                 return {
                     "error": "Mission Button not found — add Mission Button.jpg to app/screen_snippets/"
@@ -84,11 +86,13 @@ class AwayTeamOrchestrator:
             img_path = self.sc.capture_window(window)
             img = cv2.imread(img_path)
             if not click_button_if_visible(
-                "Away Teams Tab Unselected.jpg", img, screen_offset
+                ["Away Teams Tab Unselected.jpg", "Away Teams Tab Selected"],
+                img,
+                screen_offset,
             ):
-                logger.error("Away Teams Tab Unselected not found")
+                logger.error("Away Teams Tab (Un)selected not found")
                 return {
-                    "error": "Away Teams Tab Unselected not found — add Away Teams Tab Unselected.jpg to app/screen_snippets/"
+                    "error": "Away Teams Tab (Un)selected not found — add Away Teams Tab Unselected.jpg to app/screen_snippets/"
                 }
             logger.info("clicked Away Teams Tab")
             time.sleep(0.5)
@@ -119,9 +123,14 @@ class AwayTeamOrchestrator:
         expeditions_started = 0
         while True:
             # Wait for the Away Teams list to be showing before checking for buttons
-            img = wait_for_template("Away Teams List Indicator.jpg", self.sc, window)
-            if img is None:
+            if wait_for_template("Away Teams List Indicator.jpg", self.sc, window) is None:
                 logger.warning("Away Teams list not detected, stopping")
+                break
+
+            # Capture a fresh frame now that the list is confirmed visible
+            img_path = self.sc.capture_window(window)
+            img = cv2.imread(img_path)
+            if img is None:
                 break
 
             if not click_button_if_visible(

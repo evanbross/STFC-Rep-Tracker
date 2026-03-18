@@ -411,7 +411,7 @@ const Dashboard = () => {
                         Away Team
                     </button>
                     <button
-                        onClick={() => handleCaptureScreen('gifts')}
+                        onClick={() => alert('This feature is not available yet')}
                         disabled={isCapturing}
                         style={{
                             flex: 1,
@@ -421,13 +421,14 @@ const Dashboard = () => {
                             color: 'white',
                             border: 'none',
                             borderRadius: '4px',
-                            cursor: isCapturing ? 'not-allowed' : 'pointer'
+                            cursor: isCapturing ? 'not-allowed' : 'pointer',
+                            textDecoration: 'line-through'
                         }}
                     >
                         Gifts
                     </button>
                     <button
-                        onClick={() => handleCaptureScreen('event_rewards')}
+                        onClick={() => alert('This feature is not available yet')}
                         disabled={isCapturing}
                         style={{
                             flex: 1,
@@ -437,7 +438,8 @@ const Dashboard = () => {
                             color: 'white',
                             border: 'none',
                             borderRadius: '4px',
-                            cursor: isCapturing ? 'not-allowed' : 'pointer'
+                            cursor: isCapturing ? 'not-allowed' : 'pointer',
+                            textDecoration: 'line-through'
                         }}
                     >
                         Event Rewards

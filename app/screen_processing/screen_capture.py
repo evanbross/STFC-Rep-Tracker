@@ -100,30 +100,35 @@ def show_reticle(x, y, duration_ms=5000, radius=20):
 
 
 def is_button_visible(
-    button_filename,
+    button_filenames,
     img,
     screen_offset=(0, 0),
     on_found=None,
     crop_h_frac=1.0,
     threshold=None,
 ):
-    """Return (template, max_val, max_loc) if the button is visible in img, else None."""
+    """Return (template, max_val, max_loc) if any button in button_filenames is visible in img, else None.
+
+    button_filenames may be a single filename string or a list of filenames.
+    Each is tried in order; the first match above threshold is returned.
+    """
     if threshold is None:
         threshold = _BUTTON_MATCH_THRESHOLD
-    if not (match := match_template(button_filename, img, crop_h_frac=crop_h_frac)):
-        return None
-
-    template, max_val, max_loc = match
-    if max_val < threshold:
-        return None
-
-    if on_found:
-        on_found()
-    return match
+    if isinstance(button_filenames, str):
+        button_filenames = [button_filenames]
+    for filename in button_filenames:
+        if not (match := match_template(filename, img, crop_h_frac=crop_h_frac)):
+            continue
+        template, max_val, max_loc = match
+        if max_val >= threshold:
+            if on_found:
+                on_found()
+            return match
+    return None
 
 
 def click_button_if_visible(
-    button_filename,
+    button_filenames,
     img,
     screen_offset=(0, 0),
     on_found=None,
@@ -132,6 +137,7 @@ def click_button_if_visible(
 ):
     """Click the button if its template is visible in img. Returns True if clicked.
 
+    button_filenames may be a single filename string or a list of filenames.
     on_found: optional callable invoked with (center_x, center_y) after the click.
     crop_h_frac: fraction of template height used for matching; full height used for
     click position. Useful for faction buttons whose tier label changes over time.
@@ -139,7 +145,7 @@ def click_button_if_visible(
     """
     if not (
         match := is_button_visible(
-            button_filename,
+            button_filenames,
             img,
             screen_offset,
             crop_h_frac=crop_h_frac,
@@ -154,7 +160,7 @@ def click_button_if_visible(
     center_y = screen_offset[1] + max_loc[1] + th // 2
 
     logger.debug(
-        f"Clicking {button_filename} button at {center_x}, {center_y}, match % {max_val:.2f}"
+        f"Clicking {button_filenames} button at {center_x}, {center_y}, match % {max_val:.2f}"
     )
     pyautogui.click(center_x, center_y)
     if on_found:
@@ -494,6 +500,8 @@ class ScreenCapture:
         then clicks the first visible nav button. Raises RuntimeError if the target is
         not reached within max_retries attempts.
         """
+        press_key = capture_cfg("navigation", "press_key", default="f4")
+
         screen_offset = (window.left, window.top)
         if target_templates is None:
             target_templates = [
