@@ -15,6 +15,7 @@ STFC Rep Tracker is a Star Trek Fleet Command reputation tracking tool. It consi
 ```bash
 python main.py
 # Runs on http://localhost:5000
+# Note: requires admin privileges on Windows (main.py auto-relaunches elevated if needed)
 ```
 
 **Frontend dev server** (proxies `/api` to Flask):
@@ -32,48 +33,82 @@ npm run build
 
 **Environment**: Controlled by `FLASK_ENV` env var (`development` | `production` | `testing`). Defaults to `development`. See `config.py` for settings.
 
-**External dependency**: EasyOCR (bundled Python package) is used for screen capture OCR. No separate binary installation required.
+**Runtime settings**: Controlled by `settings.yaml` at the project root (screen wait retries, delays, OCR scale, template match thresholds, etc.). Accessed via `capture_cfg()` in `app/app_config.py`.
 
 ## Architecture
 
 ### Backend (Flask)
 
-`main.py` is the entry point. It creates the Flask app, initializes the `Database` singleton, registers Blueprints, and serves the React frontend from `frontend/dist` as a catch-all.
+`main.py` is the entry point. It checks for admin elevation (required for window activation), creates the Flask app, initializes the `Database` singleton, registers Blueprints, and serves the React frontend from `frontend/dist` as a catch-all.
 
 **Database layer** (`app/database/`):
-- `database.py` — `Database` class is the central hub. It holds `factions_dao` (also aliased as `.factions`) and `status_entries_dao` (aliased as `.status_entries`). Passed to handlers via `app.config["DATABASE"]`.
-- `factions_dao.py` — CRUD for the `factions` table, plus the `get_faction_summary()` method which computes deltas, change rates, and reputation levels by joining with `status_entries` and calling the appropriate `ReputationsDAO`.
-- `status_entries_dao.py` — Stores time-series reputation readings. The `value_delta` column exists in the schema but is not populated (that calculation code is commented out).
-- `reputations_dao.py` — Base `ReputationsDAO` class. Subclasses (e.g., `FkrReputationsDAO`, `AugmentReputationsDAO`) are **dynamically loaded at startup** based on data in the `factions` table: `faction.reputation_table_name` → Python module name, `faction.reputation_dao_name` → class name. This means adding a new reputation type requires: (1) a new `*_dao.py` file, and (2) the faction row in the DB to reference it.
+- `database.py` — `Database` class is the central hub. Holds `factions_dao` (aliased as `.factions`), `status_entries_dao` (aliased as `.status_entries`), and `selected_snippets_dao` (aliased as `.selected_snippets`). Passed to views via `app.config["DATABASE"]`.
+- `factions_dao.py` — CRUD for the `factions` table. `get_faction_summary()` computes deltas, change rates, and reputation levels by joining with `status_entries` and calling the appropriate `ReputationsDAO`.
+- `status_entries_dao.py` — Stores time-series reputation readings. The `value_delta` column exists in the schema but is not populated.
+- `faction_selected_snippets_dao.py` — Maps factions to multiple template image filenames with a `snippet_type` ('button' | 'desc' | NULL). Used for detecting selected faction state during screen capture.
+- `reputations_dao.py` — Base `ReputationsDAO` class. Subclasses are **dynamically loaded at startup** based on data in the `factions` table: `faction.reputation_table_name` → Python module name, `faction.reputation_dao_name` → class name. Adding a new reputation type requires: (1) a new `*_reputations_dao.py` file, and (2) the faction row in the DB to reference it.
 
-**Handlers** (`app/handlers/`): Flask Blueprints. Each handler retrieves the DB via `current_app.config["DATABASE"]`. Blueprints are registered in `main.py` with URL prefixes:
-- `/api/factions` → `factions_handler.py`
-- `/api/status_entries` → `status_entries_handler.py`
-- `/api/reputations` → `reputations_handler.py`
-- `/api/capture-screen` → `capture_handler.py`
-- `/api/system` → `system_handler.py`
+**Reputation DAOs** (all in `app/database/`, all inherit from `ReputationsDAO`):
+- `fkr_reputations_dao.py` — `FKRReputationsDAO` (19 tiers, Enemy → Champion)
+- `augment_reputations_dao.py` — `AugmentReputationsDAO` (6 tiers)
+- `rogue_reputations_dao.py` — `RogueReputationsDAO` (9 tiers)
+- `bajoran_reputations_dao.py` — `BajoranReputationsDAO`
+- `terran_reputations_dao.py` — `TerranReputationsDAO` (10 tiers)
+- `dti_reputations_dao.py` — `DTIReputationsDAO`
+- `section31_reputations_dao.py` — `Section31ReputationsDAO`
+- `ex_borg_reputations_dao.py` — `ExBorgReputationsDAO`
+
+**Views** (`app/views/`): Flask Blueprints. Each retrieves the DB via `current_app.config["DATABASE"]`. Blueprints are registered in `main.py` with URL prefixes:
+
+| Blueprint file | URL prefix |
+| --- | --- |
+| `factions_view.py` | `/api/factions` |
+| `status_entries_view.py` | `/api/status_entries` |
+| `reputations_view.py` | `/api/reputations` |
+| `capture_screen_view.py` | `/api/capture-screen` |
+| `system_view.py` | `/api/system` |
+
+Key endpoints:
+- `GET  /api/factions/summary` — faction list with current value, delta, change rate, rep level, minutes to goal (sortable)
+- `GET  /api/factions/<id>/selected-snippets` — snippet images for a faction
+- `POST /api/factions/<id>/selected-snippets` — upload a new snippet image (multipart: `file`, `filename`, `snippet_type`)
+- `DELETE /api/factions/selected-snippets/<snippet_id>`
+- `GET  /api/factions/snippet-image/<filename>` — serve snippet image from disk
+- `POST /api/capture-screen/reputations` — trigger full reputation capture run
+- `POST /api/capture-screen/identify-faction` — identify which faction is currently highlighted
+- `GET  /api/reputations/all` — all reputation tiers grouped by table
+- `GET  /api/reputations/by-table/<table_name>`
 
 API docs (Flasgger/Swagger UI) available at `/apidocs`.
 
 **Screen capture** (`app/screen_processing/`):
-- `screen_capture.py` — Finds and activates the STFC game window (PyGetWindow/PyAutoGUI), navigates to the Faction Store, captures screenshots to `Screenshots/`. Initializes the EasyOCR reader (lazy singleton).
-- `process_reputations.py` — Analyzes screenshots: uses brightness comparison across rows to detect the highlighted faction, and EasyOCR to read the points number.
-- `process_away_teams.py`, `process_gifts.py`, `process_event_rewards.py` — Additional screen processors.
+- `screen_capture.py` — `ScreenCapture` singleton. Finds/activates the STFC game window (PyGetWindow/win32api), captures screenshots via PyAutoGUI, and provides template matching helpers. `capture_window(window, delay=None, activate=False)` — set `activate=True` only on the first capture; polling loops leave it False to avoid the 1s activation sleep.
+- `process_reputations.py` — `ProcessReputationsOrchestrator`. For each faction: waits for the unselected button template, clicks it, waits for the selected/desc confirm template, then runs EasyOCR on the top-left points region. Also contains `capture_and_identify_faction()` for single-shot faction identification.
+- `process_away_teams.py` — `AwayTeamOrchestrator`. Navigates to the Away Teams screen and collects mission results.
+- `process_gifts.py` — `GiftsOrchestrator`. Placeholder for gifts screen capture.
+- `process_event_rewards.py` — `EventRewardsOrchestrator`. Placeholder for event rewards capture.
 
 ### Frontend (React + Vite)
 
 `frontend/src/App.jsx` defines routes:
-- `/` → `Dashboard.jsx` (main tracker view with history chart)
-- `/factions` → `Factions.jsx` (faction management CRUD)
-- `/reputations` → `Reputations.jsx` (reputation tier viewer)
+- `/` → `Dashboard.jsx` — main tracker view with faction stats table and history chart (Chart.js)
+- `/factions` → `Factions.jsx` — faction CRUD with snippet image management modal
+- `/reputations` → `Reputations.jsx` — reputation tier viewer
 
 During development, Vite proxies `/api/*` to `http://127.0.0.1:5000`. In production, Flask serves `frontend/dist/index.html` for all non-API routes.
 
 ### Key Faction Data Model
 
-The `factions` table drives most of the dynamic behavior:
+The `factions` table drives most dynamic behavior:
 - `name`, `code`, `color` — Display fields
 - `reputation_table_name` — SQLite table name and Python module suffix (e.g., `fkr_reputations` → `app/database/fkr_reputations_dao.py`)
-- `reputation_dao_name` — Python class name to instantiate (e.g., `FkrReputationsDAO`)
+- `reputation_dao_name` — Python class name to instantiate (e.g., `FKRReputationsDAO`)
 - `display_order` — Controls order in UI
 - `on_chart` — Whether to include in the history chart
+- `snippet_unselected` — Template filename for the faction's unselected sidebar button
+- `snippet_selected_button` — Template filename for the selected button state (legacy single-image field)
+
+The `faction_selected_snippets` table maps each faction to multiple template images:
+- `snippet_type`: `'button'` (selected button highlight) or `'desc'` (selected detail panel) or NULL
+- Multiple snippets per type are supported per faction
+- Managed via the Snippets modal in `Factions.jsx`; auto-pasted filenames follow `Selected-<type>-<CODE>-<N>.png`

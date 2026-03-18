@@ -101,7 +101,7 @@ class ReputationsDAO:
                 if "messages_count" in columns and "credit_amount" in columns:
                     query = f"SELECT id, {name_col}, low_limit, messages_count, credit_amount FROM {table_name} ORDER BY low_limit"
                     cursor.execute(query)
-                    reputations = [
+                    return [
                         {
                             "id": row[0],
                             "name": row[1],
@@ -115,7 +115,7 @@ class ReputationsDAO:
                     # Fallback for tables without high_limit
                     query = f"SELECT id, {name_col}, low_limit FROM {table_name} ORDER BY low_limit"
                     cursor.execute(query)
-                    reputations = [
+                    return [
                         {
                             "id": row[0],
                             "name": row[1],
@@ -126,7 +126,7 @@ class ReputationsDAO:
                     ]
             else:
                 cursor.execute(query)
-                reputations = [
+                return [
                     {
                         "id": row[0],
                         "name": row[1],
@@ -135,12 +135,10 @@ class ReputationsDAO:
                     }
                     for row in cursor.fetchall()
                 ]
-
-            conn.close()
-            return reputations
         except Exception as e:
-            conn.close()
             raise ValueError(f"Error fetching reputations from {table_name}: {e}")
+        finally:
+            conn.close()
 
     def create_table(self, cursor):
         """Create reputation table and handle migrations"""

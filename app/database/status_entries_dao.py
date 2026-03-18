@@ -45,86 +45,74 @@ class StatusEntriesDAO:
     def add_status_entry(self, faction_name, value):
         """Add a new stat entry for a faction"""
         conn = self.db.get_connection()
-        cursor = conn.cursor()
+        try:
+            cursor = conn.cursor()
 
-        # Get faction_id
-        cursor.execute(
-            """
-                       SELECT f.id
-                       FROM factions f
-                       WHERE f.name = ?
-                       """,
-            (faction_name,),
-        )
-        result = cursor.fetchone()
+            # Get faction_id
+            cursor.execute(
+                """
+                           SELECT f.id
+                           FROM factions f
+                           WHERE f.name = ?
+                           """,
+                (faction_name,),
+            )
+            result = cursor.fetchone()
 
-        if not result:
+            if not result:
+                raise ValueError(f"Faction '{faction_name}' not found")
+
+            faction_id = result[0]
+
+            # value_delta calculation is disabled — the column is not populated
+
+            # Insert new entry
+            timestamp = datetime.now(timezone.utc).isoformat()
+            cursor.execute(
+                """
+                           INSERT INTO status_entries (faction_id, timestamp, value)
+                           VALUES (?, ?, ?)
+                           """,
+                (
+                    faction_id,
+                    timestamp,
+                    value,
+                ),
+            )
+
+            conn.commit()
+            return {"faction_id": faction_id, "timestamp": timestamp, "value": value}
+        finally:
             conn.close()
-            raise ValueError(f"Faction '{faction_name}' not found")
-
-        faction_id = result[0]
-
-        # Calculate delta from previous entry
-        # cursor.execute('''
-        #     SELECT value FROM status_entries
-        #     WHERE faction_id = ?
-        #     ORDER BY timestamp DESC
-        #     LIMIT 1
-        # ''', (
-        #     faction_id,
-        # ))
-        #
-        # previous = cursor.fetchone()
-        # value_delta = value - previous[0] if previous else value
-
-        # Insert new entry
-        timestamp = datetime.now(timezone.utc).isoformat()
-        cursor.execute(
-            """
-                       INSERT INTO status_entries (faction_id, timestamp, value)
-                       VALUES (?, ?, ?)
-                       """,
-            (
-                faction_id,
-                timestamp,
-                value,
-            ),
-        )
-
-        conn.commit()
-        conn.close()
-
-        return {"faction_id": faction_id, "timestamp": timestamp, "value": value}  # ,
 
     def get_faction_entries(self, faction_name):
         """Get all stat entries for a specific faction"""
         conn = self.db.get_connection()
-        cursor = conn.cursor()
+        try:
+            cursor = conn.cursor()
 
-        cursor.execute(
-            """
-                       SELECT se.timestamp, se.value, se.value_delta, se.faction_id
-                       FROM status_entries se
-                                JOIN factions f ON se.faction_id = f.id
-                       WHERE f.name = ?
-                       ORDER BY se.timestamp ASC
-                       """,
-            (faction_name,),
-        )
+            cursor.execute(
+                """
+                           SELECT se.timestamp, se.value, se.value_delta, se.faction_id
+                           FROM status_entries se
+                                    JOIN factions f ON se.faction_id = f.id
+                           WHERE f.name = ?
+                           ORDER BY se.timestamp ASC
+                           """,
+                (faction_name,),
+            )
 
-        entries = []
-        for row in cursor.fetchall():
-            entries.append(
+            return [
                 {
                     "timestamp": row[0],
                     "value": row[1],
                     "value_delta": row[2],
                     "faction_id": row[3],
                 }
-            )
-
-        conn.close()
-        return entries
+                for row in cursor.fetchall()
+            ]
+        finally:
+            conn.close()
 
     _ALLOWED_SORT_COLUMNS = {
         "se.id",
@@ -141,54 +129,54 @@ class StatusEntriesDAO:
     def get_all_entries(self, limit=None, offset=None, faction_name=None, sort=None):
         """Get all status entries, with optional filtering, sorting, and paging"""
         conn = self.db.get_connection()
-        cursor = conn.cursor()
+        try:
+            cursor = conn.cursor()
 
-        query = """
-                SELECT se.id, se.faction_id, f.name AS faction_name, se.timestamp, se.value
-                FROM status_entries se
-                         JOIN factions f ON se.faction_id = f.id
-                """
-        params = []
-        if faction_name is not None:
-            query += " WHERE f.name = ?"
-            params.append(faction_name)
+            query = """
+                    SELECT se.id, se.faction_id, f.name AS faction_name, se.timestamp, se.value
+                    FROM status_entries se
+                             JOIN factions f ON se.faction_id = f.id
+                    """
+            params = []
+            if faction_name is not None:
+                query += " WHERE f.name = ?"
+                params.append(faction_name)
 
-        if sort is not None:
-            # Strip optional ASC/DESC suffix, validate the column name
-            parts = sort.strip().split()
-            column = parts[0].lower()
-            direction = parts[1].upper() if len(parts) > 1 else "ASC"
-            if column not in self._ALLOWED_SORT_COLUMNS or direction not in (
-                "ASC",
-                "DESC",
-            ):
-                raise ValueError(f"Invalid sort value: '{sort}'")
-            query += f" ORDER BY {column} {direction}"
-        else:
-            query += " ORDER BY se.timestamp ASC"
+            if sort is not None:
+                # Strip optional ASC/DESC suffix, validate the column name
+                parts = sort.strip().split()
+                column = parts[0].lower()
+                direction = parts[1].upper() if len(parts) > 1 else "ASC"
+                if column not in self._ALLOWED_SORT_COLUMNS or direction not in (
+                    "ASC",
+                    "DESC",
+                ):
+                    raise ValueError(f"Invalid sort value: '{sort}'")
+                query += f" ORDER BY {column} {direction}"
+            else:
+                query += " ORDER BY se.timestamp ASC"
 
-        if limit is not None:
-            query += " LIMIT ?"
-            params.append(limit)
-            if offset is not None:
-                query += " OFFSET ?"
-                params.append(offset)
+            if limit is not None:
+                query += " LIMIT ?"
+                params.append(limit)
+                if offset is not None:
+                    query += " OFFSET ?"
+                    params.append(offset)
 
-        cursor.execute(query, params)
+            cursor.execute(query, params)
 
-        entries = [
-            {
-                "id": row[0],
-                "faction_id": row[1],
-                "faction_name": row[2],
-                "timestamp": row[3],
-                "value": row[4],
-            }
-            for row in cursor.fetchall()
-        ]
-
-        conn.close()
-        return entries
+            return [
+                {
+                    "id": row[0],
+                    "faction_id": row[1],
+                    "faction_name": row[2],
+                    "timestamp": row[3],
+                    "value": row[4],
+                }
+                for row in cursor.fetchall()
+            ]
+        finally:
+            conn.close()
 
     _ALLOWED_FACTION_SORT_COLUMNS = {"f.id", "f.name", "id", "name"}
 
@@ -197,62 +185,63 @@ class StatusEntriesDAO:
     ):
         """Get all factions with their stat entries, with optional filtering, sorting, and paging"""
         conn = self.db.get_connection()
-        cursor = conn.cursor()
+        try:
+            cursor = conn.cursor()
 
-        query = "SELECT f.id, f.name FROM factions f"
-        params = []
-        if faction_name is not None:
-            query += " WHERE f.name = ?"
-            params.append(faction_name)
+            query = "SELECT f.id, f.name FROM factions f"
+            params = []
+            if faction_name is not None:
+                query += " WHERE f.name = ?"
+                params.append(faction_name)
 
-        if sort is not None:
-            parts = sort.strip().split()
-            column = parts[0].lower()
-            direction = parts[1].upper() if len(parts) > 1 else "ASC"
-            if column not in self._ALLOWED_FACTION_SORT_COLUMNS or direction not in (
-                "ASC",
-                "DESC",
-            ):
-                raise ValueError(f"Invalid sort value: '{sort}'")
-            query += f" ORDER BY {column} {direction}"
+            if sort is not None:
+                parts = sort.strip().split()
+                column = parts[0].lower()
+                direction = parts[1].upper() if len(parts) > 1 else "ASC"
+                if column not in self._ALLOWED_FACTION_SORT_COLUMNS or direction not in (
+                    "ASC",
+                    "DESC",
+                ):
+                    raise ValueError(f"Invalid sort value: '{sort}'")
+                query += f" ORDER BY {column} {direction}"
 
-        if limit is not None:
-            query += " LIMIT ?"
-            params.append(limit)
-            if offset is not None:
-                query += " OFFSET ?"
-                params.append(offset)
+            if limit is not None:
+                query += " LIMIT ?"
+                params.append(limit)
+                if offset is not None:
+                    query += " OFFSET ?"
+                    params.append(offset)
 
-        cursor.execute(query, params)
-        factions = cursor.fetchall()
+            cursor.execute(query, params)
+            factions = cursor.fetchall()
 
-        result = {}
-        for faction_id, name in factions:
-            cursor.execute(
-                """
-                           SELECT timestamp, value, faction_id
-                           FROM status_entries
-                           WHERE faction_id = ?
-                           ORDER BY id DESC
-                               LIMIT 2
-                           """,
-                (faction_id,),
-            )
-
-            entries = []
-            rows = cursor.fetchall()
-            if len(rows) >= 2:
-                latest_row = rows[0]
-                prev_row = rows[1]
-                entries.append(
-                    {
-                        "timestamp": latest_row[0],
-                        "value": latest_row[1],
-                        "faction_id": latest_row[2],
-                    }
+            result = {}
+            for faction_id, name in factions:
+                cursor.execute(
+                    """
+                               SELECT timestamp, value, faction_id
+                               FROM status_entries
+                               WHERE faction_id = ?
+                               ORDER BY id DESC
+                                   LIMIT 2
+                               """,
+                    (faction_id,),
                 )
 
-            result[name] = entries
+                entries = []
+                rows = cursor.fetchall()
+                if len(rows) >= 2:
+                    latest_row = rows[0]
+                    entries.append(
+                        {
+                            "timestamp": latest_row[0],
+                            "value": latest_row[1],
+                            "faction_id": latest_row[2],
+                        }
+                    )
 
-        conn.close()
-        return result
+                result[name] = entries
+
+            return result
+        finally:
+            conn.close()

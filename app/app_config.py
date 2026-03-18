@@ -1,7 +1,7 @@
 """Loads settings from settings.yaml at the project root.
 
 Usage:
-    from app.capture_config import capture_cfg
+    from app.app_config import capture_cfg
 
     threshold = capture_cfg("button_match_threshold")
     titles    = capture_cfg("window_titles")

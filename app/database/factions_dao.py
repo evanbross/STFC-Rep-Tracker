@@ -1,8 +1,11 @@
+import logging
 import sqlite3
 from datetime import datetime
 
 from app.app_config import capture_cfg
 from app.database import reputations_dao
+
+logger = logging.getLogger(__name__)
 
 
 class FactionsDAO:
@@ -95,8 +98,8 @@ class FactionsDAO:
                         "ALTER TABLE factions RENAME COLUMN snippet_selected_2 TO snippet_selected_desc"
                     )
                 cursor.execute("ALTER TABLE factions DROP COLUMN snippet_selected_desc")
-            except Exception:
-                pass  # SQLite < 3.35 — column stays but is unused
+            except Exception as e:
+                logger.warning(f"Could not drop legacy snippet_selected_desc column (SQLite < 3.35): {e}")
         if "snippet_unselected" not in columns:
             cursor.execute("ALTER TABLE factions ADD COLUMN snippet_unselected TEXT")
         cursor.execute("""
@@ -108,46 +111,46 @@ class FactionsDAO:
     def get_all_factions(self):
         """Get list of all factions with their selected snippets."""
         conn = self.db.get_connection()
-        cursor = conn.cursor()
+        try:
+            cursor = conn.cursor()
 
-        cursor.execute("""
-                       SELECT f.id, f.name, f.code, f.on_chart, f.color, f.reputation_table_name, f.display_order, f.reputation_dao_name, f.snippet_selected_button, f.snippet_unselected
-                       FROM factions f
-                       ORDER BY f.display_order
-                       """)
-        rows = cursor.fetchall()
+            cursor.execute("""
+                           SELECT f.id, f.name, f.code, f.on_chart, f.color, f.reputation_table_name, f.display_order, f.reputation_dao_name, f.snippet_selected_button, f.snippet_unselected
+                           FROM factions f
+                           ORDER BY f.display_order
+                           """)
+            rows = cursor.fetchall()
 
-        cursor.execute("""
-                       SELECT faction_id, id, filename, snippet_type
-                       FROM faction_selected_snippets
-                       ORDER BY faction_id, snippet_type, filename
-                       """)
-        snippets_by_faction = {}
-        for r in cursor.fetchall():
-            snippets_by_faction.setdefault(r[0], []).append(
-                {"id": r[1], "filename": r[2], "snippet_type": r[3]}
-            )
+            cursor.execute("""
+                           SELECT faction_id, id, filename, snippet_type
+                           FROM faction_selected_snippets
+                           ORDER BY faction_id, snippet_type, filename
+                           """)
+            snippets_by_faction = {}
+            for r in cursor.fetchall():
+                snippets_by_faction.setdefault(r[0], []).append(
+                    {"id": r[1], "filename": r[2], "snippet_type": r[3]}
+                )
 
-        factions = [
-            {
-                "id": row[0],
-                "name": row[1],
-                "code": row[2],
-                "on_chart": row[3],
-                "color": row[4],
-                "reputation_table_name": row[5],
-                "display_order": row[6],
-                "reputation_dao_name": row[7],
-                "snippet_selected_button": row[8],
-                "snippet_unselected": row[9],
-                "faction_type": row[2],
-                "selected_snippets": snippets_by_faction.get(row[0], []),
-            }
-            for row in rows
-        ]
-
-        conn.close()
-        return factions
+            return [
+                {
+                    "id": row[0],
+                    "name": row[1],
+                    "code": row[2],
+                    "on_chart": row[3],
+                    "color": row[4],
+                    "reputation_table_name": row[5],
+                    "display_order": row[6],
+                    "reputation_dao_name": row[7],
+                    "snippet_selected_button": row[8],
+                    "snippet_unselected": row[9],
+                    "faction_type": row[2],
+                    "selected_snippets": snippets_by_faction.get(row[0], []),
+                }
+                for row in rows
+            ]
+        finally:
+            conn.close()
 
     def add_faction(
         self,
@@ -163,31 +166,33 @@ class FactionsDAO:
     ):
         """Add a new faction"""
         conn = self.db.get_connection()
-        cursor = conn.cursor()
-
         try:
-            cursor.execute(
-                """
-                           INSERT INTO factions (name, code, color, reputation_table_name, on_chart, display_order, reputation_dao_name, snippet_selected_button, snippet_unselected)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                           """,
-                (
-                    name,
-                    code,
-                    color,
-                    reputation_table_name,
-                    on_chart,
-                    display_order,
-                    reputation_dao_name,
-                    snippet_selected_button,
-                    snippet_unselected,
-                ),
-            )
+            cursor = conn.cursor()
+            try:
+                cursor.execute(
+                    """
+                               INSERT INTO factions (name, code, color, reputation_table_name, on_chart, display_order, reputation_dao_name, snippet_selected_button, snippet_unselected)
+                               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                               """,
+                    (
+                        name,
+                        code,
+                        color,
+                        reputation_table_name,
+                        on_chart,
+                        display_order,
+                        reputation_dao_name,
+                        snippet_selected_button,
+                        snippet_unselected,
+                    ),
+                )
+            except sqlite3.IntegrityError:
+                raise ValueError(f"Faction with name '{name}' already exists")
 
             faction_id = cursor.lastrowid
             conn.commit()
 
-            result = {
+            return {
                 "id": faction_id,
                 "name": name,
                 "code": code,
@@ -199,15 +204,8 @@ class FactionsDAO:
                 "snippet_selected_button": snippet_selected_button,
                 "snippet_unselected": snippet_unselected,
             }
-        except sqlite3.IntegrityError:
+        finally:
             conn.close()
-            raise ValueError(f"Faction with name '{name}' already exists")
-        except Exception as e:
-            conn.close()
-            raise e
-
-        conn.close()
-        return result
 
     def update_faction(
         self,
@@ -224,46 +222,48 @@ class FactionsDAO:
     ):
         """Update an existing faction"""
         conn = self.db.get_connection()
-        cursor = conn.cursor()
-
-        # Check if faction exists
-        cursor.execute("SELECT id FROM factions WHERE id = ?", (id,))
-        if not cursor.fetchone():
-            conn.close()
-            raise ValueError(f"Faction with id {id} not found")
-
         try:
-            cursor.execute(
-                """
-                           UPDATE factions
-                           SET name                  = ?,
-                               code                  = ?,
-                               color                 = ?,
-                               reputation_table_name = ?,
-                               on_chart              = ?,
-                               display_order         = ?,
-                               reputation_dao_name   = ?,
-                               snippet_selected_button      = ?,
-                               snippet_unselected    = ?
-                           WHERE id = ?
-                           """,
-                (
-                    name,
-                    code,
-                    color,
-                    reputation_table_name,
-                    on_chart,
-                    display_order,
-                    reputation_dao_name,
-                    snippet_selected_button,
-                    snippet_unselected,
-                    id,
-                ),
-            )
+            cursor = conn.cursor()
+
+            # Check if faction exists
+            cursor.execute("SELECT id FROM factions WHERE id = ?", (id,))
+            if not cursor.fetchone():
+                raise ValueError(f"Faction with id {id} not found")
+
+            try:
+                cursor.execute(
+                    """
+                               UPDATE factions
+                               SET name                  = ?,
+                                   code                  = ?,
+                                   color                 = ?,
+                                   reputation_table_name = ?,
+                                   on_chart              = ?,
+                                   display_order         = ?,
+                                   reputation_dao_name   = ?,
+                                   snippet_selected_button      = ?,
+                                   snippet_unselected    = ?
+                               WHERE id = ?
+                               """,
+                    (
+                        name,
+                        code,
+                        color,
+                        reputation_table_name,
+                        on_chart,
+                        display_order,
+                        reputation_dao_name,
+                        snippet_selected_button,
+                        snippet_unselected,
+                        id,
+                    ),
+                )
+            except sqlite3.IntegrityError:
+                raise ValueError(f"Faction with name '{name}' already exists")
 
             conn.commit()
 
-            result = {
+            return {
                 "id": id,
                 "name": name,
                 "code": code,
@@ -275,161 +275,156 @@ class FactionsDAO:
                 "snippet_selected_button": snippet_selected_button,
                 "snippet_unselected": snippet_unselected,
             }
-        except sqlite3.IntegrityError:
+        finally:
             conn.close()
-            raise ValueError(f"Faction with name '{name}' already exists")
-        except Exception as e:
-            conn.close()
-            raise e
-
-        conn.close()
-        return result
 
     def get_faction_names(self):
         """Get a list of all faction names ordered by display_order"""
         conn = self.db.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT name FROM factions ORDER BY display_order")
-        names = [row[0] for row in cursor.fetchall()]
-        conn.close()
-        return names
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT name FROM factions ORDER BY display_order")
+            return [row[0] for row in cursor.fetchall()]
+        finally:
+            conn.close()
 
     def get_faction_summary(self, sort_by=None):
         """Get summary data for all factions including latest value and delta"""
         conn = self.db.get_connection()
-        cursor = conn.cursor()
+        try:
+            cursor = conn.cursor()
 
-        cursor.execute("""
-                       SELECT f.id, f.name, f.code, f.on_chart, f.color, f.reputation_table_name, f.display_order, f.reputation_dao_name
-                       FROM factions f
-                       ORDER BY f.display_order
-                       """)
-        factions_list = cursor.fetchall()
+            cursor.execute("""
+                           SELECT f.id, f.name, f.code, f.on_chart, f.color, f.reputation_table_name, f.display_order, f.reputation_dao_name
+                           FROM factions f
+                           ORDER BY f.display_order
+                           """)
+            factions_list = cursor.fetchall()
 
-        result = []
-        for (
-            faction_id,
-            name,
-            faction_type_code,
-            on_chart,
-            color,
-            reputation_table_name,
-            display_order,
-            reputation_dao_name,
-        ) in factions_list:
+            result = []
+            for (
+                faction_id,
+                name,
+                faction_type_code,
+                on_chart,
+                color,
+                reputation_table_name,
+                display_order,
+                reputation_dao_name,
+            ) in factions_list:
 
-            avg_entries = capture_cfg("factions", "avg_entries", default=5)
-            cursor.execute(
-                f"""
-                           SELECT value, timestamp
-                           FROM status_entries
-                           WHERE faction_id = ?
-                           ORDER BY timestamp DESC
-                               LIMIT 3{int(avg_entries)}
-                           """,
-                (faction_id,),
-            )
-
-            entries = cursor.fetchall()
-            latest = entries[0] if len(entries) > 0 else None
-            previous = entries[1] if len(entries) > 1 else None
-
-            # Get total count of entries
-            cursor.execute(
-                """
-                           SELECT COUNT(*)
-                           FROM status_entries
-                           WHERE faction_id = ?
-                           """,
-                (faction_id,),
-            )
-            entry_count = cursor.fetchone()[0]
-
-            # Calculate status
-            status = {
-                "time_delta": 0,
-                "value_delta": 0,
-                "raw_value_delta_per_minute": 0.0,
-                "avg_value_delta_per_minute": 0.0,
-                "minutes_to_goal": 0.0,
-                "reputation_level": "Unknown",
-            }
-
-            current_value = latest[0] if latest else 0
-
-            rep_level = "Unknown"
-            value_delta = 0
-            if latest and previous:
-                # get the appropriate reputation DAO for this faction
-                rep_dao = reputations_dao.ReputationsDAO.get_dao_by_faction_name(name)
-                if rep_dao is None:
-                    rep_dao = reputations_dao.ReputationsDAO(
-                        conn, reputation_table_name
-                    )
-                reputation_row = rep_dao.find_reputation_by_value(conn, latest[0])
-
-                # get the time delta in minutes
-                t1 = datetime.fromisoformat(previous[1])
-                t2 = datetime.fromisoformat(latest[1])
-                time_diff_mins = (t2 - t1).total_seconds() / 60
-                value_delta = latest[0] - previous[0]
-                rep_level = reputation_row[0] if reputation_row else "Unknown"
-                raw_value_delta_per_minute = value_delta / time_diff_mins
-
-                # Average rate across the full retrieved window (first vs last entry)
-                oldest = entries[-1]
-                avg_span_mins = (t2 - datetime.fromisoformat(oldest[1])).total_seconds() / 60
-                avg_value_delta_per_minute = (
-                    (latest[0] - oldest[0]) / avg_span_mins
-                    if avg_span_mins > 0
-                    else raw_value_delta_per_minute
+                avg_entries = capture_cfg("factions", "avg_entries", default=5)
+                cursor.execute(
+                    f"""
+                               SELECT value, timestamp
+                               FROM status_entries
+                               WHERE faction_id = ?
+                               ORDER BY timestamp DESC
+                                   LIMIT {int(avg_entries)}
+                               """,
+                    (faction_id,),
                 )
 
-                if time_diff_mins > 0:
-                    status["time_delta"] = time_diff_mins
-                    status["value_delta"] = value_delta
-                    status["raw_value_delta_per_minute"] = raw_value_delta_per_minute
-                    status["avg_value_delta_per_minute"] = avg_value_delta_per_minute
+                entries = cursor.fetchall()
+                latest = entries[0] if len(entries) > 0 else None
+                previous = entries[1] if len(entries) > 1 else None
 
-                    # Calculate minutes to goal
-                    if reputation_row is not None:
-                        status["reputation_level"] = reputation_row[0]
-                        status["next_rep_level"] = rep_dao.find_next_reputation_name(
-                            conn, reputation_row[2]
-                        )
-                        if (
-                            avg_value_delta_per_minute > 0
-                            and reputation_row[2] is not None
-                        ):
-                            dist = reputation_row[2] - current_value
-                            status["minutes_to_goal"] = round(
-                                dist / avg_value_delta_per_minute, 2
-                            )
-                            status["minutes"] = status["minutes_to_goal"]
-                    else:
-                        status["minutes_to_goal"] = 0.0
-                        status["minutes"] = 0.0
+                # Get total count of entries
+                cursor.execute(
+                    """
+                               SELECT COUNT(*)
+                               FROM status_entries
+                               WHERE faction_id = ?
+                               """,
+                    (faction_id,),
+                )
+                entry_count = cursor.fetchone()[0]
 
-            result.append(
-                {
-                    "id": faction_id,
-                    "name": name,
-                    "faction_type": faction_type_code,
-                    "on_chart": on_chart,
-                    "display_order": display_order,
-                    "reputation_table_name": reputation_table_name,
-                    "reputation_dao_name": reputation_dao_name,
-                    "color": color,
-                    "current_value": current_value,
-                    "rep_level": rep_level,
-                    "last_delta": value_delta,
-                    "last_updated": latest[1] if latest else None,
-                    "entry_count": entry_count,
-                    "status": status,
+                # Calculate status
+                status = {
+                    "time_delta": 0,
+                    "value_delta": 0,
+                    "raw_value_delta_per_minute": 0.0,
+                    "avg_value_delta_per_minute": 0.0,
+                    "minutes_to_goal": 0.0,
+                    "reputation_level": "Unknown",
                 }
-            )
 
-        conn.close()
+                current_value = latest[0] if latest else 0
+
+                rep_level = "Unknown"
+                value_delta = 0
+                if latest and previous:
+                    # get the appropriate reputation DAO for this faction
+                    rep_dao = reputations_dao.ReputationsDAO.get_dao_by_faction_name(name)
+                    if rep_dao is None:
+                        rep_dao = reputations_dao.ReputationsDAO(
+                            conn, reputation_table_name
+                        )
+                    reputation_row = rep_dao.find_reputation_by_value(conn, latest[0])
+
+                    # get the time delta in minutes
+                    t1 = datetime.fromisoformat(previous[1])
+                    t2 = datetime.fromisoformat(latest[1])
+                    time_diff_mins = (t2 - t1).total_seconds() / 60
+                    value_delta = latest[0] - previous[0]
+                    rep_level = reputation_row[0] if reputation_row else "Unknown"
+                    raw_value_delta_per_minute = value_delta / time_diff_mins
+
+                    # Average rate across the full retrieved window (first vs last entry)
+                    oldest = entries[-1]
+                    avg_span_mins = (t2 - datetime.fromisoformat(oldest[1])).total_seconds() / 60
+                    avg_value_delta_per_minute = (
+                        (latest[0] - oldest[0]) / avg_span_mins
+                        if avg_span_mins > 0
+                        else raw_value_delta_per_minute
+                    )
+
+                    if time_diff_mins > 0:
+                        status["time_delta"] = time_diff_mins
+                        status["value_delta"] = value_delta
+                        status["raw_value_delta_per_minute"] = raw_value_delta_per_minute
+                        status["avg_value_delta_per_minute"] = avg_value_delta_per_minute
+
+                        # Calculate minutes to goal
+                        if reputation_row is not None:
+                            status["reputation_level"] = reputation_row[0]
+                            status["next_rep_level"] = rep_dao.find_next_reputation_name(
+                                conn, reputation_row[2]
+                            )
+                            if (
+                                avg_value_delta_per_minute > 0
+                                and reputation_row[2] is not None
+                            ):
+                                dist = reputation_row[2] - current_value
+                                status["minutes_to_goal"] = round(
+                                    dist / avg_value_delta_per_minute, 2
+                                )
+                                status["minutes"] = status["minutes_to_goal"]
+                        else:
+                            status["minutes_to_goal"] = 0.0
+                            status["minutes"] = 0.0
+
+                result.append(
+                    {
+                        "id": faction_id,
+                        "name": name,
+                        "faction_type": faction_type_code,
+                        "on_chart": on_chart,
+                        "display_order": display_order,
+                        "reputation_table_name": reputation_table_name,
+                        "reputation_dao_name": reputation_dao_name,
+                        "color": color,
+                        "current_value": current_value,
+                        "rep_level": rep_level,
+                        "last_delta": value_delta,
+                        "last_updated": latest[1] if latest else None,
+                        "entry_count": entry_count,
+                        "status": status,
+                    }
+                )
+        finally:
+            conn.close()
 
         if sort_by:
             reverse = False
@@ -454,7 +449,7 @@ class FactionsDAO:
                 result.sort(key=lambda x: x["status"]["minutes"], reverse=reverse)
             elif sort_by == "change_rate":
                 result.sort(
-                    key=lambda x: x["status"]["raw_change_per_minute"], reverse=reverse
+                    key=lambda x: x["status"]["raw_value_delta_per_minute"], reverse=reverse
                 )
             elif sort_by == "rep_level":
                 result.sort(key=lambda x: x["rep_level"].lower(), reverse=reverse)

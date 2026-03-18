@@ -1,103 +1,193 @@
+/* ── Full-page space background ──────────────────────────────────── */
+html {
+    min-height: 100%;
+    background-color: #07090f;
+    background-image:
+        radial-gradient(ellipse at 20% 20%, rgba(20, 45, 130, 0.45) 0%, transparent 40%),
+        radial-gradient(ellipse at 80%  8%, rgba(65, 10,  90, 0.40) 0%, transparent 35%),
+        radial-gradient(ellipse at  8% 75%, rgba(10, 35, 100, 0.35) 0%, transparent 42%),
+        radial-gradient(ellipse at 75% 82%, rgba(50,  5,  70, 0.35) 0%, transparent 38%),
+        radial-gradient(ellipse at 50% 48%, rgba( 5,  8,  28, 0.65) 0%, transparent 60%);
+}
+
+/* ── Star field (fixed, non-scrolling) ───────────────────────────── */
+html::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background-image:
+        radial-gradient(circle at  3%  8%, rgba(255,255,255,0.90) 0px, transparent 1.2px),
+        radial-gradient(circle at 97%  5%, rgba(255,255,255,0.70) 0px, transparent 1.0px),
+        radial-gradient(circle at 15% 12%, rgba(255,255,255,0.80) 0px, transparent 1.0px),
+        radial-gradient(circle at 28%  3%, rgba(255,255,255,0.60) 0px, transparent 0.8px),
+        radial-gradient(circle at 42% 18%, rgba(255,255,255,0.75) 0px, transparent 1.0px),
+        radial-gradient(circle at 55%  7%, rgba(255,255,255,0.90) 0px, transparent 1.2px),
+        radial-gradient(circle at 68% 15%, rgba(255,255,255,0.60) 0px, transparent 0.8px),
+        radial-gradient(circle at 82% 22%, rgba(255,255,255,0.80) 0px, transparent 1.0px),
+        radial-gradient(circle at 91% 18%, rgba(255,255,255,0.70) 0px, transparent 1.0px),
+        radial-gradient(circle at  7% 30%, rgba(255,255,255,0.50) 0px, transparent 0.8px),
+        radial-gradient(circle at 22% 35%, rgba(255,255,255,0.80) 0px, transparent 1.2px),
+        radial-gradient(circle at 35% 28%, rgba(255,255,255,0.60) 0px, transparent 0.8px),
+        radial-gradient(circle at 48% 42%, rgba(255,255,255,0.70) 0px, transparent 1.0px),
+        radial-gradient(circle at 63% 33%, rgba(255,255,255,0.90) 0px, transparent 1.2px),
+        radial-gradient(circle at 76% 38%, rgba(255,255,255,0.55) 0px, transparent 0.8px),
+        radial-gradient(circle at 89% 44%, rgba(255,255,255,0.70) 0px, transparent 1.0px),
+        radial-gradient(circle at 12% 55%, rgba(255,255,255,0.80) 0px, transparent 1.0px),
+        radial-gradient(circle at 25% 62%, rgba(255,255,255,0.60) 0px, transparent 0.8px),
+        radial-gradient(circle at 39% 50%, rgba(255,255,255,0.70) 0px, transparent 1.0px),
+        radial-gradient(circle at 53% 66%, rgba(255,255,255,0.90) 0px, transparent 1.2px),
+        radial-gradient(circle at 66% 57%, rgba(255,255,255,0.55) 0px, transparent 0.8px),
+        radial-gradient(circle at 79% 64%, rgba(255,255,255,0.70) 0px, transparent 1.0px),
+        radial-gradient(circle at 93% 60%, rgba(255,255,255,0.80) 0px, transparent 1.0px),
+        radial-gradient(circle at  5% 74%, rgba(255,255,255,0.60) 0px, transparent 0.8px),
+        radial-gradient(circle at 18% 80%, rgba(255,255,255,0.80) 0px, transparent 1.2px),
+        radial-gradient(circle at 31% 85%, rgba(255,255,255,0.70) 0px, transparent 1.0px),
+        radial-gradient(circle at 46% 77%, rgba(255,255,255,0.55) 0px, transparent 0.8px),
+        radial-gradient(circle at 59% 90%, rgba(255,255,255,0.90) 0px, transparent 1.2px),
+        radial-gradient(circle at 73% 82%, rgba(255,255,255,0.65) 0px, transparent 0.8px),
+        radial-gradient(circle at 86% 94%, rgba(255,255,255,0.75) 0px, transparent 1.0px),
+        radial-gradient(circle at 96% 87%, rgba(255,255,255,0.80) 0px, transparent 1.0px),
+        /* brighter accent stars */
+        radial-gradient(circle at 33% 15%, rgba(190,215,255,0.95) 0px, transparent 1.6px),
+        radial-gradient(circle at 66% 72%, rgba(190,215,255,0.85) 0px, transparent 1.5px),
+        radial-gradient(circle at 10% 47%, rgba(190,215,255,0.90) 0px, transparent 1.6px),
+        radial-gradient(circle at 87% 32%, rgba(190,215,255,0.85) 0px, transparent 1.5px),
+        radial-gradient(circle at 50% 92%, rgba(190,215,255,0.90) 0px, transparent 1.6px);
+}
+
+/* ── Base ────────────────────────────────────────────────────────── */
 body {
     font-family: Arial, sans-serif;
     max-width: 1200px;
     margin: 0 auto;
     padding: 20px;
-    background-color: #f5f5f5;
+    background: transparent;
+    color: #c8d4e8;
+    position: relative;
+    z-index: 1;
 }
 
+/* ── Containers ──────────────────────────────────────────────────── */
 .container {
-    background-color: white;
+    background: rgba(8, 14, 38, 0.78);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(60, 95, 165, 0.25);
     padding: 20px;
     border-radius: 8px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(80, 120, 200, 0.08);
     margin-bottom: 20px;
 }
 
-h1 {
-    color: #333;
+/* ── Typography ──────────────────────────────────────────────────── */
+h1, h2, h3 {
+    color: #e8f0ff;
     margin-top: 0;
 }
 
+h1 { color: #ddeeff; }
+
+label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+    color: #8aa0c0;
+}
+
+/* ── Navigation ──────────────────────────────────────────────────── */
 nav {
-    background-color: #333;
+    background: rgba(5, 10, 28, 0.92);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(60, 90, 150, 0.3);
     padding: 10px;
     border-radius: 8px;
     margin-bottom: 20px;
     position: sticky;
     top: 10px;
     z-index: 1000;
+    box-shadow: 0 2px 16px rgba(0, 0, 0, 0.5);
 }
 
 nav a {
-    color: white;
+    color: #a8c0e0;
     text-decoration: none;
     padding: 10px 15px;
     display: inline-block;
+    transition: color 0.2s;
 }
 
 nav a:hover {
-    background-color: #555;
+    background-color: rgba(50, 80, 140, 0.4);
     border-radius: 4px;
+    color: #e0ecff;
 }
 
 nav a.active {
-    background-color: #4CAF50;
+    background-color: rgba(40, 120, 50, 0.5);
+    border: 1px solid rgba(76, 175, 80, 0.4);
     font-weight: bold;
     border-radius: 4px;
+    color: #7fe090;
 }
 
-.text-right {
-    text-align: right;
-}
-
+/* ── Forms ───────────────────────────────────────────────────────── */
 .form-group {
     margin-bottom: 15px;
-}
-
-label {
-    display: block;
-    margin-bottom: 5px;
-    font-weight: bold;
-    color: #555;
 }
 
 select, input {
     width: 100%;
     padding: 8px;
-    border: 1px solid #ddd;
+    border: 1px solid rgba(60, 90, 150, 0.4);
     border-radius: 4px;
     font-size: 14px;
     box-sizing: border-box;
+    background-color: rgba(10, 18, 45, 0.8);
+    color: #c8d4e8;
+}
+
+select:focus, input:focus {
+    outline: none;
+    border-color: rgba(100, 150, 220, 0.6);
+    box-shadow: 0 0 0 2px rgba(80, 130, 200, 0.15);
 }
 
 input[type="number"] {
     text-align: right;
 }
 
+/* ── Buttons ─────────────────────────────────────────────────────── */
 button {
-    background-color: #4CAF50;
-    color: white;
+    background-color: rgba(40, 120, 48, 0.85);
+    color: #d0f0d8;
     padding: 10px 20px;
-    border: none;
+    border: 1px solid rgba(76, 175, 80, 0.4);
     border-radius: 4px;
     cursor: pointer;
     font-size: 16px;
+    transition: background-color 0.2s, box-shadow 0.2s;
 }
 
 button:hover {
-    background-color: #45a049;
+    background-color: rgba(55, 145, 60, 0.9);
+    box-shadow: 0 0 8px rgba(76, 175, 80, 0.3);
 }
 
 button.cancel {
-    background-color: #999;
+    background-color: rgba(70, 80, 100, 0.7);
+    border-color: rgba(100, 115, 140, 0.4);
+    color: #a8b8cc;
     margin-left: 10px;
 }
 
 button.cancel:hover {
-    background-color: #777;
+    background-color: rgba(85, 95, 120, 0.8);
 }
 
+/* ── Tables ──────────────────────────────────────────────────────── */
 table {
     width: 100%;
     border-collapse: collapse;
@@ -107,17 +197,23 @@ table {
 th, td {
     padding: 12px;
     text-align: left;
-    border-bottom: 1px solid #ddd;
+    border-bottom: 1px solid rgba(60, 90, 150, 0.2);
+    color: #c8d4e8;
 }
 
 th {
-    background-color: #f8f8f8;
+    background-color: rgba(12, 22, 55, 0.8);
     font-weight: bold;
-    color: #333;
+    color: #a8c0e0;
 }
 
-tr:hover {
-    background-color: #f5f5f5;
+tr:hover td {
+    background-color: rgba(30, 50, 100, 0.25);
+}
+
+/* ── Misc helpers ────────────────────────────────────────────────── */
+.text-right {
+    text-align: right;
 }
 
 .action-btn {
@@ -127,33 +223,41 @@ tr:hover {
 }
 
 .edit-btn {
-    background-color: #2196F3;
+    background-color: rgba(20, 100, 190, 0.7);
+    border-color: rgba(33, 150, 243, 0.4);
+    color: #b8d8f8;
 }
 
 .edit-btn:hover {
-    background-color: #0b7dda;
+    background-color: rgba(25, 120, 220, 0.85);
+    box-shadow: 0 0 8px rgba(33, 150, 243, 0.3);
 }
 
 .code-badge {
     display: inline-block;
-    background-color: #e0e0e0;
+    background-color: rgba(30, 50, 100, 0.7);
+    border: 1px solid rgba(60, 90, 160, 0.4);
     padding: 2px 8px;
     border-radius: 4px;
     font-size: 12px;
     font-weight: bold;
-    color: #555;
-    border: 1px solid #ddd;
+    color: #8ab0e0;
 }
 
+/* ── Chart container ─────────────────────────────────────────────── */
 .chart-container {
-    background-color: white;
+    background: rgba(8, 14, 38, 0.78);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(60, 95, 165, 0.25);
     padding: 20px;
     border-radius: 8px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
     position: relative;
     height: 400px;
 }
 
+/* ── Faction buttons ─────────────────────────────────────────────── */
 .faction-buttons {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
@@ -162,11 +266,12 @@ tr:hover {
 }
 
 .faction-btn {
-    background-color: #eee;
-    color: #333;
-    padding: 10px;
-    border: 2px solid #ddd;
-    border-radius: 8px;
+    background: rgba(22, 38, 80, 0.92);
+    color: #c8d4e8;
+    padding: 14px 16px;
+    border: 1px solid rgba(80, 120, 200, 0.5);
+    border-radius: 18px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(100, 140, 220, 0.12);
     cursor: pointer;
     text-align: left;
     transition: all 0.2s;
@@ -175,32 +280,35 @@ tr:hover {
 }
 
 .faction-btn:hover {
-    background-color: #e0e0e0;
-    border-color: #ccc;
+    background: rgba(20, 35, 75, 0.85);
+    border-color: rgba(80, 120, 200, 0.5);
+    box-shadow: 0 0 12px rgba(60, 100, 200, 0.2);
 }
 
 .faction-btn.selected {
-    border-color: #4CAF50;
-    background-color: #e8f5e9;
+    border-color: rgba(76, 175, 80, 0.6);
+    background: rgba(10, 35, 18, 0.75);
+    box-shadow: 0 0 12px rgba(76, 175, 80, 0.2);
 }
 
 .faction-btn .faction-name {
     font-weight: bold;
     font-size: 1.1em;
     margin-bottom: 2px;
+    color: #e0ecff;
 }
 
 .faction-btn .faction-rep-level {
     font-size: 1.1em;
     font-weight: bold;
     font-style: italic;
-    color: #555;
+    color: #8ab0d8;
     margin-bottom: 8px;
 }
 
 .faction-btn .faction-status {
     font-size: 0.85em;
-    color: #666;
+    color: #7090b0;
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 2px 10px;
@@ -217,20 +325,23 @@ tr:hover {
 }
 
 .status-label {
-    color: #888;
+    color: #5878a0;
     margin-right: 5px;
 }
 
 .status-value {
     font-weight: 500;
+    color: #a8c4e0;
 }
 
+/* ── Quick edit ──────────────────────────────────────────────────── */
 .quick-edit {
     margin-top: 12px;
     display: flex;
     gap: 8px;
     padding-top: 8px;
-    border-top: 1px solid #ddd;
+    border-top: 1px solid rgba(60, 90, 150, 0.25);
+    border-radius: 0 0 10px 10px;
 }
 
 .quick-edit-input {
@@ -244,10 +355,13 @@ tr:hover {
     padding: 0 12px;
     font-size: 13px;
     height: 32px;
-    background-color: #2196F3;
+    background-color: rgba(20, 100, 190, 0.7);
+    border-color: rgba(33, 150, 243, 0.4);
+    color: #b8d8f8;
     white-space: nowrap;
 }
 
 .quick-edit-btn:hover {
-    background-color: #0b7dda;
+    background-color: rgba(25, 120, 220, 0.85);
+    box-shadow: 0 0 8px rgba(33, 150, 243, 0.3);
 }

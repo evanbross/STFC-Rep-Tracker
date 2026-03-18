@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(head:*)",
-      "Bash(cd:*)"
+      "Bash(cd:*)",
+      "Read(//mnt/f/Evan-F/Projects/**)",
+      "Bash(.venv/Scripts/pip list:*)"
     ]
   }
 }

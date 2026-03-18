@@ -1,5 +1,6 @@
 import logging
 import os
+import threading
 import time
 from datetime import datetime
 
@@ -20,6 +21,7 @@ _SNIPPETS_DIR = os.path.join(
 _BUTTON_MATCH_THRESHOLD = capture_cfg("button_match_threshold", default=0.85)
 
 _ocr_reader = None
+_ocr_reader_lock = threading.Lock()
 
 
 def match_template(filename, img, crop_h_frac=1.0):
@@ -68,7 +70,6 @@ def is_template_visible(filename, img):
 
 def show_reticle(x, y, duration_ms=5000, radius=20):
     """Flash a crosshair at absolute screen position (x, y) for debug purposes."""
-    import threading
     import tkinter as tk
 
     def _run():
@@ -232,7 +233,9 @@ def wait_and_click_any(
 def get_reader():
     global _ocr_reader
     if _ocr_reader is None:
-        _ocr_reader = easyocr.Reader(["en"], gpu=False)
+        with _ocr_reader_lock:
+            if _ocr_reader is None:
+                _ocr_reader = easyocr.Reader(["en"], gpu=False)
     return _ocr_reader
 
 
@@ -317,7 +320,7 @@ class ScreenCapture:
             ctypes.windll.user32.SwitchToThisWindow(hwnd, True)
 
         logger.debug(f"Activated window: {window.title}")
-        time.sleep(1.0)
+        time.sleep(0.25)
 
     def get_and_activate_window(self):
         """Find the STFC window and bring it to the foreground.
@@ -331,9 +334,15 @@ class ScreenCapture:
         self.activate_window(window)
         return window
 
-    def capture_window(self, window, delay=None):
-        """Capture the window region and return the saved filepath."""
-        self.activate_window(window)
+    def capture_window(self, window, delay=None, activate=False):
+        """Capture the window region and return the saved filepath.
+
+        activate: bring the window to the foreground before capturing (includes a
+        1s sleep). Only needed on the first capture; leave False during polling
+        loops where the window is already in focus.
+        """
+        if activate:
+            self.activate_window(window)
 
         left, top, width, height = window.left, window.top, window.width, window.height
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
