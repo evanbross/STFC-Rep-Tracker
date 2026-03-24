@@ -2,6 +2,7 @@ import ctypes
 import logging
 import logging.config
 import os
+import subprocess
 import sys
 
 import yaml
@@ -296,6 +297,61 @@ def serve_react(path):
     return send_from_directory(app.static_folder, "index.html")
 
 
+def _build_frontend_if_needed():
+    """Run 'npm run build' if any frontend source file is newer than dist/index.html."""
+    project_root = os.path.dirname(os.path.abspath(__file__))
+    dist_index = os.path.join(project_root, "frontend", "dist", "index.html")
+    watch_paths = [
+        os.path.join(project_root, "frontend", "src"),
+        os.path.join(project_root, "frontend", "index.html"),
+        os.path.join(project_root, "frontend", "vite.config.js"),
+        os.path.join(project_root, "frontend", "package.json"),
+    ]
+
+    needs_build = not os.path.exists(dist_index)
+    if not needs_build:
+        dist_mtime = os.path.getmtime(dist_index)
+        for watch_path in watch_paths:
+            if not os.path.exists(watch_path):
+                continue
+            if os.path.isfile(watch_path):
+                if os.path.getmtime(watch_path) > dist_mtime:
+                    logger.info(f"frontend rebuild needed: {os.path.basename(watch_path)} is newer than dist")
+                    needs_build = True
+                    break
+            else:
+                for dirpath, _, filenames in os.walk(watch_path):
+                    for filename in filenames:
+                        filepath = os.path.join(dirpath, filename)
+                        if os.path.getmtime(filepath) > dist_mtime:
+                            rel = os.path.relpath(filepath, project_root)
+                            logger.info(f"frontend rebuild needed: {rel} is newer than dist")
+                            needs_build = True
+                            break
+                    if needs_build:
+                        break
+            if needs_build:
+                break
+
+    if not needs_build:
+        logger.info("frontend is up to date, skipping build")
+        return
+
+    frontend_dir = os.path.join(project_root, "frontend")
+    logger.info("building frontend (npm run build)...")
+    result = subprocess.run(
+        "npm run build",
+        cwd=frontend_dir,
+        shell=True,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        logger.error(f"npm run build failed:\n{result.stderr}")
+    else:
+        logger.info("frontend build completed successfully")
+
+
 def _is_admin():
     try:
         return ctypes.windll.shell32.IsUserAnAdmin()
@@ -314,4 +370,5 @@ if __name__ == "__main__":
     if not app.config["DEBUG"] and not _is_admin():
         logger.info("Not running as administrator — relaunching with elevation")
         _relaunch_as_admin()
+    _build_frontend_if_needed()
     app.run(debug=app.config["DEBUG"], port=5000)

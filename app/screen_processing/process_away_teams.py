@@ -6,10 +6,10 @@ import cv2
 from app.screen_processing.screen_capture import (
     ScreenCapture,
     click_button_if_visible,
-    is_template_visible,
     wait_and_click,
-    wait_for_template,
     wait_and_click_any,
+    wait_for_any_template,
+    wait_for_template,
 )
 
 logger = logging.getLogger(__name__)
@@ -43,15 +43,23 @@ class AwayTeamOrchestrator:
         screen_offset = (window.left, window.top)
 
         # ── 1. Navigate to Away Teams if not already there ────────────────────
-        img_path = self.sc.capture_window(window)
-        img = cv2.imread(img_path)
+        # Try pressing "C" first — it opens the Missions panel in STFC,
+        # then wait until the Away Teams tab appears before proceeding.
+        self.sc.press_key(window, "c")
+        tabSelectedName = "Away Teams Tab Selected.jpg"
+        tabUnselectedName = "Away Teams Tab Unselected.jpg"
+        tabImages = [tabSelectedName, tabUnselectedName]
 
-        if img is not None and is_template_visible("Away Teams Tab Selected.jpg", img):
+        visibleTab, img = wait_for_any_template(
+            [tabSelectedName, tabUnselectedName],
+            self.sc,
+            window,
+        )
+
+        if visibleTab == tabSelectedName:
             # Already on the Away Teams page — nothing to do
             logger.info("already on Away Teams page, skipping navigation")
-        elif img is not None and is_template_visible(
-            "Away Teams Tab Unselected.jpg", img
-        ):
+        elif visibleTab == tabUnselectedName:
             # Missions panel is open but Away Teams tab not selected — just click the tab
             if not click_button_if_visible(
                 "Away Teams Tab Unselected.jpg", img, screen_offset
@@ -86,7 +94,7 @@ class AwayTeamOrchestrator:
             img_path = self.sc.capture_window(window)
             img = cv2.imread(img_path)
             if not click_button_if_visible(
-                ["Away Teams Tab Unselected.jpg", "Away Teams Tab Selected"],
+                tabImages,
                 img,
                 screen_offset,
             ):
@@ -114,20 +122,25 @@ class AwayTeamOrchestrator:
                 collected += 1
                 logger.info(f"clicked COLLECT ({collected})")
 
-            # Wait for screen to return to the away team list
-            wait_for_template("Away Teams Tab Selected.jpg", self.sc, window)
+            # Wait for screen to return to the away team list; allow extra time for
+            # the collect animation to finish before checking for more REPORT buttons.
+            if wait_for_template("Away Teams Tab Selected.jpg", self.sc, window, max_retries=20) is None:
+                logger.warning("Away Teams tab not redetected after COLLECT, stopping report cycle")
+                break
+            time.sleep(0.5)  # let the list fully settle after the tab reappears
 
         logger.info(f"{reports_clicked} report(s), {collected} collected")
 
         # ── 3. Start new expeditions: START → AUTO → START ───────────────────
         expeditions_started = 0
         while True:
-            # Wait for the Away Teams list to be showing before checking for buttons
-            if wait_for_template("Away Teams List Indicator.jpg", self.sc, window) is None:
+            # Wait for the Away Teams list to be showing before checking for buttons.
+            if wait_for_template("Away Teams List Indicator.jpg", self.sc, window, max_retries=20) is None:
                 logger.warning("Away Teams list not detected, stopping")
                 break
 
-            # Capture a fresh frame now that the list is confirmed visible
+            # Give the list a moment to fully render all buttons before capturing.
+            time.sleep(0.5)
             img_path = self.sc.capture_window(window)
             img = cv2.imread(img_path)
             if img is None:
@@ -136,6 +149,7 @@ class AwayTeamOrchestrator:
             if not click_button_if_visible(
                 "Away Teams Start Blue.jpg", img, screen_offset
             ):
+                logger.info("no blue START button found — all expeditions started")
                 break
             logger.info("clicked START (opening expedition setup)")
 
@@ -157,6 +171,9 @@ class AwayTeamOrchestrator:
             logger.info("clicked START (confirming expedition)")
 
             expeditions_started += 1
+            # Give the game time to play the expedition-launch animation and
+            # return to the Away Teams list before the next poll cycle.
+            time.sleep(2.0)
 
         logger.info(
             f"done — reports={reports_clicked}, collected={collected}, expeditions_started={expeditions_started}"

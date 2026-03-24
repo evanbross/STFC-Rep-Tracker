@@ -53,6 +53,40 @@ def capture_reputations():
         return jsonify({"error": str(e)}), 500
 
 
+@capture_bp.route("/reputations/<int:faction_id>", methods=["POST"])
+def capture_single_faction_reputation(faction_id):
+    """
+    Navigate to the Faction Store and capture reputation points for a single faction
+    ---
+    tags:
+      - Capture
+    parameters:
+      - name: faction_id
+        in: path
+        type: integer
+        required: true
+    responses:
+      200:
+        description: Reputation points captured and saved for the faction
+      404:
+        description: Game window or faction not found
+      500:
+        description: Unexpected error during capture
+    """
+    try:
+        orchestrator = ProcessReputationsOrchestrator(_get_db())
+        try:
+            result = orchestrator.process_single_faction(faction_id)
+            return jsonify(result)
+        except Exception as e:
+            logger.exception("Error during single faction screen capture")
+            status_code = 404 if "not found" in str(e).lower() else 500
+            return jsonify({"error": str(e)}), status_code
+    except Exception as e:
+        logger.exception("Error during single faction screen capture")
+        return jsonify({"error": str(e)}), 500
+
+
 @capture_bp.route("/identify-faction", methods=["POST"])
 def identify_faction():
     """

@@ -28,7 +28,7 @@ stfc_config:
 
   factions:
     # Number of recent status entries to retrieve and average for rate/projection calculations
-    avg_entries: 5
+    avg_entries: 10
     # Minimum match score for SelectedRow snippets to identify highlighted faction
     snippet_threshold: 0.70
     # Retries / interval (seconds) waiting for a faction to become active after clicking

@@ -278,6 +278,43 @@ class FactionsDAO:
         finally:
             conn.close()
 
+    def get_faction_by_id(self, faction_id):
+        """Get a single faction by id with its selected snippets."""
+        conn = self.db.get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT f.id, f.name, f.code, f.on_chart, f.color, f.reputation_table_name, f.display_order, f.reputation_dao_name, f.snippet_selected_button, f.snippet_unselected
+                FROM factions f
+                WHERE f.id = ?
+            """, (faction_id,))
+            row = cursor.fetchone()
+            if not row:
+                return None
+            cursor.execute("""
+                SELECT id, filename, snippet_type
+                FROM faction_selected_snippets
+                WHERE faction_id = ?
+                ORDER BY snippet_type, filename
+            """, (faction_id,))
+            snippets = [{"id": r[0], "filename": r[1], "snippet_type": r[2]} for r in cursor.fetchall()]
+            return {
+                "id": row[0],
+                "name": row[1],
+                "code": row[2],
+                "on_chart": row[3],
+                "color": row[4],
+                "reputation_table_name": row[5],
+                "display_order": row[6],
+                "reputation_dao_name": row[7],
+                "snippet_selected_button": row[8],
+                "snippet_unselected": row[9],
+                "faction_type": row[2],
+                "selected_snippets": snippets,
+            }
+        finally:
+            conn.close()
+
     def get_faction_names(self):
         """Get a list of all faction names ordered by display_order"""
         conn = self.db.get_connection()

@@ -44,6 +44,7 @@ const Dashboard = () => {
     const [chartData, setChartData] = useState({datasets: []});
     const [factionColorsMap, setFactionColorsMap] = useState({});
     const [isCapturing, setIsCapturing] = useState(false);
+    const [capturingFactionId, setCapturingFactionId] = useState(null);
     const [hiddenDatasets, setHiddenDatasets] = useState({});
     const chartRef = useRef(null);
 
@@ -197,6 +198,31 @@ const Dashboard = () => {
         }
     };
 
+    const handleCaptureSingleFaction = async (faction) => {
+        setCapturingFactionId(faction.id);
+        try {
+            const response = await axios.post(`/api/capture-screen/reputations/${faction.id}`);
+            const data = response.data;
+            if (data.error) {
+                alert(`Error: ${data.error}`);
+            } else if (data.saved && Array.isArray(data.saved)) {
+                if (data.saved.length > 0) {
+                    const list = await loadFactions();
+                    await loadEntries(list);
+                } else {
+                    alert(`${faction.name}: no reputation value could be read.`);
+                }
+            } else {
+                alert('Capture returned an unexpected response.');
+            }
+        } catch (error) {
+            console.error('Error capturing faction:', error);
+            alert(`Failed to capture ${faction.name}.`);
+        } finally {
+            setCapturingFactionId(null);
+        }
+    };
+
     const handleIdentifyFaction = async () => {
         setIsCapturing(true);
         try {
@@ -347,6 +373,16 @@ const Dashboard = () => {
                                             }}
                                         >
                                             Save
+                                        </button>
+                                    </div>
+                                    <div className="quick-edit" onClick={e => e.stopPropagation()}>
+                                        <button
+                                            className="quick-edit-btn"
+                                            style={{width: '100%'}}
+                                            disabled={isCapturing || capturingFactionId !== null}
+                                            onClick={() => handleCaptureSingleFaction(faction)}
+                                        >
+                                            {capturingFactionId === faction.id ? 'Capturing...' : 'Capture'}
                                         </button>
                                     </div>
                                 </div>

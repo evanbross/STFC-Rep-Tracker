@@ -25,6 +25,48 @@ class ProcessReputationsOrchestrator:
         self.stat_dao = StatusEntriesDAO(db)
         self.factions_dao = db.factions
 
+    def process_single_faction(self, faction_id):
+        try:
+            window = self.sc.get_and_activate_window()
+        except RuntimeError as e:
+            logger.error(e)
+            return {"error": str(e)}
+
+        try:
+            self.sc.navigate_to_home_screen(window)
+        except RuntimeError as e:
+            logger.error(f"Could not reach home screen: {e}")
+            return {"error": str(e)}
+
+        if not wait_and_click_any(
+            ["Factions Button.jpg", "Factions Button2.jpg", "Factions Button 3.jpg"],
+            self.sc,
+            window,
+            (window.left, window.top),
+        ):
+            logger.error("Factions Button not found")
+            return {"error": "Factions Button not found"}
+
+        faction = self.factions_dao.get_faction_by_id(faction_id)
+        if not faction:
+            return {"error": f"Faction {faction_id} not found"}
+
+        results = _process_faction_list([faction], window, self.sc)
+
+        saved = []
+        for item in results or []:
+            points = item.get("points")
+            if points is None:
+                continue
+            try:
+                self.stat_dao.add_status_entry(item["faction"], points)
+                saved.append({"faction": item["faction"], "points": points})
+                logger.info(f"Saved {item['faction']}: {points:,}")
+            except Exception as e:
+                logger.error(f"Failed to save {item['faction']}: {e}")
+
+        return {"saved": saved, "results": results}
+
     def process_reputations(self):
         try:
             window = self.sc.get_and_activate_window()
@@ -39,7 +81,7 @@ class ProcessReputationsOrchestrator:
             return {"error": str(e)}
 
         if not wait_and_click_any(
-            ["Factions Button.jpg", "Factions Button2.jpg"],
+            ["Factions Button.jpg", "Factions Button2.jpg", "Factions Button 3.jpg"],
             self.sc,
             window,
             (window.left, window.top),
@@ -49,7 +91,7 @@ class ProcessReputationsOrchestrator:
 
         # self.sc.press_key(window, "T")
 
-        results = click_all_faction_buttons(self.factions_dao, window, self.sc)
+        results = _process_faction_list(self.factions_dao.get_all_factions(), window, self.sc)
 
         # results = analyze_screenshot(window, self.factions_dao)
 
@@ -287,8 +329,8 @@ def click_faction_button(faction, img, screen_offset=(0, 0)):
     return clicked
 
 
-def click_all_faction_buttons(factions_dao, window, sc):
-    """Iterate through factions and capture reputation points from the faction store.
+def _process_faction_list(factions, window, sc):
+    """Iterate through a list of faction dicts and capture reputation points.
 
     For each faction:
       1. Wait for and click the faction's unselected sidebar button (snippet_unselected).
@@ -296,16 +338,15 @@ def click_all_faction_buttons(factions_dao, window, sc):
       3. Extract reputation points if the Points region is visible.
 
     Args:
-        factions_dao: FactionsDAO instance used to query all factions from the DB
-        window:       STFC window object (from ScreenCapture.get_stfc_window())
-        sc:           ScreenCapture instance (used to take fresh screenshots)
+        factions: list of faction dicts (as returned by FactionsDAO.get_all_factions())
+        window:   STFC window object (from ScreenCapture.get_stfc_window())
+        sc:       ScreenCapture instance (used to take fresh screenshots)
 
     Returns:
         list of dicts: [{"faction": name, "clicked": bool, "points": int|None, "error": str|None}, ...]
     """
     screen_offset = (window.left, window.top)
     results = []
-    factions = factions_dao.get_all_factions()
 
     for faction in factions:
         name = faction.get("name", "<unknown>")
@@ -393,6 +434,11 @@ def click_all_faction_buttons(factions_dao, window, sc):
         )
 
     return results
+
+
+def click_all_faction_buttons(factions_dao, window, sc):
+    """Legacy wrapper — calls _process_faction_list with all factions from the DAO."""
+    return _process_faction_list(factions_dao.get_all_factions(), window, sc)
 
 
 # if __name__ == "__main__":

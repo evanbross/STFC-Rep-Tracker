@@ -8,5 +8,6 @@ class Section31ReputationsDAO(ReputationsDAO):
     def get_initial_reputations(self):
         """Apply initial reputation levels to the section31_reputations table"""
         return [
-            ('Neutral', 0, 1000),
+            ('Asset', 0, 4999),
+            ('Friendly', 5000, 9999),
         ]
