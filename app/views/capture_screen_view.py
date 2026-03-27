@@ -110,6 +110,35 @@ def identify_faction():
         return jsonify({"error": str(e)}), 500
 
 
+@capture_bp.route("/away-team-collect", methods=["POST"])
+def capture_away_team_collect():
+    """
+    Navigate to the Away Team screen and collect completed missions only (no new starts)
+    ---
+    tags:
+      - Capture
+    responses:
+      200:
+        description: Completed Away Team missions collected
+      404:
+        description: Game window not found
+      500:
+        description: Unexpected error during capture
+    """
+    try:
+        orchestrator = AwayTeamOrchestrator(_get_db())
+        try:
+            result = orchestrator.capture_away_team_collect()
+            return jsonify(result)
+        except Exception as e:
+            logger.exception("Error during Away Team collect")
+            status_code = 404 if "not found" in str(e).lower() else 500
+            return jsonify({"error": str(e)}), status_code
+    except Exception as e:
+        logger.exception("Error during Away Team collect")
+        return jsonify({"error": str(e)}), 500
+
+
 @capture_bp.route("/away-team", methods=["POST"])
 def capture_away_team():
     """

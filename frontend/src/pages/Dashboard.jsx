@@ -156,6 +156,7 @@ const Dashboard = () => {
     const handleCaptureScreen = async (screen) => {
         const urlMap = {
             reputations: '/api/capture-screen/reputations',
+            away_team_collect: '/api/capture-screen/away-team-collect',
             away_team: '/api/capture-screen/away-team',
             gifts: '/api/capture-screen/gifts',
             event_rewards: '/api/capture-screen/event-rewards',
@@ -187,6 +188,9 @@ const Dashboard = () => {
                     `Reports collected: ${data.collected}\n` +
                     `Expeditions started: ${data.expeditions_started}`
                 );
+            } else if (data.success && data.claims !== undefined) {
+                // Gifts result
+                alert(`Gifts complete.\nClaim All clicked: ${data.claims}`);
             } else {
                 alert('Capture returned an unexpected response.');
             }
@@ -223,23 +227,6 @@ const Dashboard = () => {
         }
     };
 
-    const handleIdentifyFaction = async () => {
-        setIsCapturing(true);
-        try {
-            const response = await axios.post('/api/capture-screen/identify-faction');
-            const data = response.data;
-            if (data.faction) {
-                alert(`Highlighted faction: ${data.faction}`);
-            } else {
-                alert(data.error || 'Could not identify faction.');
-            }
-        } catch (error) {
-            console.error('Error identifying faction:', error);
-            alert('Failed to identify faction.');
-        } finally {
-            setIsCapturing(false);
-        }
-    };
 
     const chartOptions = {
         responsive: true,
@@ -327,14 +314,10 @@ const Dashboard = () => {
                                     <div className="faction-rep-level">{faction.rep_level}</div>
                                     <div className="faction-status">
                                         <div className="status-item full-width">
-                                            <span className="status-label">Latest Value:</span>
-                                            <span
-                                                className="status-value">{faction.current_value?.toLocaleString()}</span>
-                                        </div>
-                                        <div className="status-item full-width">
-                                            <span className="status-label">Value Δ:</span>
-                                            <span
-                                                className="status-value">{faction.last_delta >= 0 ? '+' : ''}{faction.last_delta?.toLocaleString()}</span>
+                                            <span className="status-label">Value / Change:</span>
+                                            <span className="status-value">
+                                                {faction.current_value?.toLocaleString()} / {faction.last_delta >= 0 ? '+' : ''}{faction.last_delta?.toLocaleString()}
+                                            </span>
                                         </div>
                                         <div className="status-item full-width">
                                             <span className="status-label">Last Change Rate:</span>
@@ -347,7 +330,8 @@ const Dashboard = () => {
                                                 className="status-value">{Math.round(faction.status?.avg_value_delta_per_minute || 0)}/min</span>
                                         </div>
                                         <div className="status-item full-width">
-                                            <span className="status-label">Time to {faction.status?.next_rep_level || 'Goal'}:</span>
+                                            <span
+                                                className="status-label">Time to {faction.status?.next_rep_level || 'Goal'}:</span>
                                             <span
                                                 className="status-value">{formatMinutes(faction.status?.minutes_to_goal)}</span>
                                         </div>
@@ -396,23 +380,6 @@ const Dashboard = () => {
                     Click a button below to automatically locate Star Trek Fleet Command,
                     switch to the selected screen, and take a screenshot for processing.
                 </p>
-                <div style={{display: 'flex', gap: '0.75rem', marginBottom: '0.75rem'}}>
-                    <button
-                        onClick={handleIdentifyFaction}
-                        disabled={isCapturing}
-                        style={{
-                            padding: '0.6rem 1.2rem',
-                            fontSize: '0.9rem',
-                            backgroundColor: isCapturing ? '#ccc' : '#607D8B',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '4px',
-                            cursor: isCapturing ? 'not-allowed' : 'pointer'
-                        }}
-                    >
-                        Identify Highlighted Faction
-                    </button>
-                </div>
                 <div style={{display: 'flex', gap: '0.75rem'}}>
                     <button
                         onClick={() => handleCaptureScreen('reputations')}
@@ -431,7 +398,7 @@ const Dashboard = () => {
                         Reputations
                     </button>
                     <button
-                        onClick={() => handleCaptureScreen('away_team')}
+                        onClick={() => handleCaptureScreen('away_team_collect')}
                         disabled={isCapturing}
                         style={{
                             flex: 1,
@@ -444,10 +411,26 @@ const Dashboard = () => {
                             cursor: isCapturing ? 'not-allowed' : 'pointer'
                         }}
                     >
-                        Away Team
+                        Away Team<br/>Collect Only
                     </button>
                     <button
-                        onClick={() => alert('This feature is not available yet')}
+                        onClick={() => handleCaptureScreen('away_team')}
+                        disabled={isCapturing}
+                        style={{
+                            flex: 1,
+                            padding: '1rem',
+                            fontSize: '1.1rem',
+                            backgroundColor: isCapturing ? '#ccc' : '#388E3C',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: isCapturing ? 'not-allowed' : 'pointer'
+                        }}
+                    >
+                        Away Team<br/>All
+                    </button>
+                    <button
+                        onClick={() => handleCaptureScreen('gifts')}
                         disabled={isCapturing}
                         style={{
                             flex: 1,
@@ -457,8 +440,7 @@ const Dashboard = () => {
                             color: 'white',
                             border: 'none',
                             borderRadius: '4px',
-                            cursor: isCapturing ? 'not-allowed' : 'pointer',
-                            textDecoration: 'line-through'
+                            cursor: isCapturing ? 'not-allowed' : 'pointer'
                         }}
                     >
                         Gifts
@@ -484,7 +466,13 @@ const Dashboard = () => {
             </div>
 
             <div className="chart-container">
-                <div style={{display: 'flex', flexWrap: 'wrap', gap: '0.4rem 1rem', padding: '0.5rem 0.75rem', marginBottom: '0.5rem'}}>
+                <div style={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: '0.4rem 1rem',
+                    padding: '0.5rem 0.75rem',
+                    marginBottom: '0.5rem'
+                }}>
                     {chartData.datasets.map((ds, i) => {
                         const isHidden = hiddenDatasets[i] ?? ds.hidden;
                         return (

@@ -57,6 +57,9 @@ class DTIReputationsDAO(ReputationsDAO):
         ]
 
     def apply_initial_reputations(self, cursor):
+        # Remove stale rows that were renamed to Consort I / Associate I
+        for obsolete in ('Consort', 'Associate'):
+            cursor.execute("DELETE FROM dti_reputations WHERE name = ?", (obsolete,))
         for name, low_limit, high_limit, messages_count, credit_amount in self.get_initial_reputations():
             cursor.execute('''
                 INSERT OR IGNORE INTO dti_reputations (name, low_limit, high_limit, messages_count, credit_amount)

@@ -110,6 +110,7 @@ def get_all_reputations_grouped():
             result.append(
                 {
                     "title": title,
+                    "table_name": dao.get_table_name(),
                     "data": reps,
                 }
             )
@@ -117,6 +118,78 @@ def get_all_reputations_grouped():
             logger.error(f"Error fetching reputations for {dao_name}: {e}")
 
     return jsonify(result)
+
+
+@reputations_bp.route("/by-table/<table_name>/<int:row_id>", methods=["PUT"])
+def update_reputation_row(table_name, row_id):
+    """
+    Update a single reputation tier row by table name and id
+    ---
+    tags:
+      - Reputations
+    parameters:
+      - name: table_name
+        in: path
+        type: string
+        required: true
+      - name: row_id
+        in: path
+        type: integer
+        required: true
+    responses:
+      200:
+        description: Updated successfully
+      400:
+        description: Bad request
+    """
+    from flask import request
+    db = current_app.config["DATABASE"]
+    body = request.get_json()
+    if not body:
+        return jsonify({"error": "No data provided"}), 400
+
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(f"PRAGMA table_info('{table_name}')")
+        columns = {row[1].lower(): row[1] for row in cursor.fetchall()}
+        if not columns:
+            conn.close()
+            return jsonify({"error": f"Table '{table_name}' not found"}), 400
+
+        name_col = columns.get("name", columns.get("Name", "name"))
+        updates = []
+        params = []
+
+        if "name" in body:
+            updates.append(f"{name_col} = ?")
+            params.append(body["name"])
+        if "low_limit" in body:
+            updates.append("low_limit = ?")
+            params.append(body["low_limit"])
+        if "high_limit" in body and "high_limit" in columns:
+            updates.append("high_limit = ?")
+            params.append(body["high_limit"])
+        if "messages_count" in body and "messages_count" in columns:
+            updates.append("messages_count = ?")
+            params.append(body["messages_count"])
+        if "credit_amount" in body and "credit_amount" in columns:
+            updates.append("credit_amount = ?")
+            params.append(body["credit_amount"])
+
+        if not updates:
+            conn.close()
+            return jsonify({"error": "No valid fields to update"}), 400
+
+        params.append(row_id)
+        cursor.execute(f"UPDATE {table_name} SET {', '.join(updates)} WHERE id = ?", params)
+        conn.commit()
+        conn.close()
+        return jsonify({"success": True})
+    except Exception as e:
+        logger.error(f"Error updating reputation row: {e}")
+        return jsonify({"error": str(e)}), 500
 
 
 @reputations_bp.route("/by-table/<table_name>", methods=["GET"])

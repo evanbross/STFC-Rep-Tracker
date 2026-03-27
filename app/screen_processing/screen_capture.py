@@ -23,6 +23,42 @@ _BUTTON_MATCH_THRESHOLD = capture_cfg("button_match_threshold", default=0.85)
 _ocr_reader = None
 _ocr_reader_lock = threading.Lock()
 
+# Special-key VK code map for keys that can't be derived from ord().
+_VK_SPECIAL = {
+    'f1': 0x70, 'f2': 0x71, 'f3': 0x72, 'f4': 0x73,
+    'f5': 0x74, 'f6': 0x75, 'f7': 0x76, 'f8': 0x77,
+    'f9': 0x78, 'f10': 0x79, 'f11': 0x7A, 'f12': 0x7B,
+    'esc': 0x1B, 'escape': 0x1B,
+    'enter': 0x0D, 'return': 0x0D,
+    'space': 0x20,
+    'tab': 0x09,
+    'backspace': 0x08,
+    'left': 0x25, 'up': 0x26, 'right': 0x27, 'down': 0x28,
+}
+_KEYEVENTF_KEYUP = 0x0002
+
+
+def _send_key(key):
+    """Send a keydown+keyup pair using low-level keybd_event.
+
+    Works with games that ignore pyautogui's high-level SendInput/Unicode approach.
+    Single character keys (letters, digits) are converted via ord(); special keys
+    are looked up in _VK_SPECIAL.
+    """
+    import ctypes
+    key_lower = key.lower()
+    if key_lower in _VK_SPECIAL:
+        vk = _VK_SPECIAL[key_lower]
+    elif len(key) == 1:
+        vk = ord(key.upper())
+    else:
+        logger.warning(f"_send_key: unknown key '{key}', falling back to pyautogui")
+        pyautogui.press(key)
+        return
+    ctypes.windll.user32.keybd_event(vk, 0, 0, 0)
+    time.sleep(0.05)
+    ctypes.windll.user32.keybd_event(vk, 0, _KEYEVENTF_KEYUP, 0)
+
 
 def match_template(filename, img, crop_h_frac=1.0):
     """Run template matching for filename against img.
@@ -111,19 +147,28 @@ def is_button_visible(
 
     button_filenames may be a single filename string or a list of filenames.
     Each is tried in order; the first match above threshold is returned.
+    Logs a distinct message for missing snippet files vs. a file that exists but isn't on screen.
     """
     if threshold is None:
         threshold = _BUTTON_MATCH_THRESHOLD
     if isinstance(button_filenames, str):
         button_filenames = [button_filenames]
     for filename in button_filenames:
-        if not (match := match_template(filename, img, crop_h_frac=crop_h_frac)):
+        template_path = os.path.normpath(os.path.join(_SNIPPETS_DIR, filename))
+        if not os.path.isfile(template_path):
+            logger.error(f"Snippet file missing: {template_path}")
+            continue
+        match = match_template(filename, img, crop_h_frac=crop_h_frac)
+        if not match:
             continue
         template, max_val, max_loc = match
         if max_val >= threshold:
             if on_found:
                 on_found()
             return match
+        logger.debug(
+            f"'{filename}' exists but not visible on screen (score: {max_val:.2f}, threshold: {threshold:.2f})"
+        )
     return None
 
 
@@ -283,11 +328,15 @@ class ScreenCapture:
         return None
 
     def activate_window(self, window):
-        """Bring the window to the foreground."""
-        import win32api
+        """Bring the window to the foreground.
+
+        Uses the ALT key trick to bypass Windows focus-stealing prevention, which
+        otherwise blocks SetForegroundWindow when called from a background thread
+        (e.g. a Flask request handler where the browser holds foreground focus).
+        """
+        import ctypes
         import win32con
         import win32gui
-        import win32process
 
         if not window:
             raise Exception("activate_window: Window is None")
@@ -299,21 +348,10 @@ class ScreenCapture:
             win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
             time.sleep(0.5)
 
-        # Windows blocks focus changes from background processes unless the calling
-        # thread is attached to the current foreground thread's input queue.
-        fg_hwnd = win32gui.GetForegroundWindow()
-        fg_thread = win32process.GetWindowThreadProcessId(fg_hwnd)[0]
-        app_thread = win32api.GetCurrentThreadId()
-
-        if fg_thread != app_thread:
-            win32process.AttachThreadInput(fg_thread, app_thread, True)
-            try:
-                win32gui.BringWindowToTop(hwnd)
-            except Exception as e:
-                logger.warning(
-                    f"BringWindowToTop failed (likely privilege mismatch): {e}"
-                )
-            win32process.AttachThreadInput(fg_thread, app_thread, False)
+        # Briefly simulate ALT keydown+up. This makes Windows believe the calling
+        # thread has UI rights, allowing SetForegroundWindow to succeed from any thread.
+        ctypes.windll.user32.keybd_event(win32con.VK_MENU, 0, 0, 0)
+        ctypes.windll.user32.keybd_event(win32con.VK_MENU, 0, win32con.KEYEVENTF_KEYUP, 0)
 
         try:
             win32gui.SetForegroundWindow(hwnd)
@@ -321,8 +359,6 @@ class ScreenCapture:
             logger.warning(
                 f"SetForegroundWindow failed, falling back to SwitchToThisWindow: {e}"
             )
-            import ctypes
-
             ctypes.windll.user32.SwitchToThisWindow(hwnd, True)
 
         logger.debug(f"Activated window: {window.title}")
@@ -451,10 +487,22 @@ class ScreenCapture:
             return True
         return False
 
-    def press_key(self, window, key):
-        """Send the keypress to the STFC window to navigate to the home screen."""
+    def click_center_and_press(self, window, key):
+        """Click the centre of the window then send a keypress."""
+        center_x = window.left + window.width // 2
+        center_y = window.top + window.height // 2
         self.activate_window(window)
-        pyautogui.press(key)
+        pyautogui.click(center_x, center_y)
+        logger.debug(f"Clicked window centre ({center_x}, {center_y})")
+        time.sleep(0.1)
+        _send_key(key)
+        logger.debug(f"Pressed {key}")
+        time.sleep(0.5)
+
+    def press_key(self, window, key):
+        """Send a keypress to the STFC window."""
+        self.activate_window(window)
+        _send_key(key)
         logger.debug(f"Sent {key} keypress to STFC window")
         time.sleep(0.5)
 

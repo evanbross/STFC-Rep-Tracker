@@ -42,6 +42,10 @@ stfc_config:
     # (brighter) state and scores below the normal button_match_threshold.
     button_selected_threshold: 0.60
 
+  gifts:
+    # Seconds to wait after each action in the navigation and claim loops
+    loop_delay: 0.25
+
   ocr:
     # Upscale factor applied to the region before OCR runs
     scale_factor: 3
