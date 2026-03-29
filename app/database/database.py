@@ -1,4 +1,5 @@
 import sqlite3
+from contextlib import contextmanager
 
 from app.database import status_entries_dao, factions_dao
 from app.database.faction_selected_snippets_dao import FactionSelectedSnippetsDAO
@@ -22,6 +23,19 @@ class Database:
 
     def get_connection(self):
         return sqlite3.connect(self.db_path)
+
+    @contextmanager
+    def connect(self):
+        """Context manager that yields a connection, commits on success, rolls back on error, and always closes."""
+        conn = sqlite3.connect(self.db_path)
+        try:
+            yield conn
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
 
     def init_database(self):
         """Initialize the database with required tables"""

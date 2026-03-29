@@ -8,6 +8,13 @@ logger = logging.getLogger(__name__)
 
 reputations_bp = Blueprint("reputations", __name__)
 
+
+def _validate_table_name(table_name: str):
+    known = ReputationsDAO.get_known_table_names()
+    if table_name not in known:
+        return jsonify({"error": f"Unknown reputation table: '{table_name}'"}), 404
+    return None
+
 @reputations_bp.route("", methods=["GET"])
 def get_reputations():
     """Get list of all fkr_reputations"""
@@ -143,6 +150,9 @@ def update_reputation_row(table_name, row_id):
         description: Bad request
     """
     from flask import request
+    err = _validate_table_name(table_name)
+    if err:
+        return err
     db = current_app.config["DATABASE"]
     body = request.get_json()
     if not body:
@@ -188,8 +198,8 @@ def update_reputation_row(table_name, row_id):
         conn.close()
         return jsonify({"success": True})
     except Exception as e:
-        logger.error(f"Error updating reputation row: {e}")
-        return jsonify({"error": str(e)}), 500
+        logger.exception("Error updating reputation row")
+        return jsonify({"error": "Failed to update reputation row"}), 500
 
 
 @reputations_bp.route("/by-table/<table_name>", methods=["GET"])
@@ -211,15 +221,14 @@ def get_reputations_by_table(table_name):
       400:
         description: Invalid table name
     """
+    err = _validate_table_name(table_name)
+    if err:
+        return err
     db = current_app.config["DATABASE"]
     try:
         dao = ReputationsDAO.get_dao_by_faction_name(table_name)
-        if not dao:
-            # Fallback for generic DAO if name isn't registered but it is a known table
-            dao = ReputationsDAO(db, table_name)
         reputations = dao.get_all(db)
         return jsonify(reputations)
-    except ValueError as e:
-        return jsonify({"error": str(e)}), 400
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        logger.exception("Error fetching reputations by table")
+        return jsonify({"error": "Failed to retrieve reputations"}), 500

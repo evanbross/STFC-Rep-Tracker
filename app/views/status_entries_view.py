@@ -1,5 +1,9 @@
+import logging
+
 from flask import Blueprint, jsonify, request, current_app
 from flask.views import MethodView
+
+logger = logging.getLogger(__name__)
 
 status_entries_bp = Blueprint("status_entries", __name__)
 
@@ -98,7 +102,8 @@ class StatusEntriesView(MethodView):
         except ValueError as e:
             return jsonify({"error": str(e)}), 404
         except Exception as e:
-            return jsonify({"error": str(e)}), 500
+            logger.exception("Error adding status entry")
+            return jsonify({"error": "Failed to add status entry"}), 500
 
 
 AllStatusEntriesView = StatusEntriesView

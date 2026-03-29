@@ -1,8 +1,9 @@
 from datetime import datetime, timezone
+from typing import Any
 
 
 class StatusEntriesDAO:
-    def __init__(self, db):
+    def __init__(self, db) -> None:
         self.db = db
 
     def create_table(self, cursor):
@@ -29,8 +30,7 @@ class StatusEntriesDAO:
                            NULL,
                            value_delta
                            INTEGER
-                           NOT
-                           NULL,
+                           DEFAULT 0,
                            FOREIGN
                            KEY
                        (
@@ -42,13 +42,11 @@ class StatusEntriesDAO:
                            )
                        """)
 
-    def add_status_entry(self, faction_name, value):
+    def add_status_entry(self, faction_name: str, value: int) -> dict[str, Any]:
         """Add a new stat entry for a faction"""
-        conn = self.db.get_connection()
-        try:
+        with self.db.connect() as conn:
             cursor = conn.cursor()
 
-            # Get faction_id
             cursor.execute(
                 """
                            SELECT f.id
@@ -64,33 +62,21 @@ class StatusEntriesDAO:
 
             faction_id = result[0]
 
-            # value_delta calculation is disabled — the column is not populated
-
-            # Insert new entry
             timestamp = datetime.now(timezone.utc).isoformat()
             cursor.execute(
                 """
                            INSERT INTO status_entries (faction_id, timestamp, value)
                            VALUES (?, ?, ?)
                            """,
-                (
-                    faction_id,
-                    timestamp,
-                    value,
-                ),
+                (faction_id, timestamp, value),
             )
 
-            conn.commit()
             return {"faction_id": faction_id, "timestamp": timestamp, "value": value}
-        finally:
-            conn.close()
 
-    def get_faction_entries(self, faction_name):
+    def get_faction_entries(self, faction_name: str) -> list[dict[str, Any]]:
         """Get all stat entries for a specific faction"""
-        conn = self.db.get_connection()
-        try:
+        with self.db.connect() as conn:
             cursor = conn.cursor()
-
             cursor.execute(
                 """
                            SELECT se.timestamp, se.value, se.value_delta, se.faction_id
@@ -101,7 +87,6 @@ class StatusEntriesDAO:
                            """,
                 (faction_name,),
             )
-
             return [
                 {
                     "timestamp": row[0],
@@ -111,8 +96,6 @@ class StatusEntriesDAO:
                 }
                 for row in cursor.fetchall()
             ]
-        finally:
-            conn.close()
 
     _ALLOWED_SORT_COLUMNS = {
         "se.id",
@@ -126,10 +109,9 @@ class StatusEntriesDAO:
         "faction_name",
     }
 
-    def get_all_entries(self, limit=None, offset=None, faction_name=None, sort=None):
+    def get_all_entries(self, limit: int | None = None, offset: int | None = None, faction_name: str | None = None, sort: str | None = None) -> list[dict[str, Any]]:
         """Get all status entries, with optional filtering, sorting, and paging"""
-        conn = self.db.get_connection()
-        try:
+        with self.db.connect() as conn:
             cursor = conn.cursor()
 
             query = """
@@ -143,14 +125,10 @@ class StatusEntriesDAO:
                 params.append(faction_name)
 
             if sort is not None:
-                # Strip optional ASC/DESC suffix, validate the column name
                 parts = sort.strip().split()
                 column = parts[0].lower()
                 direction = parts[1].upper() if len(parts) > 1 else "ASC"
-                if column not in self._ALLOWED_SORT_COLUMNS or direction not in (
-                    "ASC",
-                    "DESC",
-                ):
+                if column not in self._ALLOWED_SORT_COLUMNS or direction not in ("ASC", "DESC"):
                     raise ValueError(f"Invalid sort value: '{sort}'")
                 query += f" ORDER BY {column} {direction}"
             else:
@@ -175,8 +153,6 @@ class StatusEntriesDAO:
                 }
                 for row in cursor.fetchall()
             ]
-        finally:
-            conn.close()
 
     _ALLOWED_FACTION_SORT_COLUMNS = {"f.id", "f.name", "id", "name"}
 
@@ -184,8 +160,7 @@ class StatusEntriesDAO:
         self, faction_name=None, limit=None, offset=None, sort=None
     ):
         """Get all factions with their stat entries, with optional filtering, sorting, and paging"""
-        conn = self.db.get_connection()
-        try:
+        with self.db.connect() as conn:
             cursor = conn.cursor()
 
             query = "SELECT f.id, f.name FROM factions f"
@@ -227,9 +202,8 @@ class StatusEntriesDAO:
                                """,
                     (faction_id,),
                 )
-
-                entries = []
                 rows = cursor.fetchall()
+                entries = []
                 if len(rows) >= 2:
                     latest_row = rows[0]
                     entries.append(
@@ -239,9 +213,6 @@ class StatusEntriesDAO:
                             "faction_id": latest_row[2],
                         }
                     )
-
                 result[name] = entries
 
             return result
-        finally:
-            conn.close()

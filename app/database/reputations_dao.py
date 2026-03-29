@@ -1,18 +1,16 @@
 import importlib
 import logging
+import threading
 from abc import abstractmethod
 from typing import List, Dict, Any
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - [%(funcName)s] %(message)s",
-)
 logger = logging.getLogger(__name__)
 
 
 class ReputationsDAO:
     dao_instances_by_faction = {}
     dao_instances_by_class = {}
+    _registry_lock = threading.Lock()
 
     def __init__(self, db, table_name):
         self.db = db
@@ -30,10 +28,15 @@ class ReputationsDAO:
     def get_all_dao_by_class_name():
         return ReputationsDAO.dao_instances_by_class
 
+    @classmethod
+    def get_known_table_names(cls) -> set:
+        return {dao.table_name for dao in cls.dao_instances_by_faction.values()}
+
     @staticmethod
     def register_dao(faction_name, dao):
-        ReputationsDAO.dao_instances_by_faction[faction_name] = dao
-        ReputationsDAO.dao_instances_by_class[dao.__class__.__name__] = dao
+        with ReputationsDAO._registry_lock:
+            ReputationsDAO.dao_instances_by_faction[faction_name] = dao
+            ReputationsDAO.dao_instances_by_class[dao.__class__.__name__] = dao
 
     @staticmethod
     def initialize_dao_instances(db, factions_dao):
@@ -230,6 +233,18 @@ class ReputationsDAO:
         row = cursor.fetchone()
         return row[0] if row else None
 
+    def find_next_reputation_low_limit(self, conn, current_high_limit):
+        """Return the low_limit of the next tier, or None."""
+        if current_high_limit is None:
+            return None
+        cursor = conn.cursor()
+        cursor.execute(
+            f"SELECT low_limit FROM {self.table_name} WHERE low_limit IN (?, ?) ORDER BY low_limit LIMIT 1",
+            (current_high_limit, current_high_limit + 1),
+        )
+        row = cursor.fetchone()
+        return row[0] if row else None
+
     def find_reputation_by_value(self, conn, value):
         cursor = conn.cursor()
         try:
@@ -244,13 +259,7 @@ class ReputationsDAO:
         except Exception as e:
             logger.error(f"Error querying reputation for faction '{self.table_name}': {e}")
             raise
-        result = cursor.fetchone()
-        if cursor.rowcount == 0:
-            return f"Unknown {self.table_name} for reputation value {value}"
-        elif cursor.rowcount > 1:
-            return f"Ambiguous {self.table_name} for reputation value {value}"
-
-        return result
+        return cursor.fetchone()
 
     def get_last(self, table_name: str = None) -> Dict[str, Any] | None:
         """Get the final entry (highest low_limit) from the table, returning name and high_limit."""

@@ -27,6 +27,16 @@ ChartJS.register(
     annotationPlugin
 );
 
+const formatShort = (value, decimals = 0) => {
+    if (value == null) return null;
+    const abs = Math.abs(value);
+    const fmt = (n) => decimals > 0 ? n.toFixed(decimals) : String(Math.floor(n));
+    if (abs >= 1_000_000_000) return `${fmt(abs / 1_000_000_000)}b`;
+    if (abs >= 1_000_000) return `${fmt(abs / 1_000_000)}m`;
+    if (abs >= 1_000) return `${fmt(abs / 1_000)}k`;
+    return String(abs);
+};
+
 const formatMinutes = (minutes) => {
     const m = Math.round(minutes || 0);
     if (!m) return "0";
@@ -316,7 +326,7 @@ const Dashboard = () => {
                                         <div className="status-item full-width">
                                             <span className="status-label">Value / Change:</span>
                                             <span className="status-value">
-                                                {faction.current_value?.toLocaleString()} / {faction.last_delta >= 0 ? '+' : ''}{faction.last_delta?.toLocaleString()}
+                                                {formatShort(faction.current_value)} / {faction.last_delta >= 0 ? '+' : '-'}{formatShort(faction.last_delta)}
                                             </span>
                                         </div>
                                         <div className="status-item full-width">
@@ -330,8 +340,9 @@ const Dashboard = () => {
                                                 className="status-value">{Math.round(faction.status?.avg_value_delta_per_minute || 0)}/min</span>
                                         </div>
                                         <div className="status-item full-width">
-                                            <span
-                                                className="status-label">Time to {faction.status?.next_rep_level || 'Goal'}:</span>
+                                            <span className="status-label">
+                                                Time to {faction.status?.next_rep_level || 'Goal'}{formatShort(faction.status?.goal_value, 1) ? ` (${formatShort(faction.status?.goal_value, 1)})` : ''}:
+                                            </span>
                                             <span
                                                 className="status-value">{formatMinutes(faction.status?.minutes_to_goal)}</span>
                                         </div>

@@ -1,7 +1,12 @@
+import logging
 import os
 
 from flask import Blueprint, jsonify, request, current_app, send_from_directory
+from werkzeug.utils import secure_filename
+
 from app.app_config import capture_cfg
+
+logger = logging.getLogger(__name__)
 
 factions_bp = Blueprint("factions", __name__)
 
@@ -33,7 +38,7 @@ def add_selected_snippet(faction_id):
     snippet_type = request.form.get("snippet_type") or None
     custom_name = request.form.get("filename", "").strip()
 
-    filename = custom_name if custom_name else file.filename
+    filename = secure_filename(custom_name if custom_name else file.filename)
     if not filename:
         return jsonify({"error": "No filename"}), 400
 
@@ -129,7 +134,8 @@ def add_faction():
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        logger.exception("Error adding faction")
+        return jsonify({"error": "Failed to add faction"}), 500
 
 
 @factions_bp.route("/<int:id>", methods=["PUT"])
@@ -199,7 +205,8 @@ def update_faction(id):
     except ValueError as e:
         return jsonify({"error": str(e)}), 404
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        logger.exception("Error updating faction")
+        return jsonify({"error": "Failed to update faction"}), 500
 
 
 @factions_bp.route("/summary", methods=["GET"])

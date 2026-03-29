@@ -16,12 +16,18 @@ capture_bp = Blueprint("capture", __name__)
 
 
 def _get_db():
-    db = current_app.config.get("DATABASE")
-    if not db:
-        from main import db as main_db
+    return current_app.config["DATABASE"]
 
-        return main_db
-    return db
+
+def _run_capture(make_orchestrator, capture_fn, log_msg, error_msg):
+    """Run a capture operation, returning a JSON response with appropriate status code."""
+    try:
+        result = capture_fn(make_orchestrator(_get_db()))
+        return jsonify(result)
+    except Exception as e:
+        logger.exception(log_msg)
+        status_code = 404 if "not found" in str(e).lower() else 500
+        return jsonify({"error": error_msg}), status_code
 
 
 @capture_bp.route("/reputations", methods=["POST"])
@@ -39,18 +45,12 @@ def capture_reputations():
       500:
         description: Unexpected error during capture
     """
-    try:
-        orchestrator = ProcessReputationsOrchestrator(_get_db())
-        try:
-            result = orchestrator.process_reputations()
-            return jsonify(result)
-        except Exception as e:
-            logger.exception("Error during screen capture and analysis")
-            status_code = 404 if "not found" in str(e).lower() else 500
-            return jsonify({"error": str(e)}), status_code
-    except Exception as e:
-        logger.exception("Error during screen capture and analysis")
-        return jsonify({"error": str(e)}), 500
+    return _run_capture(
+        ProcessReputationsOrchestrator,
+        lambda o: o.process_reputations(),
+        "Error during screen capture and analysis",
+        "Reputation capture failed",
+    )
 
 
 @capture_bp.route("/reputations/<int:faction_id>", methods=["POST"])
@@ -73,18 +73,12 @@ def capture_single_faction_reputation(faction_id):
       500:
         description: Unexpected error during capture
     """
-    try:
-        orchestrator = ProcessReputationsOrchestrator(_get_db())
-        try:
-            result = orchestrator.process_single_faction(faction_id)
-            return jsonify(result)
-        except Exception as e:
-            logger.exception("Error during single faction screen capture")
-            status_code = 404 if "not found" in str(e).lower() else 500
-            return jsonify({"error": str(e)}), status_code
-    except Exception as e:
-        logger.exception("Error during single faction screen capture")
-        return jsonify({"error": str(e)}), 500
+    return _run_capture(
+        ProcessReputationsOrchestrator,
+        lambda o: o.process_single_faction(faction_id),
+        "Error during single faction screen capture",
+        "Faction capture failed",
+    )
 
 
 @capture_bp.route("/identify-faction", methods=["POST"])
@@ -107,7 +101,8 @@ def identify_faction():
         return jsonify(result)
     except Exception as e:
         logger.exception("Error identifying faction")
-        return jsonify({"error": str(e)}), 500
+        status_code = 404 if "not found" in str(e).lower() else 500
+        return jsonify({"error": "Failed to identify faction"}), status_code
 
 
 @capture_bp.route("/away-team-collect", methods=["POST"])
@@ -125,18 +120,12 @@ def capture_away_team_collect():
       500:
         description: Unexpected error during capture
     """
-    try:
-        orchestrator = AwayTeamOrchestrator(_get_db())
-        try:
-            result = orchestrator.capture_away_team_collect()
-            return jsonify(result)
-        except Exception as e:
-            logger.exception("Error during Away Team collect")
-            status_code = 404 if "not found" in str(e).lower() else 500
-            return jsonify({"error": str(e)}), status_code
-    except Exception as e:
-        logger.exception("Error during Away Team collect")
-        return jsonify({"error": str(e)}), 500
+    return _run_capture(
+        AwayTeamOrchestrator,
+        lambda o: o.capture_away_team_collect(),
+        "Error during Away Team collect",
+        "Away Team collect failed",
+    )
 
 
 @capture_bp.route("/away-team", methods=["POST"])
@@ -154,18 +143,12 @@ def capture_away_team():
       500:
         description: Unexpected error during capture
     """
-    try:
-        orchestrator = AwayTeamOrchestrator(_get_db())
-        try:
-            result = orchestrator.capture_away_team()
-            return jsonify(result)
-        except Exception as e:
-            logger.exception("Error during Away Team screen capture")
-            status_code = 404 if "not found" in str(e).lower() else 500
-            return jsonify({"error": str(e)}), status_code
-    except Exception as e:
-        logger.exception("Error during Away Team screen capture")
-        return jsonify({"error": str(e)}), 500
+    return _run_capture(
+        AwayTeamOrchestrator,
+        lambda o: o.capture_away_team(),
+        "Error during Away Team screen capture",
+        "Away Team capture failed",
+    )
 
 
 @capture_bp.route("/gifts", methods=["POST"])
@@ -183,18 +166,12 @@ def capture_gifts():
       500:
         description: Unexpected error during capture
     """
-    try:
-        orchestrator = GiftsOrchestrator(_get_db())
-        try:
-            result = orchestrator.capture_gifts()
-            return jsonify(result)
-        except Exception as e:
-            logger.exception("Error during Gifts screen capture")
-            status_code = 404 if "not found" in str(e).lower() else 500
-            return jsonify({"error": str(e)}), status_code
-    except Exception as e:
-        logger.exception("Error during Gifts screen capture")
-        return jsonify({"error": str(e)}), 500
+    return _run_capture(
+        GiftsOrchestrator,
+        lambda o: o.capture_gifts(),
+        "Error during Gifts screen capture",
+        "Gifts capture failed",
+    )
 
 
 @capture_bp.route("/event-rewards", methods=["POST"])
@@ -212,15 +189,9 @@ def capture_event_rewards():
       500:
         description: Unexpected error during capture
     """
-    try:
-        orchestrator = EventRewardsOrchestrator(_get_db())
-        try:
-            result = orchestrator.capture_event_rewards()
-            return jsonify(result)
-        except Exception as e:
-            logger.exception("Error during Event Rewards screen capture")
-            status_code = 404 if "not found" in str(e).lower() else 500
-            return jsonify({"error": str(e)}), status_code
-    except Exception as e:
-        logger.exception("Error during Event Rewards screen capture")
-        return jsonify({"error": str(e)}), 500
+    return _run_capture(
+        EventRewardsOrchestrator,
+        lambda o: o.capture_event_rewards(),
+        "Error during Event Rewards screen capture",
+        "Event Rewards capture failed",
+    )

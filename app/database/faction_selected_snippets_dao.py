@@ -29,8 +29,7 @@ class FactionSelectedSnippetsDAO:
 
     def get_snippets_for_faction(self, faction_id, snippet_type=None):
         """Return list of filenames for a faction, optionally filtered by type."""
-        conn = self.db.get_connection()
-        try:
+        with self.db.connect() as conn:
             cursor = conn.cursor()
             if snippet_type:
                 cursor.execute(
@@ -45,13 +44,10 @@ class FactionSelectedSnippetsDAO:
                     (faction_id,),
                 )
             return [{"id": r[0], "filename": r[1], "snippet_type": r[2]} for r in cursor.fetchall()]
-        finally:
-            conn.close()
 
     def get_all_snippets(self):
         """Return all rows grouped by faction_id."""
-        conn = self.db.get_connection()
-        try:
+        with self.db.connect() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "SELECT id, faction_id, filename, snippet_type "
@@ -61,44 +57,31 @@ class FactionSelectedSnippetsDAO:
                 {"id": r[0], "faction_id": r[1], "filename": r[2], "snippet_type": r[3]}
                 for r in cursor.fetchall()
             ]
-        finally:
-            conn.close()
 
     def add_snippet(self, faction_id, filename, snippet_type=None):
         """Add a snippet filename for a faction. Returns the new row id."""
-        conn = self.db.get_connection()
-        try:
+        with self.db.connect() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "INSERT INTO faction_selected_snippets (faction_id, filename, snippet_type) "
                 "VALUES (?, ?, ?)",
                 (faction_id, filename, snippet_type),
             )
-            new_id = cursor.lastrowid
-            conn.commit()
-            return new_id
-        finally:
-            conn.close()
+            return cursor.lastrowid
 
     def delete_snippet(self, snippet_id):
         """Delete a snippet row by id. Returns True if a row was deleted."""
-        conn = self.db.get_connection()
-        try:
+        with self.db.connect() as conn:
             cursor = conn.cursor()
             cursor.execute("DELETE FROM faction_selected_snippets WHERE id = ?", (snippet_id,))
-            deleted = cursor.rowcount > 0
-            conn.commit()
-            return deleted
-        finally:
-            conn.close()
+            return cursor.rowcount > 0
 
     def set_snippets_for_faction(self, faction_id, filenames_by_type):
         """Replace all snippets for a faction.
 
         filenames_by_type: list of {"filename": str, "snippet_type": str|None}
         """
-        conn = self.db.get_connection()
-        try:
+        with self.db.connect() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "DELETE FROM faction_selected_snippets WHERE faction_id = ?", (faction_id,)
@@ -109,6 +92,3 @@ class FactionSelectedSnippetsDAO:
                     "VALUES (?, ?, ?)",
                     (faction_id, entry["filename"], entry.get("snippet_type")),
                 )
-            conn.commit()
-        finally:
-            conn.close()

@@ -292,10 +292,13 @@ def get_reader():
 
 class ScreenCapture:
     _instance = None
+    _instance_lock = threading.Lock()
 
     def __new__(cls, *args, **kwargs):
         if cls._instance is None:
-            cls._instance = super().__new__(cls)
+            with cls._instance_lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
         return cls._instance
 
     def __init__(self):
@@ -330,9 +333,14 @@ class ScreenCapture:
     def activate_window(self, window):
         """Bring the window to the foreground.
 
-        Uses the ALT key trick to bypass Windows focus-stealing prevention, which
-        otherwise blocks SetForegroundWindow when called from a background thread
-        (e.g. a Flask request handler where the browser holds foreground focus).
+        Combines several techniques to reliably steal focus from a background
+        Flask thread regardless of which app currently owns the foreground:
+          1. Restore if minimized.
+          2. ALT key trick — simulating VK_MENU convinces Windows the calling
+             thread has had recent input, unlocking SetForegroundWindow.
+          3. SetWindowPos TOPMOST → NOTOPMOST forces the window to the top of
+             the Z-order independently of focus-stealing rules.
+          4. BringWindowToTop + SetForegroundWindow for the actual focus change.
         """
         import ctypes
         import win32con
@@ -342,27 +350,37 @@ class ScreenCapture:
             raise Exception("activate_window: Window is None")
 
         hwnd = window._hWnd
+        _SWP_NOMOVE  = 0x0002
+        _SWP_NOSIZE  = 0x0001
+        _SWP_FLAGS   = _SWP_NOMOVE | _SWP_NOSIZE
 
         if win32gui.IsIconic(hwnd):
             logger.info(f"Restoring minimized window: {window.title}")
             win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
             time.sleep(0.5)
 
-        # Briefly simulate ALT keydown+up. This makes Windows believe the calling
-        # thread has UI rights, allowing SetForegroundWindow to succeed from any thread.
+        # ALT key trick — must sleep briefly after so Windows processes the event
+        # before SetForegroundWindow is called.
         ctypes.windll.user32.keybd_event(win32con.VK_MENU, 0, 0, 0)
         ctypes.windll.user32.keybd_event(win32con.VK_MENU, 0, win32con.KEYEVENTF_KEYUP, 0)
+        time.sleep(0.05)
+
+        # Force window to top of Z-order via TOPMOST, then revert so it behaves normally.
+        win32gui.SetWindowPos(hwnd, win32con.HWND_TOPMOST,    0, 0, 0, 0, _SWP_FLAGS)
+        win32gui.SetWindowPos(hwnd, win32con.HWND_NOTOPMOST,  0, 0, 0, 0, _SWP_FLAGS)
+
+        win32gui.BringWindowToTop(hwnd)
 
         try:
             win32gui.SetForegroundWindow(hwnd)
         except Exception as e:
-            logger.warning(
-                f"SetForegroundWindow failed, falling back to SwitchToThisWindow: {e}"
-            )
+            logger.warning(f"SetForegroundWindow failed: {e}")
             ctypes.windll.user32.SwitchToThisWindow(hwnd, True)
 
         logger.debug(f"Activated window: {window.title}")
-        time.sleep(0.25)
+        # Give Windows time to complete the focus transition before we start
+        # capturing screenshots or sending input.
+        time.sleep(1.0)
 
     def get_and_activate_window(self):
         """Find the STFC window and bring it to the foreground.
