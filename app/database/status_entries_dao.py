@@ -11,35 +11,13 @@ class StatusEntriesDAO:
         cursor.execute("""
                        CREATE TABLE IF NOT EXISTS status_entries
                        (
-                           id
-                           INTEGER
-                           PRIMARY
-                           KEY
-                           AUTOINCREMENT,
-                           faction_id
-                           INTEGER
-                           NOT
-                           NULL,
-                           timestamp
-                           TEXT
-                           NOT
-                           NULL,
-                           value
-                           INTEGER
-                           NOT
-                           NULL,
-                           value_delta
-                           INTEGER
-                           DEFAULT 0,
-                           FOREIGN
-                           KEY
-                       (
-                           faction_id
-                       ) REFERENCES factions
-                       (
-                           id
+                           id         SERIAL PRIMARY KEY,
+                           faction_id INTEGER NOT NULL,
+                           timestamp  TEXT NOT NULL,
+                           value      INTEGER NOT NULL,
+                           value_delta INTEGER DEFAULT 0,
+                           FOREIGN KEY (faction_id) REFERENCES factions(id)
                        )
-                           )
                        """)
 
     def add_status_entry(self, faction_name: str, value: int) -> dict[str, Any]:
@@ -51,7 +29,7 @@ class StatusEntriesDAO:
                 """
                            SELECT f.id
                            FROM factions f
-                           WHERE f.name = ?
+                           WHERE f.name = %s
                            """,
                 (faction_name,),
             )
@@ -66,7 +44,7 @@ class StatusEntriesDAO:
             cursor.execute(
                 """
                            INSERT INTO status_entries (faction_id, timestamp, value)
-                           VALUES (?, ?, ?)
+                           VALUES (%s, %s, %s)
                            """,
                 (faction_id, timestamp, value),
             )
@@ -82,7 +60,7 @@ class StatusEntriesDAO:
                            SELECT se.timestamp, se.value, se.value_delta, se.faction_id
                            FROM status_entries se
                                     JOIN factions f ON se.faction_id = f.id
-                           WHERE f.name = ?
+                           WHERE f.name = %s
                            ORDER BY se.timestamp ASC
                            """,
                 (faction_name,),
@@ -121,7 +99,7 @@ class StatusEntriesDAO:
                     """
             params = []
             if faction_name is not None:
-                query += " WHERE f.name = ?"
+                query += " WHERE f.name = %s"
                 params.append(faction_name)
 
             if sort is not None:
@@ -135,10 +113,10 @@ class StatusEntriesDAO:
                 query += " ORDER BY se.timestamp ASC"
 
             if limit is not None:
-                query += " LIMIT ?"
+                query += " LIMIT %s"
                 params.append(limit)
                 if offset is not None:
-                    query += " OFFSET ?"
+                    query += " OFFSET %s"
                     params.append(offset)
 
             cursor.execute(query, params)
@@ -166,7 +144,7 @@ class StatusEntriesDAO:
             query = "SELECT f.id, f.name FROM factions f"
             params = []
             if faction_name is not None:
-                query += " WHERE f.name = ?"
+                query += " WHERE f.name = %s"
                 params.append(faction_name)
 
             if sort is not None:
@@ -181,10 +159,10 @@ class StatusEntriesDAO:
                 query += f" ORDER BY {column} {direction}"
 
             if limit is not None:
-                query += " LIMIT ?"
+                query += " LIMIT %s"
                 params.append(limit)
                 if offset is not None:
-                    query += " OFFSET ?"
+                    query += " OFFSET %s"
                     params.append(offset)
 
             cursor.execute(query, params)
@@ -196,9 +174,9 @@ class StatusEntriesDAO:
                     """
                                SELECT timestamp, value, faction_id
                                FROM status_entries
-                               WHERE faction_id = ?
+                               WHERE faction_id = %s
                                ORDER BY id DESC
-                                   LIMIT 2
+                               LIMIT 2
                                """,
                     (faction_id,),
                 )

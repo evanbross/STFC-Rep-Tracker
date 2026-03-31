@@ -6,9 +6,9 @@ class FactionSelectedSnippetsDAO:
         """Create faction_selected_snippets table and seed from legacy columns."""
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS faction_selected_snippets (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                faction_id  INTEGER NOT NULL,
-                filename    TEXT    NOT NULL,
+                id           SERIAL PRIMARY KEY,
+                faction_id   INTEGER NOT NULL,
+                filename     TEXT    NOT NULL,
                 snippet_type TEXT,
                 FOREIGN KEY (faction_id) REFERENCES factions(id)
             )
@@ -34,13 +34,13 @@ class FactionSelectedSnippetsDAO:
             if snippet_type:
                 cursor.execute(
                     "SELECT id, filename, snippet_type FROM faction_selected_snippets "
-                    "WHERE faction_id = ? AND snippet_type = ?",
+                    "WHERE faction_id = %s AND snippet_type = %s",
                     (faction_id, snippet_type),
                 )
             else:
                 cursor.execute(
                     "SELECT id, filename, snippet_type FROM faction_selected_snippets "
-                    "WHERE faction_id = ?",
+                    "WHERE faction_id = %s",
                     (faction_id,),
                 )
             return [{"id": r[0], "filename": r[1], "snippet_type": r[2]} for r in cursor.fetchall()]
@@ -64,16 +64,16 @@ class FactionSelectedSnippetsDAO:
             cursor = conn.cursor()
             cursor.execute(
                 "INSERT INTO faction_selected_snippets (faction_id, filename, snippet_type) "
-                "VALUES (?, ?, ?)",
+                "VALUES (%s, %s, %s) RETURNING id",
                 (faction_id, filename, snippet_type),
             )
-            return cursor.lastrowid
+            return cursor.fetchone()[0]
 
     def delete_snippet(self, snippet_id):
         """Delete a snippet row by id. Returns True if a row was deleted."""
         with self.db.connect() as conn:
             cursor = conn.cursor()
-            cursor.execute("DELETE FROM faction_selected_snippets WHERE id = ?", (snippet_id,))
+            cursor.execute("DELETE FROM faction_selected_snippets WHERE id = %s", (snippet_id,))
             return cursor.rowcount > 0
 
     def set_snippets_for_faction(self, faction_id, filenames_by_type):
@@ -84,11 +84,11 @@ class FactionSelectedSnippetsDAO:
         with self.db.connect() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "DELETE FROM faction_selected_snippets WHERE faction_id = ?", (faction_id,)
+                "DELETE FROM faction_selected_snippets WHERE faction_id = %s", (faction_id,)
             )
             for entry in filenames_by_type:
                 cursor.execute(
                     "INSERT INTO faction_selected_snippets (faction_id, filename, snippet_type) "
-                    "VALUES (?, ?, ?)",
+                    "VALUES (%s, %s, %s)",
                     (faction_id, entry["filename"], entry.get("snippet_type")),
                 )

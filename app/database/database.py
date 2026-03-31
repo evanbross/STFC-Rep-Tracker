@@ -1,4 +1,4 @@
-import sqlite3
+import psycopg2
 from contextlib import contextmanager
 
 from app.database import status_entries_dao, factions_dao
@@ -8,8 +8,8 @@ from app.database.reputations_dao import ReputationsDAO
 
 class Database:
 
-    def __init__(self, db_path="stfc_rep_tracker.db"):
-        self.db_path = db_path
+    def __init__(self, db_url):
+        self.db_url = db_url
         self.factions_dao = factions_dao.FactionsDAO(self)
         self.factions = self.factions_dao
 
@@ -22,12 +22,12 @@ class Database:
         self.init_database()
 
     def get_connection(self):
-        return sqlite3.connect(self.db_path)
+        return psycopg2.connect(self.db_url)
 
     @contextmanager
     def connect(self):
         """Context manager that yields a connection, commits on success, rolls back on error, and always closes."""
-        conn = sqlite3.connect(self.db_path)
+        conn = psycopg2.connect(self.db_url)
         try:
             yield conn
             conn.commit()
@@ -45,7 +45,7 @@ class Database:
         # Create all required tables (this also handles initial data application)
         self._create_tables(cursor)
 
-        ReputationsDAO.initialize_dao_instances(conn, self.factions_dao)
+        ReputationsDAO.initialize_dao_instances(self, self.factions_dao)
 
         for dao in ReputationsDAO.get_all_dao_by_class_name().values():
             dao.create_table(cursor)

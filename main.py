@@ -4,8 +4,45 @@ import logging.config
 import os
 import subprocess
 import sys
+import threading
+import time
 
 import yaml
+
+# Load .env if present (ignored in containers where vars are injected directly)
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
+
+def _screenshots_cleanup_worker(folder: str, keep: int = 30, interval: int = 300):
+    """Background thread: every `interval` seconds, delete oldest files in `folder` beyond `keep`."""
+    while True:
+        try:
+            files = [
+                os.path.join(folder, f)
+                for f in os.listdir(folder)
+                if os.path.isfile(os.path.join(folder, f))
+            ]
+            if len(files) > keep:
+                files.sort(key=os.path.getmtime)
+                for path in files[:len(files) - keep]:
+                    os.remove(path)
+                    logger.debug(f"Screenshots cleanup: deleted {path}")
+        except Exception:
+            logger.exception("Screenshots cleanup thread encountered an error")
+        time.sleep(interval)
+
+
+def _check_env():
+    """Warn on startup if expected environment variables are not set."""
+    required = ["DATABASE_URL_POOLED", "DATABASE_URL_DIRECT"]
+    missing = [v for v in required if not os.environ.get(v)]
+    if missing:
+        print(f"WARNING: Missing environment variables: {', '.join(missing)}")
+        print("  Copy .env.example to .env and fill in your values.")
 from flasgger import Swagger
 from flask import Flask, send_from_directory
 from flask_cors import CORS
@@ -31,7 +68,7 @@ app = Flask(
 app.config.from_object(get_config())
 CORS(app, origins=app.config["CORS_ORIGINS"])
 swagger = Swagger(app)
-db = Database(app.config["DATABASE_PATH"])
+db = Database(app.config["DATABASE_URL"])
 app.config["DATABASE"] = db
 app.register_blueprint(capture_bp, url_prefix="/api/capture-screen")
 app.register_blueprint(status_entries_bp, url_prefix="/api/status_entries")
@@ -122,6 +159,10 @@ def _relaunch_as_admin():
 
 
 if __name__ == "__main__":
+    _check_env()
+    screenshots_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Screenshots")
+    t = threading.Thread(target=_screenshots_cleanup_worker, args=(screenshots_dir,), daemon=True)
+    t.start()
     if not app.config["DEBUG"] and not _is_admin():
         logger.info("Not running as administrator — relaunching with elevation")
         _relaunch_as_admin()

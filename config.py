@@ -4,7 +4,7 @@ import os
 class Config:
     """Base configuration"""
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-secret-key-change-in-production'
-    DATABASE_PATH = os.environ.get('DATABASE_PATH') or 'stfc_rep_tracker.db'
+    DATABASE_URL = os.environ.get('DATABASE_URL_POOLED') or os.environ.get('DATABASE_URL')
     CORS_ORIGINS = os.environ.get('CORS_ORIGINS', '*').split(',')
     DEBUG = False
     TESTING = False
@@ -13,7 +13,6 @@ class Config:
 class DevelopmentConfig(Config):
     """Development configuration"""
     DEBUG = True
-    DATABASE_PATH = 'stfc_rep_tracker.db'
 
 
 class ProductionConfig(Config):
@@ -25,7 +24,6 @@ class ProductionConfig(Config):
 class TestingConfig(Config):
     """Testing configuration"""
     TESTING = True
-    DATABASE_PATH = ':memory:'  # Use in-memory database for tests
 
 
 # Configuration dictionary

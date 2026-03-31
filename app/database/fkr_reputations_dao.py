@@ -51,8 +51,5 @@ class FKRReputationsDAO(ReputationsDAO):
             "Associate",  # split into I/II
             "Legend (Lock 3)",  # split into Legend I/II
         ):
-            cursor.execute(
-                "DELETE FROM fkr_reputations WHERE name = ?",
-                (obsolete,),
-            )
+            cursor.execute("DELETE FROM fkr_reputations WHERE name = %s", (obsolete,))
         super().apply_initial_reputations(cursor)

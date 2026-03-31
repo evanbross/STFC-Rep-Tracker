@@ -1,12 +1,23 @@
 import logging
-import sqlite3
 from datetime import datetime
 from typing import Any
+
+import psycopg2.errors
 
 from app.app_config import capture_cfg
 from app.database import reputations_dao
 
 logger = logging.getLogger(__name__)
+
+
+def _get_columns(cursor, table_name: str) -> list[str]:
+    """Return lowercase column names for a table via information_schema."""
+    cursor.execute(
+        "SELECT column_name FROM information_schema.columns "
+        "WHERE table_name = %s AND table_schema = 'public'",
+        (table_name,),
+    )
+    return [row[0].lower() for row in cursor.fetchall()]
 
 
 class FactionsDAO:
@@ -18,42 +29,20 @@ class FactionsDAO:
         cursor.execute("""
                        CREATE TABLE IF NOT EXISTS factions
                        (
-                           id
-                           INTEGER
-                           PRIMARY
-                           KEY
-                           AUTOINCREMENT,
-                           name
-                           TEXT
-                           NOT
-                           NULL
-                           UNIQUE,
-                           on_chart
-                           INTEGER
-                           NOT
-                           NULL
-                           DEFAULT
-                           0,
-                           display_order
-                           INTEGER,
-                           code
-                           TEXT,
-                           color
-                           TEXT,
-                           reputation_table_name
-                           TEXT,
-                           reputation_dao_name
-                           TEXT,
-                           snippet_selected_button
-                           TEXT,
-                           snippet_unselected
-                           TEXT
+                           id                      SERIAL PRIMARY KEY,
+                           name                    TEXT NOT NULL UNIQUE,
+                           on_chart                INTEGER NOT NULL DEFAULT 0,
+                           display_order           INTEGER,
+                           code                    TEXT,
+                           color                   TEXT,
+                           reputation_table_name   TEXT,
+                           reputation_dao_name     TEXT,
+                           snippet_selected_button TEXT,
+                           snippet_unselected      TEXT
                        )
                        """)
 
-        # Ensure required columns exist for existing databases
-        cursor.execute("PRAGMA table_info('factions')")
-        columns = [row[1] for row in cursor.fetchall()]
+        columns = _get_columns(cursor, "factions")
         if "on_chart" not in columns:
             cursor.execute(
                 "ALTER TABLE factions ADD COLUMN on_chart INTEGER NOT NULL DEFAULT 0"
@@ -68,13 +57,11 @@ class FactionsDAO:
             cursor.execute("ALTER TABLE factions ADD COLUMN reputation_table_name TEXT")
         if "reputation_dao_name" not in columns:
             cursor.execute("ALTER TABLE factions ADD COLUMN reputation_dao_name TEXT")
-        # Rename old columns if they exist (SQLite 3.25+)
-        # snippet_selected → snippet_selected_button
+        # Rename old columns if they exist
         if (
             "snippet_selected_button_button" in columns
             and "snippet_selected_button" not in columns
         ):
-            # Fix earlier double-rename corruption
             cursor.execute(
                 "ALTER TABLE factions RENAME COLUMN snippet_selected_button_button TO snippet_selected_button"
             )
@@ -100,7 +87,7 @@ class FactionsDAO:
                     )
                 cursor.execute("ALTER TABLE factions DROP COLUMN snippet_selected_desc")
             except Exception as e:
-                logger.warning(f"Could not drop legacy snippet_selected_desc column (SQLite < 3.35): {e}")
+                logger.warning(f"Could not drop legacy snippet_selected_desc column: {e}")
         if "snippet_unselected" not in columns:
             cursor.execute("ALTER TABLE factions ADD COLUMN snippet_unselected TEXT")
         cursor.execute("""
@@ -108,6 +95,42 @@ class FactionsDAO:
             SET snippet_unselected = 'RepButton' || upper(substr(code, 1, 1)) || lower(substr(code, 2)) || '.jpg'
             WHERE snippet_unselected IS NULL AND code IS NOT NULL
         """)
+
+    @staticmethod
+    def _row_to_dict(row, selected_snippets) -> dict[str, Any]:
+        """Convert a factions SELECT row (10-column tuple) to a faction dict."""
+        return {
+            "id": row[0],
+            "name": row[1],
+            "code": row[2],
+            "on_chart": row[3],
+            "color": row[4],
+            "reputation_table_name": row[5],
+            "display_order": row[6],
+            "reputation_dao_name": row[7],
+            "snippet_selected_button": row[8],
+            "snippet_unselected": row[9],
+            "faction_type": row[2],
+            "selected_snippets": selected_snippets,
+        }
+
+    @staticmethod
+    def _params_to_dict(id, name, code, color, reputation_table_name, on_chart,
+                        display_order, reputation_dao_name, snippet_selected_button,
+                        snippet_unselected) -> dict[str, Any]:
+        """Build a faction response dict from individual field values."""
+        return {
+            "id": id,
+            "name": name,
+            "code": code,
+            "color": color,
+            "reputation_table_name": reputation_table_name,
+            "on_chart": on_chart,
+            "display_order": display_order,
+            "reputation_dao_name": reputation_dao_name,
+            "snippet_selected_button": snippet_selected_button,
+            "snippet_unselected": snippet_unselected,
+        }
 
     def get_all_factions(self) -> list[dict[str, Any]]:
         """Get list of all factions with their selected snippets."""
@@ -132,23 +155,7 @@ class FactionsDAO:
                     {"id": r[1], "filename": r[2], "snippet_type": r[3]}
                 )
 
-            return [
-                {
-                    "id": row[0],
-                    "name": row[1],
-                    "code": row[2],
-                    "on_chart": row[3],
-                    "color": row[4],
-                    "reputation_table_name": row[5],
-                    "display_order": row[6],
-                    "reputation_dao_name": row[7],
-                    "snippet_selected_button": row[8],
-                    "snippet_unselected": row[9],
-                    "faction_type": row[2],
-                    "selected_snippets": snippets_by_faction.get(row[0], []),
-                }
-                for row in rows
-            ]
+            return [self._row_to_dict(row, snippets_by_faction.get(row[0], [])) for row in rows]
 
     def add_faction(
         self,
@@ -169,7 +176,8 @@ class FactionsDAO:
                 cursor.execute(
                     """
                                INSERT INTO factions (name, code, color, reputation_table_name, on_chart, display_order, reputation_dao_name, snippet_selected_button, snippet_unselected)
-                               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                               RETURNING id
                                """,
                     (
                         name,
@@ -183,21 +191,14 @@ class FactionsDAO:
                         snippet_unselected,
                     ),
                 )
-            except sqlite3.IntegrityError:
+            except psycopg2.errors.UniqueViolation:
                 raise ValueError(f"Faction with name '{name}' already exists")
 
-            return {
-                "id": cursor.lastrowid,
-                "name": name,
-                "code": code,
-                "color": color,
-                "reputation_table_name": reputation_table_name,
-                "on_chart": on_chart,
-                "display_order": display_order,
-                "reputation_dao_name": reputation_dao_name,
-                "snippet_selected_button": snippet_selected_button,
-                "snippet_unselected": snippet_unselected,
-            }
+            new_id = cursor.fetchone()[0]
+            return self._params_to_dict(
+                new_id, name, code, color, reputation_table_name, on_chart,
+                display_order, reputation_dao_name, snippet_selected_button, snippet_unselected,
+            )
 
     def update_faction(
         self,
@@ -216,7 +217,7 @@ class FactionsDAO:
         with self.db.connect() as conn:
             cursor = conn.cursor()
 
-            cursor.execute("SELECT id FROM factions WHERE id = ?", (id,))
+            cursor.execute("SELECT id FROM factions WHERE id = %s", (id,))
             if not cursor.fetchone():
                 raise ValueError(f"Faction with id {id} not found")
 
@@ -224,16 +225,16 @@ class FactionsDAO:
                 cursor.execute(
                     """
                                UPDATE factions
-                               SET name                  = ?,
-                                   code                  = ?,
-                                   color                 = ?,
-                                   reputation_table_name = ?,
-                                   on_chart              = ?,
-                                   display_order         = ?,
-                                   reputation_dao_name   = ?,
-                                   snippet_selected_button      = ?,
-                                   snippet_unselected    = ?
-                               WHERE id = ?
+                               SET name                  = %s,
+                                   code                  = %s,
+                                   color                 = %s,
+                                   reputation_table_name = %s,
+                                   on_chart              = %s,
+                                   display_order         = %s,
+                                   reputation_dao_name   = %s,
+                                   snippet_selected_button      = %s,
+                                   snippet_unselected    = %s
+                               WHERE id = %s
                                """,
                     (
                         name,
@@ -248,21 +249,13 @@ class FactionsDAO:
                         id,
                     ),
                 )
-            except sqlite3.IntegrityError:
+            except psycopg2.errors.UniqueViolation:
                 raise ValueError(f"Faction with name '{name}' already exists")
 
-            return {
-                "id": id,
-                "name": name,
-                "code": code,
-                "color": color,
-                "reputation_table_name": reputation_table_name,
-                "on_chart": on_chart,
-                "display_order": display_order,
-                "reputation_dao_name": reputation_dao_name,
-                "snippet_selected_button": snippet_selected_button,
-                "snippet_unselected": snippet_unselected,
-            }
+            return self._params_to_dict(
+                id, name, code, color, reputation_table_name, on_chart,
+                display_order, reputation_dao_name, snippet_selected_button, snippet_unselected,
+            )
 
     def get_faction_by_id(self, faction_id):
         """Get a single faction by id with its selected snippets."""
@@ -271,7 +264,7 @@ class FactionsDAO:
             cursor.execute("""
                 SELECT f.id, f.name, f.code, f.on_chart, f.color, f.reputation_table_name, f.display_order, f.reputation_dao_name, f.snippet_selected_button, f.snippet_unselected
                 FROM factions f
-                WHERE f.id = ?
+                WHERE f.id = %s
             """, (faction_id,))
             row = cursor.fetchone()
             if not row:
@@ -279,24 +272,11 @@ class FactionsDAO:
             cursor.execute("""
                 SELECT id, filename, snippet_type
                 FROM faction_selected_snippets
-                WHERE faction_id = ?
+                WHERE faction_id = %s
                 ORDER BY snippet_type, filename
             """, (faction_id,))
             snippets = [{"id": r[0], "filename": r[1], "snippet_type": r[2]} for r in cursor.fetchall()]
-            return {
-                "id": row[0],
-                "name": row[1],
-                "code": row[2],
-                "on_chart": row[3],
-                "color": row[4],
-                "reputation_table_name": row[5],
-                "display_order": row[6],
-                "reputation_dao_name": row[7],
-                "snippet_selected_button": row[8],
-                "snippet_unselected": row[9],
-                "faction_type": row[2],
-                "selected_snippets": snippets,
-            }
+            return self._row_to_dict(row, snippets)
 
     def get_faction_names(self) -> list[str]:
         """Get a list of all faction names ordered by display_order"""
@@ -313,7 +293,7 @@ class FactionsDAO:
             f"""
                SELECT value, timestamp
                FROM status_entries
-               WHERE faction_id = ?
+               WHERE faction_id = %s
                ORDER BY timestamp DESC
                LIMIT {int(avg_entries)}
             """,
@@ -324,7 +304,7 @@ class FactionsDAO:
         previous = entries[1] if len(entries) > 1 else None
 
         cursor.execute(
-            "SELECT COUNT(*) FROM status_entries WHERE faction_id = ?",
+            "SELECT COUNT(*) FROM status_entries WHERE faction_id = %s",
             (faction_id,),
         )
         entry_count = cursor.fetchone()[0]

@@ -35,6 +35,16 @@ const SnippetsModal = ({ faction, onClose }) => {
     const fileInputRef = React.useRef();
     const pasteZoneRef = React.useRef();
 
+    const nextSnippetFilename = (type, ext = 'png') => {
+        const factionCode = (faction.code || faction.name).toUpperCase();
+        const prefix = `Selected-${type}-${factionCode}-`;
+        const usedNumbers = snippets
+            .map(s => { const m = s.filename.match(new RegExp(`^${prefix}(\\d+)\\.`, 'i')); return m ? parseInt(m[1]) : 0; })
+            .filter(Boolean);
+        const next = usedNumbers.length > 0 ? Math.max(...usedNumbers) + 1 : 1;
+        return `${prefix}${next}.${ext}`;
+    };
+
     const loadSnippets = () => {
         axios.get(`/api/factions/${faction.id}/selected-snippets`)
             .then(r => setSnippets(r.data))
@@ -50,15 +60,8 @@ const SnippetsModal = ({ faction, onClose }) => {
             const item = Array.from(e.clipboardData.items).find(i => i.type.startsWith('image/'));
             if (!item) return;
             const file = item.getAsFile();
-            const factionCode = (faction.code || faction.name).toUpperCase();
-            const prefix = `Selected-${newType}-${factionCode}-`;
-            const usedNumbers = snippets
-                .map(s => { const m = s.filename.match(new RegExp(`^${prefix}(\\d+)\\.`, 'i')); return m ? parseInt(m[1]) : 0; })
-                .filter(Boolean);
-            const next = usedNumbers.length > 0 ? Math.max(...usedNumbers) + 1 : 1;
-            const uniqueName = `${prefix}${next}.png`;
             setPendingFile({ file, previewUrl: URL.createObjectURL(file) });
-            setNewFilename(uniqueName);
+            setNewFilename(nextSnippetFilename(newType));
         };
         window.addEventListener('paste', handlePaste);
         return () => window.removeEventListener('paste', handlePaste);
@@ -80,15 +83,9 @@ const SnippetsModal = ({ faction, onClose }) => {
             const blob = await imageItem.getType(type);
             const ext = type.split('/')[1] || 'png';
             const file = new File([blob], 'pasted', { type });
-            const factionCode = (faction.code || faction.name).toUpperCase();
-            const prefix = `Selected-${newType}-${factionCode}-`;
-            const usedNumbers = snippets
-                .map(s => { const m = s.filename.match(new RegExp(`^${prefix}(\\d+)\\.`, 'i')); return m ? parseInt(m[1]) : 0; })
-                .filter(Boolean);
-            const next = usedNumbers.length > 0 ? Math.max(...usedNumbers) + 1 : 1;
             clearPending();
             setPendingFile({ file, previewUrl: URL.createObjectURL(blob) });
-            setNewFilename(`${prefix}${next}.${ext}`);
+            setNewFilename(nextSnippetFilename(newType, ext));
         } catch (err) {
             alert('Could not read clipboard. Make sure an image is copied and clipboard access is allowed.');
         }
@@ -284,19 +281,16 @@ const SnippetsModal = ({ faction, onClose }) => {
     );
 };
 
+const EMPTY_FORM_DATA = {
+    id: null, name: '', code: '', color: '',
+    reputation_table_name: '', on_chart: 0, display_order: ''
+};
+
 const Factions = () => {
     const [factions, setFactions] = useState([]);
     const [showForm, setShowForm] = useState(false);
     const [snippetFaction, setSnippetFaction] = useState(null);
-    const [formData, setFormData] = useState({
-        id: null,
-        name: '',
-        code: '',
-        color: '',
-        reputation_table_name: '',
-        on_chart: 0,
-        display_order: ''
-    });
+    const [formData, setFormData] = useState(EMPTY_FORM_DATA);
 
     useEffect(() => {
         loadFactions();
@@ -333,15 +327,7 @@ const Factions = () => {
                 await axios.post('/api/factions', formData);
             }
             setShowForm(false);
-            setFormData({
-                id: null,
-                name: '',
-                code: '',
-                color: '',
-                reputation_table_name: '',
-                on_chart: 0,
-                display_order: ''
-            });
+            setFormData(EMPTY_FORM_DATA);
             loadFactions();
         } catch (error) {
             console.error('Error saving faction:', error);

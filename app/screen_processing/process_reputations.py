@@ -25,18 +25,22 @@ class ProcessReputationsOrchestrator:
         self.stat_dao = StatusEntriesDAO(db)
         self.factions_dao = db.factions
 
-    def process_single_faction(self, faction_id):
+    def _navigate_to_factions(self):
+        """Activate window, go home, then click the Factions button.
+
+        Returns (window, None) on success or (None, error_dict) on failure.
+        """
         try:
             window = self.sc.get_and_activate_window()
         except RuntimeError as e:
             logger.error(e)
-            return {"error": str(e)}
+            return None, {"error": str(e)}
 
         try:
             self.sc.navigate_to_home_screen(window)
         except RuntimeError as e:
             logger.error(f"Could not reach home screen: {e}")
-            return {"error": str(e)}
+            return None, {"error": str(e)}
 
         if not wait_and_click_any(
             ["Factions Button.jpg", "Factions Button2.jpg", "Factions Button 3.jpg"],
@@ -45,7 +49,14 @@ class ProcessReputationsOrchestrator:
             (window.left, window.top),
         ):
             logger.error("Factions Button not found")
-            return {"error": "Factions Button not found"}
+            return None, {"error": "Factions Button not found"}
+
+        return window, None
+
+    def process_single_faction(self, faction_id):
+        window, err = self._navigate_to_factions()
+        if err:
+            return err
 
         faction = self.factions_dao.get_faction_by_id(faction_id)
         if not faction:
@@ -68,28 +79,9 @@ class ProcessReputationsOrchestrator:
         return {"saved": saved, "results": results}
 
     def process_reputations(self):
-        try:
-            window = self.sc.get_and_activate_window()
-        except RuntimeError as e:
-            logger.error(e)
-            return {"error": str(e)}
-
-        try:
-            self.sc.navigate_to_home_screen(window)
-        except RuntimeError as e:
-            logger.error(f"Could not reach home screen: {e}")
-            return {"error": str(e)}
-
-        if not wait_and_click_any(
-            ["Factions Button.jpg", "Factions Button2.jpg", "Factions Button 3.jpg"],
-            self.sc,
-            window,
-            (window.left, window.top),
-        ):
-            logger.error("Factions Button not found")
-            return {"error": "Factions Button not found"}
-
-        # self.sc.press_key(window, "T")
+        window, err = self._navigate_to_factions()
+        if err:
+            return err
 
         results = _process_faction_list(self.factions_dao.get_all_factions(), window, self.sc)
 

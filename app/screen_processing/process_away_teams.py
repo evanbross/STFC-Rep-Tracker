@@ -19,6 +19,14 @@ class AwayTeamOrchestrator:
     def __init__(self, db):
         self.sc = ScreenCapture()
 
+    def _get_activated_window(self):
+        """Return (window, None) on success or (None, error_dict) on failure."""
+        try:
+            return self.sc.get_and_activate_window(), None
+        except RuntimeError as e:
+            logger.error(str(e))
+            return None, {"error": str(e)}
+
     def _navigate_to_away_teams(self, window, screen_offset):
         """Navigate to the Away Teams tab. Returns an error dict on failure, else None."""
         self.sc.press_key(window, "c")
@@ -134,11 +142,9 @@ class AwayTeamOrchestrator:
         """Navigate to Away Teams and collect all completed missions (REPORT → COLLECT only).
         Does not start new expeditions.
         """
-        try:
-            window = self.sc.get_and_activate_window()
-        except RuntimeError as e:
-            logger.error(f"{e}")
-            return {"error": str(e)}
+        window, err = self._get_activated_window()
+        if err:
+            return err
 
         screen_offset = (window.left, window.top)
 
@@ -157,11 +163,9 @@ class AwayTeamOrchestrator:
 
     def capture_away_team(self):
         """Navigate to Away Teams, collect all completed missions, then start new expeditions."""
-        try:
-            window = self.sc.get_and_activate_window()
-        except RuntimeError as e:
-            logger.error(f"{e}")
-            return {"error": str(e)}
+        window, err = self._get_activated_window()
+        if err:
+            return err
 
         screen_offset = (window.left, window.top)
 

@@ -33,6 +33,21 @@ class ReputationsDAO:
         return {dao.table_name for dao in cls.dao_instances_by_faction.values()}
 
     @staticmethod
+    def _get_columns(cursor, table_name: str) -> list[str]:
+        """Return lowercase column names for table_name via information_schema."""
+        cursor.execute(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_name = %s AND table_schema = 'public'",
+            (table_name,),
+        )
+        return [row[0].lower() for row in cursor.fetchall()]
+
+    @staticmethod
+    def _resolve_name_col(columns: list[str]) -> str:
+        """Return the correct case for the name column ('name' or 'Name')."""
+        return "name" if "name" in columns else "Name"
+
+    @staticmethod
     def register_dao(faction_name, dao):
         with ReputationsDAO._registry_lock:
             ReputationsDAO.dao_instances_by_faction[faction_name] = dao
@@ -90,19 +105,15 @@ class ReputationsDAO:
         dao = self.dao_instances_by_faction.get(table_name, self)
 
         try:
-            # Most reputation tables use 'Name', but some might use 'name' or 'reputation_name'
-            # We'll try to be smart about it
-            cursor.execute(f"PRAGMA table_info('{table_name}')")
-            columns = [row[1].lower() for row in cursor.fetchall()]
+            columns = self._get_columns(cursor, table_name)
+            name_col = self._resolve_name_col(columns)
 
-            name_col = "name" if "name" in columns else "Name"
-
-            query = f"SELECT id, {name_col}, low_limit, high_limit FROM {table_name} ORDER BY low_limit"
+            query = f'SELECT id, {name_col}, low_limit, high_limit FROM "{table_name}" ORDER BY low_limit'
 
             # Check if high_limit exists (DTI doesn't have it, but has other columns)
             if "high_limit" not in columns:
                 if "messages_count" in columns and "credit_amount" in columns:
-                    query = f"SELECT id, {name_col}, low_limit, messages_count, credit_amount FROM {table_name} ORDER BY low_limit"
+                    query = f'SELECT id, {name_col}, low_limit, messages_count, credit_amount FROM "{table_name}" ORDER BY low_limit'
                     cursor.execute(query)
                     return [
                         {
@@ -116,7 +127,7 @@ class ReputationsDAO:
                     ]
                 else:
                     # Fallback for tables without high_limit
-                    query = f"SELECT id, {name_col}, low_limit FROM {table_name} ORDER BY low_limit"
+                    query = f'SELECT id, {name_col}, low_limit FROM "{table_name}" ORDER BY low_limit'
                     cursor.execute(query)
                     return [
                         {
@@ -145,21 +156,24 @@ class ReputationsDAO:
 
     def create_table(self, cursor):
         """Create reputation table and handle migrations"""
-        # We try to use a case-insensitive check for the name column
-        cursor.execute(f"PRAGMA table_info('{self.table_name}')")
-        columns = [row[1].lower() for row in cursor.fetchall()]
-
-        name_col = "name" if "name" in columns else "Name"
+        columns = self._get_columns(cursor, self.table_name)
+        name_col = self._resolve_name_col(columns)
 
         cursor.execute(f"""
-                       CREATE TABLE IF NOT EXISTS {self.table_name}
+                       CREATE TABLE IF NOT EXISTS "{self.table_name}"
                        (
-                           id INTEGER PRIMARY KEY AUTOINCREMENT,
-                           {name_col} TEXT NOT NULL UNIQUE,
-                           low_limit INTEGER NOT NULL,
+                           id         SERIAL PRIMARY KEY,
+                           {name_col} TEXT NOT NULL,
+                           low_limit  INTEGER NOT NULL,
                            high_limit INTEGER
                        )
                 """)
+
+        # Ensure the unique constraint exists (handles tables created before this migration)
+        cursor.execute(
+            f'CREATE UNIQUE INDEX IF NOT EXISTS "{self.table_name}_name_key" '
+            f'ON "{self.table_name}" (name)'
+        )
 
         # Apply initial reputations
         self.apply_initial_reputations(cursor)
@@ -169,11 +183,8 @@ class ReputationsDAO:
         pass
 
     def apply_initial_reputations(self, cursor):
-        # We try to use a case-insensitive check for the name column
-        cursor.execute(f"PRAGMA table_info('{self.table_name}')")
-        columns = [row[1].lower() for row in cursor.fetchall()]
-
-        name_col = "name" if "name" in columns else "Name"
+        columns = self._get_columns(cursor, self.table_name)
+        name_col = self._resolve_name_col(columns)
 
         # Check if high_limit exists (some special tables like DTI might not have it yet or at all)
         has_high_limit = "high_limit" in columns
@@ -181,42 +192,27 @@ class ReputationsDAO:
         for entry in self.get_initial_reputations():
             if has_high_limit and len(entry) >= 3:
                 name, low_limit, high_limit = entry[0], entry[1], entry[2]
-                # Try to insert
                 cursor.execute(
                     f"""
-                               INSERT OR IGNORE INTO {self.table_name} ({name_col}, low_limit, high_limit)
-                               VALUES (?, ?, ?)
+                               INSERT INTO "{self.table_name}" ({name_col}, low_limit, high_limit)
+                               VALUES (%s, %s, %s)
+                               ON CONFLICT ({name_col}) DO UPDATE
+                                   SET low_limit  = EXCLUDED.low_limit,
+                                       high_limit = EXCLUDED.high_limit
                                """,
                     (name, low_limit, high_limit),
-                )
-
-                # Update values if it already exists
-                cursor.execute(
-                    f"""
-                               UPDATE {self.table_name}
-                               SET low_limit  = ?,
-                                   high_limit = ?
-                               WHERE {name_col} = ?
-                               """,
-                    (low_limit, high_limit, name),
                 )
             else:
                 # Handle cases with fewer columns or missing high_limit
                 name, low_limit = entry[0], entry[1]
                 cursor.execute(
                     f"""
-                               INSERT OR IGNORE INTO {self.table_name} ({name_col}, low_limit)
-                               VALUES (?, ?)
+                               INSERT INTO "{self.table_name}" ({name_col}, low_limit)
+                               VALUES (%s, %s)
+                               ON CONFLICT ({name_col}) DO UPDATE
+                                   SET low_limit = EXCLUDED.low_limit
                                """,
                     (name, low_limit),
-                )
-                cursor.execute(
-                    f"""
-                               UPDATE {self.table_name}
-                               SET low_limit  = ?
-                               WHERE {name_col} = ?
-                               """,
-                    (low_limit, name),
                 )
 
     def find_next_reputation_name(self, conn, current_high_limit):
@@ -224,10 +220,8 @@ class ReputationsDAO:
         if current_high_limit is None:
             return None
         cursor = conn.cursor()
-        # Try exact boundary match (FKR-style: high_limit == next low_limit)
-        # then off-by-one match (DTI-style: high_limit == next low_limit - 1)
         cursor.execute(
-            f"SELECT name FROM {self.table_name} WHERE low_limit IN (?, ?) ORDER BY low_limit LIMIT 1",
+            f'SELECT name FROM "{self.table_name}" WHERE low_limit IN (%s, %s) ORDER BY low_limit LIMIT 1',
             (current_high_limit, current_high_limit + 1),
         )
         row = cursor.fetchone()
@@ -239,7 +233,7 @@ class ReputationsDAO:
             return None
         cursor = conn.cursor()
         cursor.execute(
-            f"SELECT low_limit FROM {self.table_name} WHERE low_limit IN (?, ?) ORDER BY low_limit LIMIT 1",
+            f'SELECT low_limit FROM "{self.table_name}" WHERE low_limit IN (%s, %s) ORDER BY low_limit LIMIT 1',
             (current_high_limit, current_high_limit + 1),
         )
         row = cursor.fetchone()
@@ -251,8 +245,8 @@ class ReputationsDAO:
             cursor.execute(
                 f"""
                            SELECT rep.name, rep.low_limit, rep.high_limit
-                           FROM {self.table_name} AS rep
-                           WHERE rep.low_limit <= ? AND rep.high_limit >= ?
+                           FROM "{self.table_name}" AS rep
+                           WHERE rep.low_limit <= %s AND rep.high_limit >= %s
                            """,
                 (value, value),
             )
@@ -267,20 +261,18 @@ class ReputationsDAO:
         conn = self.db.get_connection()
         cursor = conn.cursor()
         try:
-            cursor.execute(f"PRAGMA table_info('{table_name}')")
-            columns = [row[1].lower() for row in cursor.fetchall()]
-
-            name_col = "name" if "name" in columns else "Name"
+            columns = self._get_columns(cursor, table_name)
+            name_col = self._resolve_name_col(columns)
 
             if "high_limit" in columns:
                 cursor.execute(
-                    f"SELECT {name_col}, high_limit FROM {table_name} ORDER BY low_limit DESC LIMIT 1"
+                    f'SELECT {name_col}, high_limit FROM "{table_name}" ORDER BY low_limit DESC LIMIT 1'
                 )
                 row = cursor.fetchone()
                 return {"name": row[0], "high_limit": row[1]} if row else None
             else:
                 cursor.execute(
-                    f"SELECT {name_col} FROM {table_name} ORDER BY low_limit DESC LIMIT 1"
+                    f'SELECT {name_col} FROM "{table_name}" ORDER BY low_limit DESC LIMIT 1'
                 )
                 row = cursor.fetchone()
                 return {"name": row[0], "high_limit": None} if row else None

@@ -4,3 +4,4 @@ node_modules
 Screenshots
 TestScreenshots
 /frontend/dist/
+.env

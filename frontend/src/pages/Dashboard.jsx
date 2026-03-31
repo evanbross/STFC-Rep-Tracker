@@ -27,6 +27,19 @@ ChartJS.register(
     annotationPlugin
 );
 
+const colorToRgba = (color, alpha) => {
+    if (color.startsWith('#')) {
+        const r = parseInt(color.slice(1, 3), 16);
+        const g = parseInt(color.slice(3, 5), 16);
+        const b = parseInt(color.slice(5, 7), 16);
+        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    }
+    if (color.startsWith('rgb')) {
+        return color.replace('rgb', 'rgba').replace(')', `, ${alpha})`);
+    }
+    return color;
+};
+
 const formatShort = (value, decimals = 0) => {
     if (value == null) return null;
     const abs = Math.abs(value);
@@ -84,6 +97,9 @@ const Dashboard = () => {
             return factionList;
         } catch (error) {
             console.error('Error loading factions:', error);
+            if (!error.response) {
+                alert('Cannot reach the server. Is the backend running?');
+            }
         }
     };
 
@@ -103,6 +119,9 @@ const Dashboard = () => {
             updateChart(grouped);
         } catch (error) {
             console.error('Error loading entries:', error);
+            if (!error.response) {
+                alert('Cannot reach the server. Is the backend running?');
+            }
         }
     };
 
@@ -113,15 +132,7 @@ const Dashboard = () => {
             {
                 const color = factionColorsMap[factionName] || 'rgb(128, 128, 128)';
 
-                let backgroundColor = color;
-                if (color.startsWith('#')) {
-                    const r = parseInt(color.slice(1, 3), 16);
-                    const g = parseInt(color.slice(3, 5), 16);
-                    const b = parseInt(color.slice(5, 7), 16);
-                    backgroundColor = `rgba(${r}, ${g}, ${b}, 0.2)`;
-                } else if (color.startsWith('rgb')) {
-                    backgroundColor = color.replace('rgb', 'rgba').replace(')', ', 0.2)');
-                }
+                const backgroundColor = colorToRgba(color, 0.2);
 
                 datasets.push({
                     label: factionName,
@@ -159,7 +170,11 @@ const Dashboard = () => {
             await loadEntries(list);
         } catch (error) {
             console.error('Error adding entry:', error);
-            alert('Failed to add entry');
+            if (!error.response) {
+                alert('Cannot reach the server. Is the backend running?');
+            } else {
+                alert('Failed to add entry.');
+            }
         }
     };
 
@@ -206,7 +221,11 @@ const Dashboard = () => {
             }
         } catch (error) {
             console.error('Error capturing screen:', error);
-            alert('Failed to capture screen.');
+            if (!error.response) {
+                alert('Cannot reach the server. Is the backend running?');
+            } else {
+                alert('Failed to capture screen.');
+            }
         } finally {
             setIsCapturing(false);
         }
@@ -231,7 +250,11 @@ const Dashboard = () => {
             }
         } catch (error) {
             console.error('Error capturing faction:', error);
-            alert(`Failed to capture ${faction.name}.`);
+            if (!error.response) {
+                alert('Cannot reach the server. Is the backend running?');
+            } else {
+                alert(`Failed to capture ${faction.name}.`);
+            }
         } finally {
             setCapturingFactionId(null);
         }
@@ -326,7 +349,7 @@ const Dashboard = () => {
                                         <div className="status-item full-width">
                                             <span className="status-label">Value / Change:</span>
                                             <span className="status-value">
-                                                {formatShort(faction.current_value)} / {faction.last_delta >= 0 ? '+' : '-'}{formatShort(faction.last_delta)}
+                                                {formatShort(faction.current_value, 3)} / {faction.last_delta >= 0 ? '+' : '-'}{formatShort(faction.last_delta, 3)}
                                             </span>
                                         </div>
                                         <div className="status-item full-width">

@@ -15,84 +15,53 @@ def _validate_table_name(table_name: str):
         return jsonify({"error": f"Unknown reputation table: '{table_name}'"}), 404
     return None
 
+
+def _get_faction_reputations(faction_key: str, display_name: str):
+    """Shared handler for per-faction reputation GET routes."""
+    dao = ReputationsDAO.get_dao_by_faction_name(faction_key)
+    if not dao:
+        return jsonify({"error": f"{display_name} reputation DAO not found"}), 404
+    return jsonify(dao.get_all())
+
+
 @reputations_bp.route("", methods=["GET"])
 def get_reputations():
-    """Get list of all fkr_reputations"""
-    dao = ReputationsDAO.get_dao_by_faction_name("fkr_reputations")
-    if not dao:
-        return jsonify({"error": "FKR reputation DAO not found"}), 404
-    reputations = dao.get_all()
-    return jsonify(reputations)
+    return _get_faction_reputations("fkr_reputations", "FKR")
 
 
 @reputations_bp.route("/augment", methods=["GET"])
 def get_augment_reputations():
-    """Get list of all augment reputations"""
-    dao = ReputationsDAO.get_dao_by_faction_name("augment_reputations")
-    if not dao:
-        return jsonify({"error": "Augment reputation DAO not found"}), 404
-    reputations = dao.get_all()
-    return jsonify(reputations)
+    return _get_faction_reputations("augment_reputations", "Augment")
 
 
 @reputations_bp.route("/rogue", methods=["GET"])
 def get_rogue_reputations():
-    """Get list of all rogue reputations"""
-    dao = ReputationsDAO.get_dao_by_faction_name("rogue_reputations")
-    if not dao:
-        return jsonify({"error": "Rogue reputation DAO not found"}), 404
-    reputations = dao.get_all()
-    return jsonify(reputations)
+    return _get_faction_reputations("rogue_reputations", "Rogue")
 
 
 @reputations_bp.route("/bajoran", methods=["GET"])
 def get_bajoran_reputations():
-    """Get list of all bajoran reputations"""
-    dao = ReputationsDAO.get_dao_by_faction_name("bajoran_reputations")
-    if not dao:
-        return jsonify({"error": "Bajoran reputation DAO not found"}), 404
-    reputations = dao.get_all()
-    return jsonify(reputations)
+    return _get_faction_reputations("bajoran_reputations", "Bajoran")
 
 
 @reputations_bp.route("/terran", methods=["GET"])
 def get_terran_reputations():
-    """Get list of all terran reputations"""
-    dao = ReputationsDAO.get_dao_by_faction_name("terran_reputations")
-    if not dao:
-        return jsonify({"error": "Terran reputation DAO not found"}), 404
-    reputations = dao.get_all()
-    return jsonify(reputations)
+    return _get_faction_reputations("terran_reputations", "Terran")
 
 
 @reputations_bp.route("/dti", methods=["GET"])
 def get_dti_reputations():
-    """Get list of all dti reputations"""
-    dao = ReputationsDAO.get_dao_by_faction_name("dti_reputations")
-    if not dao:
-        return jsonify({"error": "DTI reputation DAO not found"}), 404
-    reputations = dao.get_all()
-    return jsonify(reputations)
+    return _get_faction_reputations("dti_reputations", "DTI")
 
 
 @reputations_bp.route("/section31", methods=["GET"])
 def get_section31_reputations():
-    """Get list of all section 31 reputations"""
-    dao = ReputationsDAO.get_dao_by_faction_name("section31_reputations")
-    if not dao:
-        return jsonify({"error": "Section 31 reputation DAO not found"}), 404
-    reputations = dao.get_all()
-    return jsonify(reputations)
+    return _get_faction_reputations("section31_reputations", "Section 31")
 
 
 @reputations_bp.route("/ex-borg", methods=["GET"])
 def get_ex_borg_reputations():
-    """Get list of all ex-borg reputations"""
-    dao = ReputationsDAO.get_dao_by_faction_name("ex_borg_reputations")
-    if not dao:
-        return jsonify({"error": "Ex-Borg reputation DAO not found"}), 404
-    reputations = dao.get_all()
-    return jsonify(reputations)
+    return _get_faction_reputations("ex_borg_reputations", "Ex-Borg")
 
 
 @reputations_bp.route("/all", methods=["GET"])
@@ -162,8 +131,13 @@ def update_reputation_row(table_name, row_id):
         conn = db.get_connection()
         cursor = conn.cursor()
 
-        cursor.execute(f"PRAGMA table_info('{table_name}')")
-        columns = {row[1].lower(): row[1] for row in cursor.fetchall()}
+        cursor.execute(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_name = %s AND table_schema = 'public'",
+            (table_name,),
+        )
+        rows = cursor.fetchall()
+        columns = {row[0].lower(): row[0] for row in rows}
         if not columns:
             conn.close()
             return jsonify({"error": f"Table '{table_name}' not found"}), 400
@@ -173,19 +147,19 @@ def update_reputation_row(table_name, row_id):
         params = []
 
         if "name" in body:
-            updates.append(f"{name_col} = ?")
+            updates.append(f"{name_col} = %s")
             params.append(body["name"])
         if "low_limit" in body:
-            updates.append("low_limit = ?")
+            updates.append("low_limit = %s")
             params.append(body["low_limit"])
         if "high_limit" in body and "high_limit" in columns:
-            updates.append("high_limit = ?")
+            updates.append("high_limit = %s")
             params.append(body["high_limit"])
         if "messages_count" in body and "messages_count" in columns:
-            updates.append("messages_count = ?")
+            updates.append("messages_count = %s")
             params.append(body["messages_count"])
         if "credit_amount" in body and "credit_amount" in columns:
-            updates.append("credit_amount = ?")
+            updates.append("credit_amount = %s")
             params.append(body["credit_amount"])
 
         if not updates:
@@ -193,7 +167,7 @@ def update_reputation_row(table_name, row_id):
             return jsonify({"error": "No valid fields to update"}), 400
 
         params.append(row_id)
-        cursor.execute(f"UPDATE {table_name} SET {', '.join(updates)} WHERE id = ?", params)
+        cursor.execute(f'UPDATE "{table_name}" SET {", ".join(updates)} WHERE id = %s', params)
         conn.commit()
         conn.close()
         return jsonify({"success": True})

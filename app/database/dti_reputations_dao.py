@@ -7,8 +7,7 @@ class DTIReputationsDAO(ReputationsDAO):
 
     def create_table(self, cursor):
         """Create dti_reputations table and handle migrations"""
-        cursor.execute("PRAGMA table_info('dti_reputations')")
-        columns = [row[1].lower() for row in cursor.fetchall()]
+        columns = self._get_columns(cursor, 'dti_reputations')
 
         # Migrate reputation_name → name if needed
         if "reputation_name" in columns and "name" not in columns:
@@ -17,14 +16,19 @@ class DTIReputationsDAO(ReputationsDAO):
 
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS dti_reputations (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL UNIQUE,
-                low_limit INTEGER NOT NULL,
-                high_limit INTEGER,
+                id             SERIAL PRIMARY KEY,
+                name           TEXT NOT NULL,
+                low_limit      INTEGER NOT NULL,
+                high_limit     INTEGER,
                 messages_count INTEGER NOT NULL,
-                credit_amount INTEGER NOT NULL
+                credit_amount  BIGINT NOT NULL
             )
         ''')
+
+        cursor.execute(
+            'CREATE UNIQUE INDEX IF NOT EXISTS "dti_reputations_name_key" '
+            'ON dti_reputations (name)'
+        )
 
         # Add high_limit column if missing (migration for existing tables)
         if "high_limit" not in columns:
@@ -59,15 +63,14 @@ class DTIReputationsDAO(ReputationsDAO):
     def apply_initial_reputations(self, cursor):
         # Remove stale rows that were renamed to Consort I / Associate I
         for obsolete in ('Consort', 'Associate'):
-            cursor.execute("DELETE FROM dti_reputations WHERE name = ?", (obsolete,))
+            cursor.execute("DELETE FROM dti_reputations WHERE name = %s", (obsolete,))
         for name, low_limit, high_limit, messages_count, credit_amount in self.get_initial_reputations():
             cursor.execute('''
-                INSERT OR IGNORE INTO dti_reputations (name, low_limit, high_limit, messages_count, credit_amount)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO dti_reputations (name, low_limit, high_limit, messages_count, credit_amount)
+                VALUES (%s, %s, %s, %s, %s)
+                ON CONFLICT (name) DO UPDATE
+                    SET low_limit      = EXCLUDED.low_limit,
+                        high_limit     = EXCLUDED.high_limit,
+                        messages_count = EXCLUDED.messages_count,
+                        credit_amount  = EXCLUDED.credit_amount
             ''', (name, low_limit, high_limit, messages_count, credit_amount))
-
-            cursor.execute('''
-                UPDATE dti_reputations
-                SET low_limit = ?, high_limit = ?, messages_count = ?, credit_amount = ?
-                WHERE name = ?
-            ''', (low_limit, high_limit, messages_count, credit_amount, name))
