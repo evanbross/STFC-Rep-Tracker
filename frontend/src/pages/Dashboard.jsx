@@ -69,6 +69,7 @@ const Dashboard = () => {
     const [isCapturing, setIsCapturing] = useState(false);
     const [capturingFactionId, setCapturingFactionId] = useState(null);
     const [hiddenDatasets, setHiddenDatasets] = useState({});
+    const [territorySystems, setTerritorySystems] = useState(null);
     const chartRef = useRef(null);
 
     useEffect(() => {
@@ -217,8 +218,10 @@ const Dashboard = () => {
             } else if (data.success && data.claims !== undefined) {
                 // Gifts result
                 alert(`Gifts complete.\nClaim All clicked: ${data.claims}`);
+            } else if (data.success && data.systems !== undefined) {
+                // Territory capture result
+                setTerritorySystems(data.systems);
             } else if (data.success) {
-                // Generic success (e.g. navigation-only actions)
                 alert('Done.');
             } else {
                 alert('Capture returned an unexpected response.');
@@ -517,6 +520,53 @@ const Dashboard = () => {
                         Event Rewards
                     </button>
                 </div>
+
+                {territorySystems !== null && (
+                    <div style={{marginTop: '1.5rem'}}>
+                        <h3 style={{marginBottom: '0.5rem'}}>
+                            Territory Capture Calendar
+                            <button
+                                onClick={() => setTerritorySystems(null)}
+                                style={{
+                                    marginLeft: '1rem',
+                                    fontSize: '0.75rem',
+                                    padding: '0.2rem 0.5rem',
+                                    cursor: 'pointer',
+                                    background: 'none',
+                                    border: '1px solid #888',
+                                    borderRadius: '3px',
+                                    color: '#888',
+                                }}
+                            >
+                                Clear
+                            </button>
+                        </h3>
+                        {territorySystems.length === 0 ? (
+                            <p style={{color: '#888', fontSize: '0.9rem'}}>
+                                No territory systems with timers were detected. Check the debug screenshots and OCR logs.
+                            </p>
+                        ) : (
+                            <table style={{width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem'}}>
+                                <thead>
+                                    <tr style={{borderBottom: '1px solid #444', textAlign: 'left'}}>
+                                        <th style={{padding: '0.4rem 0.75rem'}}>System</th>
+                                        <th style={{padding: '0.4rem 0.75rem'}}>Time Remaining</th>
+                                        <th style={{padding: '0.4rem 0.75rem'}}>Next Takeover</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {territorySystems.map((sys, i) => (
+                                        <tr key={i} style={{borderBottom: '1px solid #333'}}>
+                                            <td style={{padding: '0.4rem 0.75rem', fontWeight: 'bold'}}>{sys.name}</td>
+                                            <td style={{padding: '0.4rem 0.75rem', color: '#aaa'}}>{sys.time_remaining}</td>
+                                            <td style={{padding: '0.4rem 0.75rem'}}>{sys.event_time ?? '—'}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        )}
+                    </div>
+                )}
             </div>
 
             <div className="chart-container">

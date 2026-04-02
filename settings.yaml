@@ -46,6 +46,11 @@ stfc_config:
     # Seconds to wait after each action in the navigation and claim loops
     loop_delay: 0.25
 
+  territory:
+    # Fallback pixels to crop from the top of the screenshot before OCR,
+    # used only when Alliance Territory Zone Slots 1.jpg is not found on screen.
+    title_bar_crop_px: 40
+
   ocr:
     # Upscale factor applied to the region before OCR runs
     scale_factor: 3
