@@ -1,8 +1,6 @@
 import logging
 import time
 
-import cv2
-
 from app.screen_processing.screen_capture import (
     ScreenCapture,
     click_button_if_visible,
@@ -55,8 +53,7 @@ class AwayTeamOrchestrator:
                 logger.error(f"could not reach home screen: {e}")
                 return {"error": str(e)}
 
-            img_path = self.sc.capture_window(window)
-            img = cv2.imread(img_path)
+            img = self.sc.capture(window)
             if not click_button_if_visible(
                 ["Mission Button.jpg", "Mission Button 2.jpg"], img, screen_offset
             ):
@@ -65,8 +62,7 @@ class AwayTeamOrchestrator:
             logger.info("clicked Mission Button")
             time.sleep(0.5)
 
-            img_path = self.sc.capture_window(window)
-            img = cv2.imread(img_path)
+            img = self.sc.capture(window)
             if not click_button_if_visible(tabImages, img, screen_offset):
                 logger.error("Away Teams Tab (Un)selected not found")
                 return {"error": "Away Teams Tab (Un)selected not found — add Away Teams Tab Unselected.jpg to app/screen_snippets/"}
@@ -80,23 +76,28 @@ class AwayTeamOrchestrator:
         reports_clicked = 0
         collected = 0
         while True:
-            img_path = self.sc.capture_window(window)
-            img = cv2.imread(img_path)
+            # Wait for the list to be fully rendered before looking for a REPORT button.
+            # "Away Teams Tab Selected.jpg" appears as soon as the nav bar is visible,
+            # which is before the list items have loaded — use the list indicator instead.
+            if wait_for_template("Away Teams List Indicator.jpg", self.sc, window, max_retries=20) is None:
+                logger.warning("Away Teams list not detected, stopping collect cycle")
+                break
+
+            img = self.sc.capture(window)
             if img is None:
                 break
             if not click_button_if_visible("Away Teams Report.jpg", img, screen_offset):
+                logger.info("no REPORT button visible — collect cycle complete")
                 break
             reports_clicked += 1
             logger.info(f"clicked REPORT ({reports_clicked})")
 
-            if wait_and_click("collect.jpg", self.sc, window, screen_offset):
-                collected += 1
-                logger.info(f"clicked COLLECT ({collected})")
-
-            if wait_for_template("Away Teams Tab Selected.jpg", self.sc, window, max_retries=20) is None:
-                logger.warning("Away Teams tab not redetected after COLLECT, stopping report cycle")
+            if not wait_and_click("collect.jpg", self.sc, window, screen_offset):
+                logger.warning("COLLECT button not found after REPORT click — stopping")
                 break
-            time.sleep(0.5)
+            collected += 1
+            logger.info(f"clicked COLLECT ({collected})")
+            # Loop back — list indicator wait at the top handles the transition delay
 
         logger.info(f"{reports_clicked} report(s), {collected} collected")
         return reports_clicked, collected
@@ -110,8 +111,7 @@ class AwayTeamOrchestrator:
                 break
 
             time.sleep(0.5)
-            img_path = self.sc.capture_window(window)
-            img = cv2.imread(img_path)
+            img = self.sc.capture(window)
             if img is None:
                 break
 

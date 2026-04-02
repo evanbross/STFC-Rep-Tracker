@@ -52,3 +52,22 @@ stfc_config:
     # Fraction of the window height / width to crop for the Points region
     points_height_frac: 0.20
     points_width_frac: 0.22
+
+  performance:
+    # Cache template images in memory after first load.
+    # Avoids re-reading the same snippet file from disk on every match call.
+    # Disable only if snippet files change while the app is running.
+    template_cache: true
+
+    # Screenshot pipeline: "disk" saves each capture as a PNG then reloads it
+    # (classic behaviour — good for step-by-step debugging); "memory" keeps
+    # frames as numpy arrays and skips all disk I/O during polling loops (faster).
+    capture_mode: memory   # "disk" | "memory"
+
+    # When capture_mode is "memory", also write each captured frame to
+    # screenshots_dir on a background thread for post-mortem review.
+    # Has no effect when capture_mode is "disk" (files are always written there).
+    write_behind: false
+
+    # Maximum frames queued for write-behind before new frames are dropped silently.
+    write_behind_queue_size: 20

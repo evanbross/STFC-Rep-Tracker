@@ -1,5 +1,6 @@
 import logging
 import os
+import queue
 import threading
 import time
 from datetime import datetime
@@ -22,6 +23,73 @@ _BUTTON_MATCH_THRESHOLD = capture_cfg("button_match_threshold", default=0.85)
 
 _ocr_reader = None
 _ocr_reader_lock = threading.Lock()
+
+# --- Template image cache ---
+# Maps absolute template path -> loaded BGR numpy array.
+# Populated lazily on first use; entries never expire because snippet files
+# don't change while the app is running.
+_template_cache: dict = {}
+
+
+def _load_template(template_path: str):
+    """Return the template image for template_path, using the in-memory cache.
+
+    Falls back to cv2.imread on every call when performance.template_cache is
+    false (useful if you are actively replacing snippet files mid-run).
+    Returns None if the file cannot be read.
+    """
+    if not capture_cfg("performance", "template_cache", default=True):
+        return cv2.imread(template_path)
+    img = _template_cache.get(template_path)
+    if img is None:
+        img = cv2.imread(template_path)
+        if img is not None:
+            _template_cache[template_path] = img
+    return img
+
+
+# --- Write-behind screenshot thread ---
+# When capture_mode == "memory" and write_behind == true, captured frames are
+# pushed here and saved to disk asynchronously so the capture path stays fast.
+_write_queue: queue.Queue | None = None
+_write_queue_lock = threading.Lock()
+
+
+def _write_worker(q: queue.Queue) -> None:
+    """Background daemon: pop (img_bgr, filepath) pairs from q and write them."""
+    while True:
+        item = q.get()
+        if item is None:
+            break
+        img_bgr, filepath = item
+        try:
+            cv2.imwrite(filepath, img_bgr)
+        except Exception as e:
+            logger.warning(f"write-behind: failed to save {filepath}: {e}")
+        finally:
+            q.task_done()
+
+
+def _get_write_queue() -> queue.Queue:
+    """Return the write-behind queue, starting the worker thread on first call."""
+    global _write_queue
+    if _write_queue is None:
+        with _write_queue_lock:
+            if _write_queue is None:
+                max_size = capture_cfg(
+                    "performance", "write_behind_queue_size", default=20
+                )
+                q: queue.Queue = queue.Queue(maxsize=int(max_size))
+                t = threading.Thread(
+                    target=_write_worker,
+                    args=(q,),
+                    daemon=True,
+                    name="screenshot-write-behind",
+                )
+                t.start()
+                _write_queue = q
+    return _write_queue
+
 
 # Special-key VK code map for keys that can't be derived from ord().
 _VK_SPECIAL = {
@@ -77,7 +145,7 @@ def match_template(filename, img, crop_h_frac=1.0):
         logger.error(msg)
         raise FileNotFoundError(msg)
 
-    template = cv2.imread(template_path)
+    template = _load_template(template_path)
     if template is None:
         return None
 
@@ -224,8 +292,7 @@ def wait_for_template(filename, sc, window, max_retries=None, delay=None):
     if delay is None:
         delay = capture_cfg("screen_wait_delay", default=0.25)
     for _ in range(max_retries):
-        img_path = sc.capture_window(window, delay=delay)
-        img = cv2.imread(img_path)
+        img = sc.capture(window, delay=delay)
         if img is not None and is_template_visible(filename, img):
             return img
     logger.warning(f"'{filename}' not detected after {max_retries} attempts")
@@ -244,8 +311,7 @@ def wait_for_any_template(filenames, sc, window, max_retries=None, delay=None):
     if delay is None:
         delay = capture_cfg("screen_wait_delay", default=0.25)
     for _ in range(max_retries):
-        img_path = sc.capture_window(window, delay=delay)
-        img = cv2.imread(img_path)
+        img = sc.capture(window, delay=delay)
         if img is None:
             continue
         for filename in filenames:
@@ -415,6 +481,46 @@ class ScreenCapture:
         logger.debug(f"Screenshot saved to {filepath}")
         return filepath
 
+    def capture_window_np(self, window, delay=None, activate=False) -> np.ndarray:
+        """Capture the window to a BGR numpy array without a synchronous disk write.
+
+        If performance.write_behind is true the frame is also pushed onto the
+        write-behind queue so a PNG copy lands in screenshots_dir asynchronously —
+        useful for post-mortem review without adding latency to the polling loop.
+        """
+        if activate:
+            self.activate_window(window)
+        left, top, width, height = window.left, window.top, window.width, window.height
+        if delay:
+            time.sleep(delay)
+        screenshot = pyautogui.screenshot(region=(left, top, width, height))
+        img_bgr = cv2.cvtColor(np.array(screenshot), cv2.COLOR_RGB2BGR)
+        logger.debug("Captured window to numpy array (in-memory)")
+
+        if capture_cfg("performance", "write_behind", default=False):
+            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S_%f")
+            filepath = os.path.join(self.output_dir, f"capture_{timestamp}.png")
+            try:
+                _get_write_queue().put_nowait((img_bgr.copy(), filepath))
+                logger.debug(f"Queued write-behind: {filepath}")
+            except queue.Full:
+                logger.debug("write-behind queue full — frame dropped")
+
+        return img_bgr
+
+    def capture(self, window, delay=None, activate=False) -> np.ndarray | None:
+        """Capture the window and return a BGR numpy array.
+
+        Dispatches to capture_window_np (memory mode) or capture_window + imread
+        (disk mode) depending on the performance.capture_mode setting.
+        Use this in all polling and recognition code so the setting takes effect
+        uniformly without changing call sites.
+        """
+        if capture_cfg("performance", "capture_mode", default="disk") == "memory":
+            return self.capture_window_np(window, delay=delay, activate=activate)
+        img_path = self.capture_window(window, delay=delay, activate=activate)
+        return cv2.imread(img_path)
+
     # def capture_window_mss(self, window):
     #     """Capture the window using mss (faster than pyautogui, handles multi-monitor)."""
     #     import mss
@@ -468,7 +574,7 @@ class ScreenCapture:
                 logger.error(f"Template image not found: {template_path}")
                 return None
 
-            template = cv2.imread(template_path)
+            template = _load_template(template_path)
             if template is None:
                 logger.error(f"Failed to load template image: {template_path}")
                 return None
@@ -592,8 +698,7 @@ class ScreenCapture:
             )
 
         for attempt in range(1, max_retries + 1):
-            img_path = self.capture_window(window)
-            img = cv2.imread(img_path)
+            img = self.capture(window)
             if img is None:
                 logger.warning(
                     f"could not read screenshot (attempt {attempt}/{max_retries})"

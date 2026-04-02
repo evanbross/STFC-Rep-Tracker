@@ -1,8 +1,6 @@
 import logging
 import time
 
-import cv2
-
 from app.app_config import capture_cfg
 from app.screen_processing.screen_capture import (
     ScreenCapture,
@@ -53,8 +51,7 @@ class GiftsOrchestrator:
         logger.info("starting navigation loop to reach Gifts screen")
         on_gifts_screen = False
         for attempt in range(1, max_nav_attempts + 1):
-            img_path = self.sc.capture_window(window)
-            img = cv2.imread(img_path)
+            img = self.sc.capture(window)
             if img is None:
                 logger.warning(
                     f"could not read screenshot (attempt {attempt}/{max_nav_attempts})"
@@ -84,8 +81,7 @@ class GiftsOrchestrator:
                 logger.error(f"could not reach home screen: {e}")
                 return {"error": str(e)}
 
-            img_path = self.sc.capture_window(window)
-            img = cv2.imread(img_path)
+            img = self.sc.capture(window)
             if not click_button_if_visible(
                 ["Gifts 1.jpg", "Gifts 2.jpg"], img, screen_offset
             ):
@@ -115,8 +111,7 @@ class GiftsOrchestrator:
         logger.info("starting claim loop")
         claims = 0
         while True:
-            img_path = self.sc.capture_window(window)
-            img = cv2.imread(img_path)
+            img = self.sc.capture(window)
             if img is None:
                 logger.warning("could not read screenshot during claim loop, stopping")
                 break

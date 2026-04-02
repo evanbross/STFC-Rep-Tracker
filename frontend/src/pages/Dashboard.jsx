@@ -185,6 +185,7 @@ const Dashboard = () => {
             away_team: '/api/capture-screen/away-team',
             gifts: '/api/capture-screen/gifts',
             event_rewards: '/api/capture-screen/event-rewards',
+            territory_capture: '/api/capture-screen/territory-capture',
         };
         setIsCapturing(true);
         try {
@@ -216,6 +217,9 @@ const Dashboard = () => {
             } else if (data.success && data.claims !== undefined) {
                 // Gifts result
                 alert(`Gifts complete.\nClaim All clicked: ${data.claims}`);
+            } else if (data.success) {
+                // Generic success (e.g. navigation-only actions)
+                alert('Done.');
             } else {
                 alert('Capture returned an unexpected response.');
             }
@@ -478,6 +482,22 @@ const Dashboard = () => {
                         }}
                     >
                         Gifts
+                    </button>
+                    <button
+                        onClick={() => handleCaptureScreen('territory_capture')}
+                        disabled={isCapturing}
+                        style={{
+                            flex: 1,
+                            padding: '1rem',
+                            fontSize: '1.1rem',
+                            backgroundColor: isCapturing ? '#ccc' : '#00796B',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: isCapturing ? 'not-allowed' : 'pointer'
+                        }}
+                    >
+                        Territory Capture<br/>Calendar
                     </button>
                     <button
                         onClick={() => alert('This feature is not available yet')}

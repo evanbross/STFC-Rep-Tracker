@@ -5,6 +5,7 @@ from flask import Blueprint, jsonify, current_app
 from app.screen_processing.process_away_teams import AwayTeamOrchestrator
 from app.screen_processing.process_event_rewards import EventRewardsOrchestrator
 from app.screen_processing.process_gifts import GiftsOrchestrator
+from app.screen_processing.process_territory_capture import TerritoryCaptureOrchestrator
 from app.screen_processing.process_reputations import (
     ProcessReputationsOrchestrator,
     capture_and_identify_faction,
@@ -171,6 +172,29 @@ def capture_gifts():
         lambda o: o.capture_gifts(),
         "Error during Gifts screen capture",
         "Gifts capture failed",
+    )
+
+
+@capture_bp.route("/territory-capture", methods=["POST"])
+def navigate_territory_capture():
+    """
+    Navigate to home screen, click Alliance, then click Territory
+    ---
+    tags:
+      - Capture
+    responses:
+      200:
+        description: Successfully navigated to Territory Capture screen
+      404:
+        description: Game window not found
+      500:
+        description: Unexpected error during navigation
+    """
+    return _run_capture(
+        TerritoryCaptureOrchestrator,
+        lambda o: o.navigate_to_territory_capture(),
+        "Error during Territory Capture navigation",
+        "Territory Capture navigation failed",
     )
 
 

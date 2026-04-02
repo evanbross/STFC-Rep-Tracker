@@ -102,19 +102,18 @@ class ProcessReputationsOrchestrator:
         return {"saved": saved, "results": results}
 
 
-def _find_highlighted_faction(image_path, factions):
+def _find_highlighted_faction(img, factions):
     """Identify which faction is currently highlighted in the faction store.
 
     Args:
-        image_path: Path to a screenshot of the faction store.
-        factions:   List of faction dicts with a 'selected_snippets' list.
+        img:      BGR numpy array of a screenshot of the faction store.
+        factions: List of faction dicts with a 'selected_snippets' list.
 
     Returns the name of the best-matching faction, or None if no snippet exceeds
     the threshold.
     """
-    img = cv2.imread(image_path)
     if img is None:
-        raise FileNotFoundError(f"Could not load image: {image_path}")
+        raise ValueError("_find_highlighted_faction: img is None")
 
     threshold = capture_cfg("factions", "snippet_threshold", default=0.70)
     best_name = None
@@ -171,13 +170,13 @@ def capture_and_identify_faction(db):
         logger.error(e)
         return {"error": str(e)}
 
-    image_path = sc.capture_window(window)
+    img = sc.capture(window)
     factions = sorted(
         db.factions.get_all_factions(), key=lambda f: f.get("display_order") or 999
     )
 
     try:
-        faction = _find_highlighted_faction(image_path, factions)
+        faction = _find_highlighted_faction(img, factions)
         return {"faction": faction}
     except Exception as e:
         logger.error(e)
@@ -219,16 +218,11 @@ def _digit_count(s):
     return len(s.replace("-", "").replace(",", ""))
 
 
-def _extract_points(image_path):
+def _extract_points(img):
     import re
 
-    if not image_path:
-        logger.warning("No image path provided")
-        return None
-
-    img = cv2.imread(image_path)
     if img is None:
-        logger.warning(f"Could not load image: {image_path}")
+        logger.warning("No image provided to _extract_points")
         return None
 
     height, width = img.shape[:2]
@@ -408,8 +402,8 @@ def _process_faction_list(factions, window, sc):
         if confirm_filenames:
             confirm_file, _ = wait_for_any_template(confirm_filenames, sc, window)
             if confirm_file is not None:
-                img_path = sc.capture_window(window)
-                points = _extract_points(img_path)
+                fresh_img = sc.capture(window)
+                points = _extract_points(fresh_img)
                 if points is None:
                     logger.info(f"'{name}' has no reputation — skipping")
                 else:
