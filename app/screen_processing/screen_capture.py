@@ -162,11 +162,61 @@ def match_template(filename, img, crop_h_frac=1.0):
     )  # always return full template for size/click calcs
 
 
+def find_all_template_matches(
+    filename: str,
+    img,
+    threshold: float | None = None,
+) -> list[tuple[int, int, int, int]]:
+    """Return (x, y, w, h) for every non-overlapping match of filename in img.
+
+    Iteratively finds the best match, records it, then zeroes out a region
+    around it so the next iteration finds the next-best distinct location.
+    Results are sorted top-to-bottom by y coordinate.
+
+    Raises FileNotFoundError if the template file does not exist on disk.
+    Returns an empty list if the image cannot be loaded.
+    """
+    if threshold is None:
+        threshold = _BUTTON_MATCH_THRESHOLD
+
+    template_path = os.path.normpath(os.path.join(_SNIPPETS_DIR, filename))
+    if not os.path.isfile(template_path):
+        raise FileNotFoundError(f"Template image not found: {template_path}")
+
+    template = _load_template(template_path)
+    if template is None:
+        return []
+
+    th, tw = template.shape[:2]
+    score_map = cv2.matchTemplate(img, template, cv2.TM_CCOEFF_NORMED)
+    matches: list[tuple[int, int, int, int]] = []
+
+    while True:
+        _, max_val, _, max_loc = cv2.minMaxLoc(score_map)
+        if max_val < threshold:
+            break
+        x, y = max_loc
+        matches.append((x, y, tw, th))
+        # Suppress the matched region so the next call finds a different peak.
+        # Blank a window 1.5× the template size centred on the match.
+        x1 = max(0, x - tw // 2)
+        y1 = max(0, y - th // 2)
+        x2 = min(score_map.shape[1], x + tw + tw // 2)
+        y2 = min(score_map.shape[0], y + th + th // 2)
+        score_map[y1:y2, x1:x2] = 0.0
+
+    return sorted(matches, key=lambda m: m[1])
+
+
 def is_template_visible(filename, img):
     """Return True if the template image is found in img above the match threshold."""
     if not filename:
         return False
-    if not (match := match_template(filename, img)):
+    try:
+        match = match_template(filename, img)
+    except FileNotFoundError:
+        return False
+    if not match:
         return False
     _, max_val, _ = match
     return max_val >= _BUTTON_MATCH_THRESHOLD

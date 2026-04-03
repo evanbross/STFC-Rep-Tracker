@@ -48,6 +48,7 @@ from flask import Flask, send_from_directory
 from flask_cors import CORS
 
 from app.database.database import Database
+from app.views.calendar_view import calendar_bp
 from app.views.capture_screen_view import capture_bp
 from app.views.factions_view import factions_bp
 from app.views.reputations_view import reputations_bp
@@ -70,6 +71,7 @@ CORS(app, origins=app.config["CORS_ORIGINS"])
 swagger = Swagger(app)
 db = Database(app.config["DATABASE_URL"])
 app.config["DATABASE"] = db
+app.register_blueprint(calendar_bp, url_prefix="/api/calendar")
 app.register_blueprint(capture_bp, url_prefix="/api/capture-screen")
 app.register_blueprint(status_entries_bp, url_prefix="/api/status_entries")
 app.register_blueprint(factions_bp, url_prefix="/api/factions")

@@ -15,45 +15,45 @@ loggers:
   # Application modules — set to DEBUG to see verbose OCR/capture output
   app.reputation_sucker.process_factions:
     level: DEBUG
-    handlers: [console]
+    handlers: [ console ]
     propagate: false
 
   app.reputation_sucker.screen_capture:
     level: INFO
-    handlers: [console]
+    handlers: [ console ]
     propagate: false
 
   app.reputation_sucker.rep_tracker:
     level: INFO
-    handlers: [console]
+    handlers: [ console ]
     propagate: false
 
   app.views.capture_screen_view:
     level: INFO
-    handlers: [console]
+    handlers: [ console ]
     propagate: false
 
   app.views.reputations_view:
     level: INFO
-    handlers: [console]
+    handlers: [ console ]
     propagate: false
 
   app.database.reputations_dao:
     level: INFO
-    handlers: [console]
+    handlers: [ console ]
     propagate: false
 
   # Third-party — keep quiet
   easyocr:
     level: WARNING
-    handlers: [console]
+    handlers: [ console ]
     propagate: false
 
   werkzeug:
     level: WARNING
-    handlers: [console]
+    handlers: [ console ]
     propagate: false
 
 root:
   level: INFO
-  handlers: [console]
+  handlers: [ console ]

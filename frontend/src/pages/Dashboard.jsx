@@ -70,10 +70,14 @@ const Dashboard = () => {
     const [capturingFactionId, setCapturingFactionId] = useState(null);
     const [hiddenDatasets, setHiddenDatasets] = useState({});
     const [territorySystems, setTerritorySystems] = useState(null);
+    const [calendarAuthenticated, setCalendarAuthenticated] = useState(null);
     const chartRef = useRef(null);
 
     useEffect(() => {
         loadFactions().then(list => loadEntries(list));
+        axios.get('/api/calendar/status')
+            .then(r => setCalendarAuthenticated(r.data.authenticated))
+            .catch(() => setCalendarAuthenticated(false));
     }, []);
 
     const loadFactions = async () => {
@@ -235,6 +239,17 @@ const Dashboard = () => {
             }
         } finally {
             setIsCapturing(false);
+        }
+    };
+
+    const handleConnectCalendar = async () => {
+        try {
+            await axios.post('/api/calendar/auth');
+            setCalendarAuthenticated(true);
+            alert('Google Calendar connected successfully.');
+        } catch (error) {
+            const msg = error.response?.data?.error || error.message || 'Unknown error';
+            alert(`Google Calendar auth failed:\n\n${msg}`);
         }
     };
 
@@ -421,6 +436,25 @@ const Dashboard = () => {
                     Click a button below to automatically locate Star Trek Fleet Command,
                     switch to the selected screen, and take a screenshot for processing.
                 </p>
+                {calendarAuthenticated === false && (
+                    <div style={{marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.75rem'}}>
+                        <span style={{fontSize: '0.85rem', color: '#888'}}>Google Calendar not connected —</span>
+                        <button
+                            onClick={handleConnectCalendar}
+                            style={{
+                                padding: '0.3rem 0.75rem',
+                                fontSize: '0.85rem',
+                                backgroundColor: '#1a73e8',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '4px',
+                                cursor: 'pointer',
+                            }}
+                        >
+                            Connect Google Calendar
+                        </button>
+                    </div>
+                )}
                 <div style={{display: 'flex', gap: '0.75rem'}}>
                     <button
                         onClick={() => handleCaptureScreen('reputations')}
@@ -552,18 +586,35 @@ const Dashboard = () => {
                                         <th style={{padding: '0.4rem 0.75rem'}}>System</th>
                                         <th style={{padding: '0.4rem 0.75rem'}}>Time Remaining</th>
                                         <th style={{padding: '0.4rem 0.75rem'}}>Next Takeover</th>
+                                        <th style={{padding: '0.4rem 0.75rem'}}>On Calendar</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {territorySystems.map((sys, i) => (
-                                        <tr key={i} style={{borderBottom: '1px solid #333'}}>
-                                            <td style={{padding: '0.4rem 0.75rem', fontWeight: 'bold'}}>{sys.name}</td>
-                                            <td style={{padding: '0.4rem 0.75rem', color: '#aaa'}}>{sys.time_remaining}</td>
-                                            <td style={{padding: '0.4rem 0.75rem'}}>{sys.event_time ?? '—'}</td>
-                                        </tr>
-                                    ))}
+                                    {territorySystems.map((sys, i) => {
+                                        let calCell;
+                                        if (sys.calendar_event === null) {
+                                            calCell = <span style={{color: '#888'}} title={sys.calendar_error || 'Calendar unavailable'}>—</span>;
+                                        } else if (sys.calendar_event === false) {
+                                            calCell = <span style={{color: '#e57373'}} title="No event found on this date">✗ Not found</span>;
+                                        } else {
+                                            calCell = <span style={{color: '#81c784'}} title={`${sys.calendar_event.summary} @ ${sys.calendar_event.start}`}>✓ {sys.calendar_event.summary}</span>;
+                                        }
+                                        return (
+                                            <tr key={i} style={{borderBottom: '1px solid #333'}}>
+                                                <td style={{padding: '0.4rem 0.75rem', fontWeight: 'bold'}}>{sys.name}</td>
+                                                <td style={{padding: '0.4rem 0.75rem', color: '#aaa'}}>{sys.time_remaining}</td>
+                                                <td style={{padding: '0.4rem 0.75rem'}}>{sys.event_time ?? '—'}</td>
+                                                <td style={{padding: '0.4rem 0.75rem'}}>{calCell}</td>
+                                            </tr>
+                                        );
+                                    })}
                                 </tbody>
                             </table>
+                        )}
+                        {territorySystems.some(s => s.calendar_error) && (
+                            <p style={{marginTop: '0.5rem', color: '#888', fontSize: '0.85rem'}}>
+                                Google Calendar not connected — use the Connect button above, then run Territory Capture again.
+                            </p>
                         )}
                     </div>
                 )}

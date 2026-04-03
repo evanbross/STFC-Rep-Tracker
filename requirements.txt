@@ -65,3 +65,6 @@ tqdm==4.67.3
 typing_extensions==4.15.0
 urllib3==2.6.3
 Werkzeug==3.1.6
+google-api-python-client
+google-auth-httplib2
+google-auth-oauthlib

@@ -46,10 +46,64 @@ stfc_config:
     # Seconds to wait after each action in the navigation and claim loops
     loop_delay: 0.25
 
+  google_calendar:
+    # OAuth2 client credentials downloaded from Google Cloud Console.
+    # Create a project, enable the Google Calendar API, create an OAuth2 Desktop
+    # client ID, download the JSON, and save it at this path (relative to project root).
+    credentials_file: google_credentials.json
+    # Token written after the first successful auth flow. Refreshed automatically.
+    token_file: google_token.json
+
   territory:
+    # Known territory systems.  Each entry needs a display name and one or more
+    # snippet filenames for template matching.  Add a new entry here whenever
+    # your alliance captures a new system — no code changes required.
+    systems:
+      - name: Saldeti
+        templates:
+          - Territory Saldeti 1.jpg
+      - name: Gelida
+        templates:
+          - Territory Gelida 1.jpg
+      - name: Zamaro
+        templates:
+          - Territory Zamaro 1.jpg
+      - name: Brijac
+        templates:
+          - Territory Brijac 1.jpg
+
+    # How many name-template-heights below the name snippet to search for the
+    # timer text.  Scales automatically with display resolution.
+    timer_strip_frac: 3.0
+
     # Fallback pixels to crop from the top of the screenshot before OCR,
     # used only when Alliance Territory Zone Slots 1.jpg is not found on screen.
     title_bar_crop_px: 40
+    # Minimum EasyOCR confidence to keep a result (0.0–1.0).
+    # Lower this if system names with special characters (e.g. accents) are dropped.
+    ocr_min_confidence: 0.2
+    # Maximum vertical distance in pixels between a system name and its timer
+    # for them to be paired together.
+    ocr_pair_max_gap_px: 300
+    # Badge/emblem labels sit ~10-13% of image height below their timer.
+    # System names sit ~18-19% of image height below the previous timer.
+    # This fraction is resolution-independent — works the same on HD and 4K.
+    # Safe range is anything between 0.13 and 0.18.
+    emblem_skip_frac: 0.15
+    # Maximum vertical distance (px) to search below a portrait for its
+    # matching Next Takeover label.  Should exceed one full row height.
+    max_row_height_px: 300
+    # Match threshold for the Next Takeover label template.  Lower than the
+    # main button_match_threshold because text templates are harder to match.
+    next_takeover_threshold: 0.75
+    # When the Next Takeover template is not found, strip height is this
+    # fraction of the portrait-to-portrait row spacing.  Timer sits at ~24%
+    # of row height; badges start at ~70%.  0.50 is a safe midpoint.
+    name_timer_height_frac: 0.65
+    # How many times to wait for the load-ready template (Next Takeover / green flag)
+    # before giving up and attempting OCR anyway.
+    ocr_retries: 4
+    ocr_retry_delay: 1.0
 
   ocr:
     # Upscale factor applied to the region before OCR runs
