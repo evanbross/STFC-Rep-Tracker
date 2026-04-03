@@ -1,6 +1,7 @@
 import logging
 import time
 
+from app.app_config import capture_cfg
 from app.screen_processing.screen_capture import (
     ScreenCapture,
     click_button_if_visible,
@@ -92,7 +93,14 @@ class AwayTeamOrchestrator:
             reports_clicked += 1
             logger.info(f"clicked REPORT ({reports_clicked})")
 
-            if not wait_and_click("collect.jpg", self.sc, window, screen_offset):
+            collect_first_delay = capture_cfg("away_teams", "collect_first_delay", default=0.5)
+            collect_retries = capture_cfg("away_teams", "collect_retries", default=16)
+            collect_delay = capture_cfg("away_teams", "collect_delay", default=0.25)
+            time.sleep(collect_first_delay)
+            if not wait_and_click(
+                "collect.jpg", self.sc, window, screen_offset,
+                max_retries=collect_retries, delay=collect_delay,
+            ):
                 logger.warning("COLLECT button not found after REPORT click — stopping")
                 break
             collected += 1

@@ -42,6 +42,15 @@ stfc_config:
     # (brighter) state and scores below the normal button_match_threshold.
     button_selected_threshold: 0.60
 
+  away_teams:
+    # Timing for waiting on the COLLECT button after clicking REPORT.
+    # The panel animates open, so the first check is delayed longer than the rest.
+    # Total max wait = collect_first_delay + collect_retries × collect_delay
+    #                = 0.5 + 16 × 0.25 = 4.5s
+    collect_first_delay: 0.5
+    collect_retries: 16
+    collect_delay: 0.25
+
   gifts:
     # Seconds to wait after each action in the navigation and claim loops
     loop_delay: 0.25
