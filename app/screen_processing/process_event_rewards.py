@@ -6,7 +6,7 @@ logger = logging.getLogger(__name__)
 
 
 class EventRewardsOrchestrator:
-    def __init__(self, db):
+    def __init__(self) -> None:
         self.sc = ScreenCapture()
 
     def capture_event_rewards(self):

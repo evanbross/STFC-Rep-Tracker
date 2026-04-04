@@ -571,48 +571,6 @@ class ScreenCapture:
         img_path = self.capture_window(window, delay=delay, activate=activate)
         return cv2.imread(img_path)
 
-    # def capture_window_mss(self, window):
-    #     """Capture the window using mss (faster than pyautogui, handles multi-monitor)."""
-    #     import mss
-    #
-    #     left, top, width, height = window.left, window.top, window.width, window.height
-    #     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    #     filepath = os.path.join(self.output_dir, f"capture_{timestamp}.png")
-    #
-    #     monitor = {"left": left, "top": top, "width": width, "height": height}
-    #     with mss.mss() as sct:
-    #         img = sct.grab(monitor)
-    #         img_np = np.array(img)
-    #         img_bgr = cv2.cvtColor(img_np, cv2.COLOR_BGRA2BGR)
-    #         cv2.imwrite(filepath, img_bgr)
-    #
-    #     logger.info(f"Screenshot (mss) saved to {filepath}")
-    #     return filepath
-
-    # def capture_window_dxcam(self, window):
-    #     """Capture the window using dxcam (DirectX Desktop Duplication API)."""
-    #     import dxcam
-    #
-    #     left, top, width, height = window.left, window.top, window.width, window.height
-    #     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    #     filepath = os.path.join(self.output_dir, f"capture_{timestamp}.png")
-    #
-    #     region = (left, top, left + width, top + height)
-    #     camera = dxcam.create(output_color="BGR")
-    #     try:
-    #         frame = camera.grab(region=region)
-    #         if frame is None:
-    #             logger.warning(
-    #                 "dxcam returned None — window may be occluded or off-screen"
-    #             )
-    #             return None
-    #         cv2.imwrite(filepath, frame)
-    #     finally:
-    #         del camera
-    #
-    #     logger.info(f"Screenshot (dxcam) saved to {filepath}")
-    #     return filepath
-
     def find_image_on_screen(self, template_filename, region=None, threshold=0.8):
         """Search for template_filename in a screenshot and return its center (x, y), or None."""
         try:
@@ -722,8 +680,6 @@ class ScreenCapture:
         then clicks the first visible nav button. Raises RuntimeError if the target is
         not reached within max_retries attempts.
         """
-        press_key = capture_cfg("navigation", "press_key", default="f4")
-
         screen_offset = (window.left, window.top)
         if target_templates is None:
             target_templates = [

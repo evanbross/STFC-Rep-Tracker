@@ -5,7 +5,7 @@ class Config:
     """Base configuration"""
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-secret-key-change-in-production'
     DATABASE_URL = os.environ.get('DATABASE_URL_POOLED') or os.environ.get('DATABASE_URL')
-    CORS_ORIGINS = os.environ.get('CORS_ORIGINS', '*').split(',')
+    CORS_ORIGINS = os.environ.get('CORS_ORIGINS', 'http://localhost:5173,http://localhost:5000').split(',')
     DEBUG = False
     TESTING = False
 
@@ -18,7 +18,13 @@ class DevelopmentConfig(Config):
 class ProductionConfig(Config):
     """Production configuration"""
     DEBUG = False
-    SECRET_KEY = os.environ.get('SECRET_KEY')  # Must be set in production
+
+    @property
+    def SECRET_KEY(self):
+        key = os.environ.get('SECRET_KEY')
+        if not key:
+            raise ValueError("SECRET_KEY environment variable must be set in production")
+        return key
 
 
 class TestingConfig(Config):

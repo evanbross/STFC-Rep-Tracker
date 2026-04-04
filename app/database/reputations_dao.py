@@ -2,38 +2,42 @@ import importlib
 import logging
 import threading
 from abc import abstractmethod
-from typing import List, Dict, Any
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
 class ReputationsDAO:
-    dao_instances_by_faction = {}
-    dao_instances_by_class = {}
+    dao_instances_by_faction: dict[str, "ReputationsDAO"] = {}
+    dao_instances_by_class: dict[str, "ReputationsDAO"] = {}
     _registry_lock = threading.Lock()
 
-    def __init__(self, db, table_name):
+    def __init__(self, db: Any, table_name: str) -> None:
         self.db = db
         self.table_name = table_name
 
     @staticmethod
-    def get_dao_by_faction_name(name):
-        return ReputationsDAO.dao_instances_by_faction.get(name)
+    def get_dao_by_faction_name(name: str) -> "ReputationsDAO | None":
+        with ReputationsDAO._registry_lock:
+            return ReputationsDAO.dao_instances_by_faction.get(name)
 
     @staticmethod
-    def get_dao_by_class_name(name):
-        return ReputationsDAO.dao_instances_by_class.get(name)
+    def get_dao_by_class_name(name: str) -> "ReputationsDAO | None":
+        with ReputationsDAO._registry_lock:
+            return ReputationsDAO.dao_instances_by_class.get(name)
 
     @staticmethod
-    def get_all_dao_by_class_name():
-        return ReputationsDAO.dao_instances_by_class
+    def get_all_dao_by_class_name() -> dict[str, "ReputationsDAO"]:
+        with ReputationsDAO._registry_lock:
+            return dict(ReputationsDAO.dao_instances_by_class)
 
     @classmethod
-    def get_known_table_names(cls) -> set:
-        return {dao.table_name for dao in cls.dao_instances_by_faction.values()}
+    def get_known_table_names(cls) -> set[str]:
+        with cls._registry_lock:
+            return {dao.table_name for dao in cls.dao_instances_by_faction.values()}
 
     @staticmethod
-    def _get_columns(cursor, table_name: str) -> list[str]:
+    def _get_columns(cursor: Any, table_name: str) -> list[str]:
         """Return lowercase column names for table_name via information_schema."""
         cursor.execute(
             "SELECT column_name FROM information_schema.columns "
@@ -44,21 +48,22 @@ class ReputationsDAO:
 
     @staticmethod
     def _resolve_name_col(columns: list[str]) -> str:
-        """Return the correct case for the name column ('name' or 'Name')."""
-        return "name" if "name" in columns else "Name"
+        """Return the correct column name for the name column (always lowercase 'name')."""
+        return "name"
 
     @staticmethod
-    def register_dao(faction_name, dao):
+    def register_dao(faction_name: str, dao: "ReputationsDAO") -> None:
         with ReputationsDAO._registry_lock:
             ReputationsDAO.dao_instances_by_faction[faction_name] = dao
             ReputationsDAO.dao_instances_by_class[dao.__class__.__name__] = dao
 
     @staticmethod
-    def initialize_dao_instances(db, factions_dao):
+    def initialize_dao_instances(db: Any, factions_dao: Any) -> None:
         """Initialize all reputation DAO instances based on factions in the database"""
         # Clear existing instances to avoid duplicates if re-initialized
-        ReputationsDAO.dao_instances_by_faction.clear()
-        ReputationsDAO.dao_instances_by_class.clear()
+        with ReputationsDAO._registry_lock:
+            ReputationsDAO.dao_instances_by_faction.clear()
+            ReputationsDAO.dao_instances_by_class.clear()
 
         factions = factions_dao.get_all_factions()
         for faction in factions:
@@ -96,65 +101,63 @@ class ReputationsDAO:
             f"Initialized {len(ReputationsDAO.dao_instances_by_faction)} reputation DAO mappings"
         )
 
-    def get_all(self, db=None, table_name: str = None) -> List[Dict[str, Any]]:
+    def get_all(self, db: Any = None, table_name: str | None = None) -> list[dict[str, Any]]:
         """Get list of all reputations from the table"""
-        conn = (self.db if db is None else db).get_connection()
-        cursor = conn.cursor()
-
+        target_db = self.db if db is None else db
         table_name = self.table_name if table_name is None else table_name
-        dao = self.dao_instances_by_faction.get(table_name, self)
 
         try:
-            columns = self._get_columns(cursor, table_name)
-            name_col = self._resolve_name_col(columns)
+            with target_db.connect() as conn:
+                cursor = conn.cursor()
 
-            query = f'SELECT id, {name_col}, low_limit, high_limit FROM "{table_name}" ORDER BY low_limit'
+                columns = self._get_columns(cursor, table_name)
+                name_col = self._resolve_name_col(columns)
 
-            # Check if high_limit exists (DTI doesn't have it, but has other columns)
-            if "high_limit" not in columns:
-                if "messages_count" in columns and "credit_amount" in columns:
-                    query = f'SELECT id, {name_col}, low_limit, messages_count, credit_amount FROM "{table_name}" ORDER BY low_limit'
-                    cursor.execute(query)
-                    return [
-                        {
-                            "id": row[0],
-                            "name": row[1],
-                            "low_limit": row[2],
-                            "messages_count": row[3],
-                            "credit_amount": row[4],
-                        }
-                        for row in cursor.fetchall()
-                    ]
+                query = f'SELECT id, {name_col}, low_limit, high_limit FROM "{table_name}" ORDER BY low_limit'
+
+                # Check if high_limit exists (DTI doesn't have it, but has other columns)
+                if "high_limit" not in columns:
+                    if "messages_count" in columns and "credit_amount" in columns:
+                        query = f'SELECT id, {name_col}, low_limit, messages_count, credit_amount FROM "{table_name}" ORDER BY low_limit'
+                        cursor.execute(query)
+                        return [
+                            {
+                                "id": row[0],
+                                "name": row[1],
+                                "low_limit": row[2],
+                                "messages_count": row[3],
+                                "credit_amount": row[4],
+                            }
+                            for row in cursor.fetchall()
+                        ]
+                    else:
+                        # Fallback for tables without high_limit
+                        query = f'SELECT id, {name_col}, low_limit FROM "{table_name}" ORDER BY low_limit'
+                        cursor.execute(query)
+                        return [
+                            {
+                                "id": row[0],
+                                "name": row[1],
+                                "low_limit": row[2],
+                                "high_limit": None,
+                            }
+                            for row in cursor.fetchall()
+                        ]
                 else:
-                    # Fallback for tables without high_limit
-                    query = f'SELECT id, {name_col}, low_limit FROM "{table_name}" ORDER BY low_limit'
                     cursor.execute(query)
                     return [
                         {
                             "id": row[0],
                             "name": row[1],
                             "low_limit": row[2],
-                            "high_limit": None,
+                            "high_limit": row[3],
                         }
                         for row in cursor.fetchall()
                     ]
-            else:
-                cursor.execute(query)
-                return [
-                    {
-                        "id": row[0],
-                        "name": row[1],
-                        "low_limit": row[2],
-                        "high_limit": row[3],
-                    }
-                    for row in cursor.fetchall()
-                ]
         except Exception as e:
-            raise ValueError(f"Error fetching reputations from {table_name}: {e}")
-        finally:
-            conn.close()
+            raise ValueError(f"Error fetching reputations from {table_name}: {e}") from e
 
-    def create_table(self, cursor):
+    def create_table(self, cursor: Any) -> None:
         """Create reputation table and handle migrations"""
         columns = self._get_columns(cursor, self.table_name)
         name_col = self._resolve_name_col(columns)
@@ -163,7 +166,7 @@ class ReputationsDAO:
                        CREATE TABLE IF NOT EXISTS "{self.table_name}"
                        (
                            id         SERIAL PRIMARY KEY,
-                           {name_col} TEXT NOT NULL,
+                           name       TEXT NOT NULL,
                            low_limit  INTEGER NOT NULL,
                            high_limit INTEGER
                        )
@@ -179,10 +182,10 @@ class ReputationsDAO:
         self.apply_initial_reputations(cursor)
 
     @abstractmethod
-    def get_initial_reputations(self):
+    def get_initial_reputations(self) -> list[tuple]:
         pass
 
-    def apply_initial_reputations(self, cursor):
+    def apply_initial_reputations(self, cursor: Any) -> None:
         columns = self._get_columns(cursor, self.table_name)
         name_col = self._resolve_name_col(columns)
 
@@ -215,7 +218,7 @@ class ReputationsDAO:
                     (name, low_limit),
                 )
 
-    def find_next_reputation_name(self, conn, current_high_limit):
+    def find_next_reputation_name(self, conn: Any, current_high_limit: int | None) -> str | None:
         """Return the name of the tier that starts where the current tier ends, or None."""
         if current_high_limit is None:
             return None
@@ -227,7 +230,7 @@ class ReputationsDAO:
         row = cursor.fetchone()
         return row[0] if row else None
 
-    def find_next_reputation_low_limit(self, conn, current_high_limit):
+    def find_next_reputation_low_limit(self, conn: Any, current_high_limit: int | None) -> int | None:
         """Return the low_limit of the next tier, or None."""
         if current_high_limit is None:
             return None
@@ -239,7 +242,7 @@ class ReputationsDAO:
         row = cursor.fetchone()
         return row[0] if row else None
 
-    def find_reputation_by_value(self, conn, value):
+    def find_reputation_by_value(self, conn: Any, value: int) -> tuple | None:
         cursor = conn.cursor()
         try:
             cursor.execute(
@@ -255,12 +258,11 @@ class ReputationsDAO:
             raise
         return cursor.fetchone()
 
-    def get_last(self, table_name: str = None) -> Dict[str, Any] | None:
+    def get_last(self, table_name: str | None = None) -> dict[str, Any] | None:
         """Get the final entry (highest low_limit) from the table, returning name and high_limit."""
         table_name = table_name if table_name is not None else self.table_name
-        conn = self.db.get_connection()
-        cursor = conn.cursor()
-        try:
+        with self.db.connect() as conn:
+            cursor = conn.cursor()
             columns = self._get_columns(cursor, table_name)
             name_col = self._resolve_name_col(columns)
 
@@ -276,8 +278,6 @@ class ReputationsDAO:
                 )
                 row = cursor.fetchone()
                 return {"name": row[0], "high_limit": None} if row else None
-        finally:
-            conn.close()
 
-    def get_table_name(self):
+    def get_table_name(self) -> str:
         return self.table_name

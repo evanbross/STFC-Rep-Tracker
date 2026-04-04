@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class AwayTeamOrchestrator:
-    def __init__(self, db):
+    def __init__(self) -> None:
         self.sc = ScreenCapture()
 
     def _get_activated_window(self):
@@ -29,19 +29,19 @@ class AwayTeamOrchestrator:
     def _navigate_to_away_teams(self, window, screen_offset):
         """Navigate to the Away Teams tab. Returns an error dict on failure, else None."""
         self.sc.press_key(window, "c")
-        tabSelectedName = "Away Teams Tab Selected.jpg"
-        tabUnselectedName = "Away Teams Tab Unselected.jpg"
-        tabImages = [tabSelectedName, tabUnselectedName]
+        tab_selected_name = "Away Teams Tab Selected.jpg"
+        tab_unselected_name = "Away Teams Tab Unselected.jpg"
+        tab_images = [tab_selected_name, tab_unselected_name]
 
-        visibleTab, img = wait_for_any_template(
-            [tabSelectedName, tabUnselectedName],
+        visible_tab, img = wait_for_any_template(
+            [tab_selected_name, tab_unselected_name],
             self.sc,
             window,
         )
 
-        if visibleTab == tabSelectedName:
+        if visible_tab == tab_selected_name:
             logger.info("already on Away Teams page, skipping navigation")
-        elif visibleTab == tabUnselectedName:
+        elif visible_tab == tab_unselected_name:
             if not click_button_if_visible("Away Teams Tab Unselected.jpg", img, screen_offset):
                 logger.error("could not click Away Teams Tab Unselected")
                 return {"error": "Away Teams Tab Unselected not clickable"}
@@ -64,7 +64,7 @@ class AwayTeamOrchestrator:
             time.sleep(0.5)
 
             img = self.sc.capture(window)
-            if not click_button_if_visible(tabImages, img, screen_offset):
+            if not click_button_if_visible(tab_images, img, screen_offset):
                 logger.error("Away Teams Tab (Un)selected not found")
                 return {"error": "Away Teams Tab (Un)selected not found — add Away Teams Tab Unselected.jpg to app/screen_snippets/"}
             logger.info("clicked Away Teams Tab")

@@ -3,10 +3,10 @@ from typing import Any
 
 
 class StatusEntriesDAO:
-    def __init__(self, db) -> None:
+    def __init__(self, db: Any) -> None:
         self.db = db
 
-    def create_table(self, cursor):
+    def create_table(self, cursor: Any) -> None:
         """Create status_entries table"""
         cursor.execute("""
                        CREATE TABLE IF NOT EXISTS status_entries
@@ -87,7 +87,13 @@ class StatusEntriesDAO:
         "faction_name",
     }
 
-    def get_all_entries(self, limit: int | None = None, offset: int | None = None, faction_name: str | None = None, sort: str | None = None) -> list[dict[str, Any]]:
+    def get_all_entries(
+        self,
+        limit: int | None = None,
+        offset: int | None = None,
+        faction_name: str | None = None,
+        sort: str | None = None,
+    ) -> list[dict[str, Any]]:
         """Get all status entries, with optional filtering, sorting, and paging"""
         with self.db.connect() as conn:
             cursor = conn.cursor()
@@ -97,7 +103,7 @@ class StatusEntriesDAO:
                     FROM status_entries se
                              JOIN factions f ON se.faction_id = f.id
                     """
-            params = []
+            params: list[Any] = []
             if faction_name is not None:
                 query += " WHERE f.name = %s"
                 params.append(faction_name)
@@ -135,14 +141,18 @@ class StatusEntriesDAO:
     _ALLOWED_FACTION_SORT_COLUMNS = {"f.id", "f.name", "id", "name"}
 
     def get_all_entries_for_factions_summaries(
-        self, faction_name=None, limit=None, offset=None, sort=None
-    ):
+        self,
+        faction_name: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+        sort: str | None = None,
+    ) -> dict[str, list[dict[str, Any]]]:
         """Get all factions with their stat entries, with optional filtering, sorting, and paging"""
         with self.db.connect() as conn:
             cursor = conn.cursor()
 
             query = "SELECT f.id, f.name FROM factions f"
-            params = []
+            params: list[Any] = []
             if faction_name is not None:
                 query += " WHERE f.name = %s"
                 params.append(faction_name)
@@ -168,7 +178,7 @@ class StatusEntriesDAO:
             cursor.execute(query, params)
             factions = cursor.fetchall()
 
-            result = {}
+            result: dict[str, list[dict[str, Any]]] = {}
             for faction_id, name in factions:
                 cursor.execute(
                     """
@@ -181,8 +191,13 @@ class StatusEntriesDAO:
                     (faction_id,),
                 )
                 rows = cursor.fetchall()
-                entries = []
-                if len(rows) >= 2:
+                entries: list[dict[str, Any]] = []
+                if rows:
+                    # Always include the latest entry; a second row will be used for delta
+                    # elsewhere (e.g. factions_dao._compute_faction_status).
+                    # Factions with exactly one entry are included with no prior row to
+                    # compare against — the caller is responsible for handling a missing
+                    # second entry gracefully.
                     latest_row = rows[0]
                     entries.append(
                         {

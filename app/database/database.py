@@ -4,6 +4,7 @@ from contextlib import contextmanager
 from app.database import status_entries_dao, factions_dao
 from app.database.faction_selected_snippets_dao import FactionSelectedSnippetsDAO
 from app.database.reputations_dao import ReputationsDAO
+from app.database.territory_systems_dao import TerritorySystemsDAO
 
 
 class Database:
@@ -18,6 +19,9 @@ class Database:
 
         self.selected_snippets_dao = FactionSelectedSnippetsDAO(self)
         self.selected_snippets = self.selected_snippets_dao
+
+        self.territory_systems_dao = TerritorySystemsDAO(self)
+        self.territory_systems = self.territory_systems_dao
 
         self.init_database()
 
@@ -58,6 +62,7 @@ class Database:
         self.factions_dao.create_table(cursor)
         self.status_entries_dao.create_table(cursor)
         self.selected_snippets_dao.create_table(cursor)
+        self.territory_systems_dao.create_table(cursor)
 
     def get_factions_dao(self):
         return self.factions_dao

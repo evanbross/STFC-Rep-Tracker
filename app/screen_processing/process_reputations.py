@@ -53,6 +53,26 @@ class ProcessReputationsOrchestrator:
 
         return window, None
 
+    def _save_results(self, results: list) -> list:
+        """Persist captured reputation points to the database.
+
+        Iterates results from _process_faction_list, writes each entry that has a
+        non-None points value to the status_entries table, and returns a list of
+        successfully saved {"faction": name, "points": value} dicts.
+        """
+        saved = []
+        for item in results or []:
+            points = item.get("points")
+            if points is None:
+                continue
+            try:
+                self.stat_dao.add_status_entry(item["faction"], points)
+                saved.append({"faction": item["faction"], "points": points})
+                logger.info(f"Saved {item['faction']}: {points:,}")
+            except Exception as e:
+                logger.error(f"Failed to save {item['faction']}: {e}")
+        return saved
+
     def process_single_faction(self, faction_id):
         window, err = self._navigate_to_factions()
         if err:
@@ -63,19 +83,7 @@ class ProcessReputationsOrchestrator:
             return {"error": f"Faction {faction_id} not found"}
 
         results = _process_faction_list([faction], window, self.sc)
-
-        saved = []
-        for item in results or []:
-            points = item.get("points")
-            if points is None:
-                continue
-            try:
-                self.stat_dao.add_status_entry(item["faction"], points)
-                saved.append({"faction": item["faction"], "points": points})
-                logger.info(f"Saved {item['faction']}: {points:,}")
-            except Exception as e:
-                logger.error(f"Failed to save {item['faction']}: {e}")
-
+        saved = self._save_results(results)
         return {"saved": saved, "results": results}
 
     def process_reputations(self):
@@ -84,21 +92,7 @@ class ProcessReputationsOrchestrator:
             return err
 
         results = _process_faction_list(self.factions_dao.get_all_factions(), window, self.sc)
-
-        # results = analyze_screenshot(window, self.factions_dao)
-
-        saved = []
-        for item in results or []:
-            points = item.get("points")
-            if points is None:
-                continue
-            try:
-                self.stat_dao.add_status_entry(item["faction"], points)
-                saved.append({"faction": item["faction"], "points": points})
-                logger.info(f"Saved {item['faction']}: {points:,}")
-            except Exception as e:
-                logger.error(f"Failed to save {item['faction']}: {e}")
-
+        saved = self._save_results(results)
         return {"saved": saved, "results": results}
 
 

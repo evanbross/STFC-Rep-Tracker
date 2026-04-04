@@ -61,6 +61,16 @@ const formatMinutes = (minutes) => {
     return `${mins}m`;
 };
 
+const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+const utcTimeToLocal = (utcTimeStr) => {
+    if (!utcTimeStr) return '';
+    const [hours, minutes] = utcTimeStr.split(':').map(Number);
+    const d = new Date();
+    d.setUTCHours(hours, minutes, 0, 0);
+    return d.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+};
+
 const Dashboard = () => {
     const [factions, setFactions] = useState([]);
     const [selectedFaction, setSelectedFaction] = useState(null);
@@ -71,6 +81,10 @@ const Dashboard = () => {
     const [hiddenDatasets, setHiddenDatasets] = useState({});
     const [territorySystems, setTerritorySystems] = useState(null);
     const [calendarAuthenticated, setCalendarAuthenticated] = useState(null);
+    const [showTerritorySchedule, setShowTerritorySchedule] = useState(false);
+    const [scheduleList, setScheduleList] = useState([]);
+    const [scheduleForm, setScheduleForm] = useState({name: '', day_of_week: 0, event_time: ''});
+    const [editingId, setEditingId] = useState(null);
     const chartRef = useRef(null);
 
     useEffect(() => {
@@ -282,6 +296,53 @@ const Dashboard = () => {
         }
     };
 
+
+    const loadSchedule = async () => {
+        const res = await axios.get('/api/territory/systems');
+        setScheduleList(res.data);
+    };
+
+    const openTerritorySchedule = () => {
+        loadSchedule();
+        setShowTerritorySchedule(true);
+    };
+
+    const saveScheduleEntry = async () => {
+        const {name, day_of_week, event_time} = scheduleForm;
+        if (!name.trim() || !event_time) return;
+        if (editingId !== null) {
+            await axios.put(`/api/territory/systems/${editingId}`, {
+                name: name.trim(),
+                day_of_week: parseInt(day_of_week),
+                event_time,
+            });
+            setEditingId(null);
+        } else {
+            await axios.post('/api/territory/systems', {
+                name: name.trim(),
+                day_of_week: parseInt(day_of_week),
+                event_time,
+            });
+        }
+        await loadSchedule();
+        setScheduleForm({name: '', day_of_week: 0, event_time: ''});
+    };
+
+    const startEdit = (entry) => {
+        setScheduleForm({name: entry.name, day_of_week: entry.day_of_week, event_time: entry.event_time});
+        setEditingId(entry.id);
+    };
+
+    const cancelEdit = () => {
+        setScheduleForm({name: '', day_of_week: 0, event_time: ''});
+        setEditingId(null);
+    };
+
+    const deleteScheduleEntry = async (id) => {
+        await axios.delete(`/api/territory/systems/${id}`);
+        if (editingId === id) cancelEdit();
+        await loadSchedule();
+    };
 
     const chartOptions = {
         responsive: true,
@@ -553,7 +614,157 @@ const Dashboard = () => {
                     >
                         Event Rewards
                     </button>
+                    <button
+                        onClick={openTerritorySchedule}
+                        style={{
+                            flex: 1,
+                            padding: '1rem',
+                            fontSize: '1.1rem',
+                            backgroundColor: '#37474F',
+                            color: 'white',
+                            border: '1px solid #546E7A',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                        }}
+                    >
+                        Territory<br/>Schedule
+                    </button>
                 </div>
+
+                {showTerritorySchedule && (
+                    <div style={{
+                        position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
+                        backgroundColor: 'rgba(0,0,0,0.75)', zIndex: 1000,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                        <div style={{
+                            backgroundColor: '#1e1e1e', border: '1px solid #444',
+                            borderRadius: '8px', padding: '1.5rem', width: '520px',
+                            maxHeight: '80vh', overflowY: 'auto',
+                        }}>
+                            <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem'}}>
+                                <h3 style={{margin: 0}}>Territory Schedule</h3>
+                                <button onClick={() => setShowTerritorySchedule(false)} style={{
+                                    background: 'none', border: 'none', color: '#aaa',
+                                    fontSize: '1.4rem', cursor: 'pointer', lineHeight: 1,
+                                }}>×</button>
+                            </div>
+
+                            {/* Add / update form */}
+                            <p style={{margin: '0 0 0.75rem', fontSize: '0.8rem', color: '#888'}}>
+                                Event time should be entered in <strong style={{color: '#aaa'}}>UTC</strong>.
+                            </p>
+                            <div style={{display: 'grid', gridTemplateColumns: '1fr auto auto auto auto', gap: '0.5rem', alignItems: 'center', marginBottom: '1.25rem'}}>
+                                <div>
+                                    <input
+                                        list="territory-system-names"
+                                        value={scheduleForm.name}
+                                        onChange={e => setScheduleForm(prev => ({...prev, name: e.target.value}))}
+                                        placeholder="System name"
+                                        style={{width: '100%', padding: '0.4rem 0.6rem', backgroundColor: '#2a2a2a', border: '1px solid #555', borderRadius: '4px', color: 'white'}}
+                                    />
+                                    <datalist id="territory-system-names">
+                                        {[
+                                            ...new Set([
+                                                ...scheduleList.map(s => s.name),
+                                                ...(territorySystems ?? []).map(s => s.name),
+                                            ])
+                                        ].map(n => <option key={n} value={n}/>)}
+                                    </datalist>
+                                </div>
+                                <select
+                                    value={scheduleForm.day_of_week}
+                                    onChange={e => setScheduleForm(prev => ({...prev, day_of_week: e.target.value}))}
+                                    style={{padding: '0.4rem 0.6rem', backgroundColor: '#2a2a2a', border: '1px solid #555', borderRadius: '4px', color: 'white'}}
+                                >
+                                    {DAY_NAMES.map((d, i) => <option key={i} value={i}>{d}</option>)}
+                                </select>
+                                <input
+                                    type="time"
+                                    value={scheduleForm.event_time}
+                                    onChange={e => setScheduleForm(prev => ({...prev, event_time: e.target.value}))}
+                                    style={{padding: '0.4rem 0.6rem', backgroundColor: '#2a2a2a', border: '1px solid #555', borderRadius: '4px', color: 'white'}}
+                                />
+                                <button
+                                    onClick={saveScheduleEntry}
+                                    disabled={!scheduleForm.name.trim() || !scheduleForm.event_time}
+                                    style={{
+                                        padding: '0.4rem 0.9rem',
+                                        backgroundColor: editingId !== null ? '#1565C0' : '#00796B',
+                                        color: 'white', border: 'none', borderRadius: '4px',
+                                        cursor: 'pointer',
+                                    }}
+                                >
+                                    {editingId !== null ? 'Update' : 'Save'}
+                                </button>
+                                {editingId !== null && (
+                                    <button
+                                        onClick={cancelEdit}
+                                        style={{
+                                            padding: '0.4rem 0.9rem', backgroundColor: 'transparent',
+                                            color: '#aaa', border: '1px solid #555', borderRadius: '4px',
+                                            cursor: 'pointer',
+                                        }}
+                                    >
+                                        Cancel
+                                    </button>
+                                )}
+                            </div>
+
+                            {/* Existing entries */}
+                            {scheduleList.length === 0 ? (
+                                <p style={{color: '#888', fontSize: '0.9rem', textAlign: 'center', margin: '1rem 0'}}>
+                                    No systems saved yet.
+                                </p>
+                            ) : (
+                                <table style={{width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem'}}>
+                                    <thead>
+                                        <tr style={{borderBottom: '1px solid #444', color: '#aaa', textAlign: 'left'}}>
+                                            <th style={{padding: '0.35rem 0.5rem'}}>System</th>
+                                            <th style={{padding: '0.35rem 0.5rem'}}>Day</th>
+                                            <th style={{padding: '0.35rem 0.5rem'}}>UTC</th>
+                                            <th style={{padding: '0.35rem 0.5rem'}}>Local</th>
+                                            <th style={{padding: '0.35rem 0.5rem'}}></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {scheduleList.map(s => (
+                                            <tr key={s.id} style={{borderBottom: '1px solid #333'}}>
+                                                <td style={{padding: '0.35rem 0.5rem', fontWeight: 'bold'}}>{s.name}</td>
+                                                <td style={{padding: '0.35rem 0.5rem', color: '#aaa'}}>{DAY_NAMES[s.day_of_week]}</td>
+                                                <td style={{padding: '0.35rem 0.5rem'}}>{s.event_time}</td>
+                                                <td style={{padding: '0.35rem 0.5rem', color: '#aaa'}}>{utcTimeToLocal(s.event_time)}</td>
+                                                <td style={{padding: '0.35rem 0.5rem', textAlign: 'right', display: 'flex', gap: '0.4rem', justifyContent: 'flex-end'}}>
+                                                    <button
+                                                        onClick={() => startEdit(s)}
+                                                        style={{
+                                                            padding: '0.2rem 0.5rem', fontSize: '0.8rem',
+                                                            backgroundColor: editingId === s.id ? '#1565C0' : 'transparent',
+                                                            border: '1px solid #555',
+                                                            borderRadius: '3px', color: '#90CAF9', cursor: 'pointer',
+                                                        }}
+                                                    >
+                                                        Edit
+                                                    </button>
+                                                    <button
+                                                        onClick={() => deleteScheduleEntry(s.id)}
+                                                        style={{
+                                                            padding: '0.2rem 0.5rem', fontSize: '0.8rem',
+                                                            backgroundColor: 'transparent', border: '1px solid #555',
+                                                            borderRadius: '3px', color: '#e57373', cursor: 'pointer',
+                                                        }}
+                                                    >
+                                                        Delete
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            )}
+                        </div>
+                    </div>
+                )}
 
                 {territorySystems !== null && (
                     <div style={{marginTop: '1.5rem'}}>

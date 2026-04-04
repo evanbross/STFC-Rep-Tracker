@@ -17,7 +17,7 @@ except ImportError:
     pass
 
 
-def _screenshots_cleanup_worker(folder: str, keep: int = 30, interval: int = 300):
+def _screenshots_cleanup_worker(folder: str, keep: int = 30, interval: int = 300) -> None:
     """Background thread: every `interval` seconds, delete oldest files in `folder` beyond `keep`."""
     while True:
         try:
@@ -36,62 +36,18 @@ def _screenshots_cleanup_worker(folder: str, keep: int = 30, interval: int = 300
         time.sleep(interval)
 
 
-def _check_env():
-    """Warn on startup if expected environment variables are not set."""
+def _check_env() -> None:
+    """Raise on startup if expected environment variables are not set."""
     required = ["DATABASE_URL_POOLED", "DATABASE_URL_DIRECT"]
     missing = [v for v in required if not os.environ.get(v)]
     if missing:
-        print(f"WARNING: Missing environment variables: {', '.join(missing)}")
-        print("  Copy .env.example to .env and fill in your values.")
-from flasgger import Swagger
-from flask import Flask, send_from_directory
-from flask_cors import CORS
-
-from app.database.database import Database
-from app.views.calendar_view import calendar_bp
-from app.views.capture_screen_view import capture_bp
-from app.views.factions_view import factions_bp
-from app.views.reputations_view import reputations_bp
-from app.views.status_entries_view import status_entries_bp
-from app.views.system_view import system_bp
-from config import get_config
-
-with open("logging.yaml") as f:
-    logging.config.dictConfig(yaml.safe_load(f))
-logger = logging.getLogger(__name__)
-
-app = Flask(
-    __name__,
-    template_folder="frontend/dist",
-    static_folder="frontend/dist",
-    static_url_path="/static",
-)
-app.config.from_object(get_config())
-CORS(app, origins=app.config["CORS_ORIGINS"])
-swagger = Swagger(app)
-db = Database(app.config["DATABASE_URL"])
-app.config["DATABASE"] = db
-app.register_blueprint(calendar_bp, url_prefix="/api/calendar")
-app.register_blueprint(capture_bp, url_prefix="/api/capture-screen")
-app.register_blueprint(status_entries_bp, url_prefix="/api/status_entries")
-app.register_blueprint(factions_bp, url_prefix="/api/factions")
-app.register_blueprint(reputations_bp, url_prefix="/api/reputations")
-app.register_blueprint(system_bp, url_prefix="/api/system")
+        raise RuntimeError(
+            f"Missing required environment variables: {', '.join(missing)}\n"
+            "  Copy .env.example to .env and fill in your values."
+        )
 
 
-
-@app.route("/", defaults={"path": ""})
-@app.route("/<path:path>")
-def serve_react(path):
-    """Serve the React app's index.html for all frontend routes"""
-    # If the path starts with 'api/', Flask will use the API routes instead of this catch-all
-    # If the path is a file that exists in the static folder, Flask will serve it
-    if path and os.path.exists(os.path.join(app.static_folder, path)):
-        return send_from_directory(app.static_folder, path)
-    return send_from_directory(app.static_folder, "index.html")
-
-
-def _build_frontend_if_needed():
+def _build_frontend_if_needed() -> None:
     """Run 'npm run build' if any frontend source file is newer than dist/index.html."""
     project_root = os.path.dirname(os.path.abspath(__file__))
     dist_index = os.path.join(project_root, "frontend", "dist", "index.html")
@@ -146,19 +102,73 @@ def _build_frontend_if_needed():
         logger.info("frontend build completed successfully")
 
 
-def _is_admin():
+def _is_admin() -> bool:
     try:
         return ctypes.windll.shell32.IsUserAnAdmin()
     except Exception:
         return False
 
 
-def _relaunch_as_admin():
+def _relaunch_as_admin() -> None:
     script = os.path.abspath(sys.argv[0])
     params = " ".join(f'"{a}"' for a in sys.argv[1:])
     ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, f'"{script}" {params}', None, 1)
     sys.exit(0)
 
+
+def create_app():
+    """Create and configure the Flask application."""
+    from flasgger import Swagger
+    from flask import Flask, send_from_directory
+    from flask_cors import CORS
+
+    from app.database.database import Database
+    from app.views.calendar_view import calendar_bp
+    from app.views.capture_screen_view import capture_bp
+    from app.views.factions_view import factions_bp
+    from app.views.reputations_view import reputations_bp
+    from app.views.status_entries_view import status_entries_bp
+    from app.views.system_view import system_bp
+    from app.views.territory_view import territory_bp
+    from config import get_config
+
+    flask_app = Flask(
+        __name__,
+        template_folder="frontend/dist",
+        static_folder="frontend/dist",
+        static_url_path="/static",
+    )
+    flask_app.config.from_object(get_config())
+    CORS(flask_app, origins=flask_app.config["CORS_ORIGINS"])
+    Swagger(flask_app)
+
+    database = Database(flask_app.config["DATABASE_URL"])
+    flask_app.config["DATABASE"] = database
+
+    flask_app.register_blueprint(calendar_bp, url_prefix="/api/calendar")
+    flask_app.register_blueprint(capture_bp, url_prefix="/api/capture-screen")
+    flask_app.register_blueprint(status_entries_bp, url_prefix="/api/status_entries")
+    flask_app.register_blueprint(factions_bp, url_prefix="/api/factions")
+    flask_app.register_blueprint(reputations_bp, url_prefix="/api/reputations")
+    flask_app.register_blueprint(system_bp, url_prefix="/api/system")
+    flask_app.register_blueprint(territory_bp, url_prefix="/api/territory")
+
+    @flask_app.route("/", defaults={"path": ""})
+    @flask_app.route("/<path:path>")
+    def serve_react(path):
+        """Serve the React app's index.html for all frontend routes"""
+        if path and os.path.exists(os.path.join(flask_app.static_folder, path)):
+            return send_from_directory(flask_app.static_folder, path)
+        return send_from_directory(flask_app.static_folder, "index.html")
+
+    return flask_app
+
+
+with open("logging.yaml") as f:
+    logging.config.dictConfig(yaml.safe_load(f))
+logger = logging.getLogger(__name__)
+
+app = create_app()
 
 if __name__ == "__main__":
     _check_env()

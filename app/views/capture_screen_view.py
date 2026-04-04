@@ -23,7 +23,7 @@ def _get_db():
 def _run_capture(make_orchestrator, capture_fn, log_msg, error_msg):
     """Run a capture operation, returning a JSON response with appropriate status code."""
     try:
-        result = capture_fn(make_orchestrator(_get_db()))
+        result = capture_fn(make_orchestrator())
         return jsonify(result)
     except Exception as e:
         logger.exception(log_msg)
@@ -47,7 +47,7 @@ def capture_reputations():
         description: Unexpected error during capture
     """
     return _run_capture(
-        ProcessReputationsOrchestrator,
+        lambda: ProcessReputationsOrchestrator(_get_db()),
         lambda o: o.process_reputations(),
         "Error during screen capture and analysis",
         "Reputation capture failed",
@@ -75,7 +75,7 @@ def capture_single_faction_reputation(faction_id):
         description: Unexpected error during capture
     """
     return _run_capture(
-        ProcessReputationsOrchestrator,
+        lambda: ProcessReputationsOrchestrator(_get_db()),
         lambda o: o.process_single_faction(faction_id),
         "Error during single faction screen capture",
         "Faction capture failed",

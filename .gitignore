@@ -6,3 +6,6 @@ TestScreenshots
 /frontend/dist/
 .env
 /xstfc_rep_tracker.db
+google_credentials*.json
+google_token*.json
+/google_credentials.py

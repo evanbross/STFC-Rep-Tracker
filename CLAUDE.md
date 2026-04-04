@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 STFC Rep Tracker is a Star Trek Fleet Command reputation tracking tool. It consists of:
 
-- A **Flask REST API** (Python) that stores faction reputation data in SQLite
+- A **Flask REST API** (Python) that stores faction reputation data in PostgreSQL
 - A **React SPA** (Vite) for viewing and managing reputation history
 - An **OCR screen capture module** that reads reputation values directly from the STFC game window using OpenCV +
   EasyOCR
@@ -133,7 +133,7 @@ During development, Vite proxies `/api/*` to `http://127.0.0.1:5000`. In product
 The `factions` table drives most dynamic behavior:
 
 - `name`, `code`, `color` — Display fields
-- `reputation_table_name` — SQLite table name and Python module suffix (e.g., `fkr_reputations` →
+- `reputation_table_name` — PostgreSQL table name and Python module suffix (e.g., `fkr_reputations` →
   `app/database/fkr_reputations_dao.py`)
 - `reputation_dao_name` — Python class name to instantiate (e.g., `FKRReputationsDAO`)
 - `display_order` — Controls order in UI

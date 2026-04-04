@@ -46,36 +46,62 @@ _LOAD_READY_TEMPLATES = _NEXT_TAKEOVER_TEMPLATES + _GREEN_FLAG_TEMPLATES
 # ---------------------------------------------------------------------------
 
 
+# Maps single OCR-garbled characters to their most likely digit equivalents.
+# Only applied within digit-like sequences immediately preceding a time unit (d/h/m)
+# — see _normalize_ocr_digits below.
+_OCR_DIGIT_MAP: dict[str, str] = {
+    "O": "0",
+    "o": "0",
+    "A": "0",
+    "a": "0",
+    "I": "1",
+    "l": "1",
+    "i": "1",
+    "T": "1",
+    "Z": "2",
+    "z": "2",
+    "S": "5",
+}
+
+
+def _normalize_ocr_digits(text: str) -> str:
+    """Replace OCR lookalike characters with digits in numeric sequences.
+
+    Scans the string for runs of digits and known OCR lookalikes that are
+    immediately followed by a time unit (d, h, m) and substitutes the whole
+    run at once.  This handles multi-character garbles like 'ISh' → '15h'
+    (where the old per-character regex approach failed because neither I nor S
+    was adjacent to a digit when checked individually).
+
+    Characters not in _OCR_DIGIT_MAP (e.g. 'F') are left as-is — they produce
+    no digit match and the time component will be treated as absent.
+    """
+    result: list[str] = []
+    i = 0
+    while i < len(text):
+        ch = text[i]
+        if ch in _OCR_DIGIT_MAP or ch.isdigit():
+            j = i
+            while j < len(text) and (text[j] in _OCR_DIGIT_MAP or text[j].isdigit()):
+                j += 1
+            if j < len(text) and text[j].lower() in "dhm":
+                result.extend(_OCR_DIGIT_MAP.get(c, c) for c in text[i:j])
+                i = j
+                continue
+        result.append(ch)
+        i += 1
+    return "".join(result)
+
+
 def _parse_time_remaining(text: str) -> timedelta | None:
     """Parse a countdown string like '2d 4h 30m', '4h 6m', or '45m' into a timedelta.
 
-    Returns None if no time components are found.
-    Common OCR substitutions handled before parsing:
-      O/o → 0  (zero)
-      A/a → 0  (zero, e.g. 'Ah' misread)
-      S   → 5  (five, e.g. 'S6m' → '56m')
-      T   → 1  (one,  e.g. 'T7h' → '17h')
-      Z   → 2  (two,  e.g. 'Z0h' → '20h')
-      l/I → 1  (one)
-    Each substitution is guarded so it only fires when the letter
-    occupies a digit position (preceded by a non-word char and followed
-    by a digit or time unit letter).
+    Returns None if no time components are found.  OCR lookalike characters
+    are normalised via _normalize_ocr_digits before parsing.
     """
-    normalised = text
-    _digit_subs = [
-        (r"(?<!\w)[OoAa](?=\d|[dhm])", "0"),
-        (r"(?<!\w)[S](?=\d|[dhm])", "5"),
-        (r"(?<!\w)[T](?=\d|[dhm])", "1"),
-        (r"(?<!\w)[Z](?=\d|[dhm])", "2"),
-        (r"(?<!\w)[lI](?=\d|[dhm])", "1"),
-        # Mid-number: digit → lookalike → digit
-        (r"(?<=\d)[S](?=\d)", "5"),
-        (r"(?<=\d)[T](?=\d)", "1"),
-        (r"(?<=\d)[Z](?=\d)", "2"),
-        (r"(?<=\d)[A](?=\d)", "0"),
-    ]
-    for pattern, replacement in _digit_subs:
-        normalised = re.sub(pattern, replacement, normalised)
+    normalised = _normalize_ocr_digits(text)
+    if normalised != text:
+        logger.debug("OCR time normalised: %r → %r", text, normalised)
 
     days = hours = minutes = 0
     d = re.search(r"(\d+)\s*d", normalised, re.IGNORECASE)
@@ -455,34 +481,63 @@ def _extract_by_name_templates(img: np.ndarray) -> list[dict]:
             for nx, ny, nw, nh in matches:
                 # Timer line sits just below the name template.
                 # Use template height as the unit so this scales with resolution.
+                # Use full row width (x=0) — the timer label may not be
+                # horizontally aligned with the name template.
                 timer_y1 = ny + nh
                 timer_y2 = min(img_h, ny + int(nh * (1 + timer_strip_frac)))
-                timer_strip = img[timer_y1:timer_y2, nx:img_w]
+                timer_strip = img[timer_y1:timer_y2, :]
 
                 if timer_strip.size == 0:
-                    logger.warning("System '%s': timer strip is empty at y=%d", name, ny)
+                    logger.warning(
+                        "System '%s': timer strip is empty at y=%d", name, ny
+                    )
                     continue
 
                 logger.info(
-                    "System '%s': name matched at y=%d (template %dx%d), "
-                    "OCR-ing timer strip y=%d–%d",
-                    name, ny, nw, nh, timer_y1, timer_y2,
+                    "System '%s': name matched at x=%d y=%d (template %dx%d), "
+                    "OCR-ing timer strip y=%d–%d (full width)",
+                    name,
+                    nx,
+                    ny,
+                    nw,
+                    nh,
+                    timer_y1,
+                    timer_y2,
                 )
-                scaled = cv2.resize(timer_strip, None, fx=scale, fy=scale,
-                                    interpolation=cv2.INTER_CUBIC)
-                raw = reader.readtext(scaled, detail=1)
-                logger.info("Timer strip OCR for '%s': %s", name,
-                            [(t, f"{c:.2f}") for _, t, c in raw])
+                scaled = cv2.resize(
+                    timer_strip, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC
+                )
+                # Restrict OCR to the characters that can appear in a timer
+                # (DDd HHh format).  The model maps each glyph to the nearest
+                # allowed character, so I→1, O→0, S→5 etc. happen at inference
+                # time rather than in post-processing.
+                raw = reader.readtext(
+                    scaled, detail=1, allowlist="0123456789dhm "
+                )
+                logger.info(
+                    "Timer strip OCR for '%s': %s",
+                    name,
+                    [(t, f"{c:.2f}") for _, t, c in raw],
+                )
 
                 tokens = [t.strip() for _, t, c in raw if c >= min_conf and t.strip()]
                 time_str = next((t for t in tokens if _is_time_string(t)), None)
 
                 if time_str:
                     delta = _parse_time_remaining(time_str)
-                    event_time = (now + delta).strftime("%Y-%m-%d %H:%M") if delta else None
-                    systems.append({"name": name, "time_remaining": time_str,
-                                    "event_time": event_time})
-                    logger.info("Territory system: '%s' — %s → %s", name, time_str, event_time)
+                    event_time = (
+                        (now + delta).strftime("%Y-%m-%d %H:%M") if delta else None
+                    )
+                    systems.append(
+                        {
+                            "name": name,
+                            "time_remaining": time_str,
+                            "event_time": event_time,
+                        }
+                    )
+                    logger.info(
+                        "Territory system: '%s' — %s → %s", name, time_str, event_time
+                    )
                     found = True
                     break
                 else:
@@ -519,7 +574,9 @@ def _extract_territory_systems(img: np.ndarray) -> list[dict]:
     crop_y = _find_zone_slots_bottom(img)
     img = img[crop_y:, :]
     img_height = img.shape[0]
-    logger.debug("Territory OCR crop: top %d px removed, height %d px", crop_y, img_height)
+    logger.debug(
+        "Territory OCR crop: top %d px removed, height %d px", crop_y, img_height
+    )
 
     systems = _extract_by_name_templates(img)
     if systems:
@@ -541,7 +598,7 @@ def _extract_territory_systems(img: np.ndarray) -> list[dict]:
 
 
 class TerritoryCaptureOrchestrator:
-    def __init__(self, db):
+    def __init__(self) -> None:
         self.sc = ScreenCapture()
 
     def navigate_to_territory_capture(self) -> dict:
