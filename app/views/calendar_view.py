@@ -1,6 +1,6 @@
 import logging
 
-from flask import Blueprint, jsonify
+from flask import Blueprint, current_app, jsonify
 
 logger = logging.getLogger(__name__)
 
@@ -42,8 +42,13 @@ def google_calendar_auth():
         description: Auth flow failed (missing credentials file, browser unavailable, etc.)
     """
     try:
-        from app.google_calendar import run_auth_flow
+        from app.google_calendar import check_territory_systems, run_auth_flow
         result = run_auth_flow()
+        # After auth, immediately check calendar events for all saved territory systems
+        db = current_app.config["DATABASE"]
+        systems = db.territory_systems.get_all()
+        check_territory_systems(systems)
+        result["systems"] = systems
         return jsonify(result)
     except FileNotFoundError as e:
         logger.error("Google credentials file missing: %s", e)

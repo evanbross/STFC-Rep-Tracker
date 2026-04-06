@@ -1,7 +1,7 @@
 import logging
 from typing import Any
 
-from flask import Blueprint, Response, jsonify, current_app
+from flask import Blueprint, Response, current_app, jsonify, request
 
 from app.database.reputations_dao import ReputationsDAO
 
@@ -119,7 +119,6 @@ def update_reputation_row(table_name: str, row_id: int) -> tuple[Response, int] 
       400:
         description: Bad request
     """
-    from flask import request
     err = _validate_table_name(table_name)
     if err:
         return err

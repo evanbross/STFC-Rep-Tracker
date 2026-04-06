@@ -4,6 +4,7 @@ import queue
 import threading
 import time
 from datetime import datetime
+from typing import Any
 
 import cv2
 import easyocr
@@ -12,6 +13,9 @@ import pyautogui
 import pygetwindow as gw
 
 from app.app_config import capture_cfg
+
+# pygetwindow returns Win32Window on Windows. Typed as Any since stubs vary by platform.
+_Window = Any
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +35,7 @@ _ocr_reader_lock = threading.Lock()
 _template_cache: dict = {}
 
 
-def _load_template(template_path: str):
+def _load_template(template_path: str) -> np.ndarray | None:
     """Return the template image for template_path, using the in-memory cache.
 
     Falls back to cv2.imread on every call when performance.template_cache is
@@ -93,15 +97,29 @@ def _get_write_queue() -> queue.Queue:
 
 # Special-key VK code map for keys that can't be derived from ord().
 _VK_SPECIAL = {
-    'f1': 0x70, 'f2': 0x71, 'f3': 0x72, 'f4': 0x73,
-    'f5': 0x74, 'f6': 0x75, 'f7': 0x76, 'f8': 0x77,
-    'f9': 0x78, 'f10': 0x79, 'f11': 0x7A, 'f12': 0x7B,
-    'esc': 0x1B, 'escape': 0x1B,
-    'enter': 0x0D, 'return': 0x0D,
-    'space': 0x20,
-    'tab': 0x09,
-    'backspace': 0x08,
-    'left': 0x25, 'up': 0x26, 'right': 0x27, 'down': 0x28,
+    "f1": 0x70,
+    "f2": 0x71,
+    "f3": 0x72,
+    "f4": 0x73,
+    "f5": 0x74,
+    "f6": 0x75,
+    "f7": 0x76,
+    "f8": 0x77,
+    "f9": 0x78,
+    "f10": 0x79,
+    "f11": 0x7A,
+    "f12": 0x7B,
+    "esc": 0x1B,
+    "escape": 0x1B,
+    "enter": 0x0D,
+    "return": 0x0D,
+    "space": 0x20,
+    "tab": 0x09,
+    "backspace": 0x08,
+    "left": 0x25,
+    "up": 0x26,
+    "right": 0x27,
+    "down": 0x28,
 }
 _KEYEVENTF_KEYUP = 0x0002
 
@@ -114,6 +132,7 @@ def _send_key(key):
     are looked up in _VK_SPECIAL.
     """
     import ctypes
+
     key_lower = key.lower()
     if key_lower in _VK_SPECIAL:
         vk = _VK_SPECIAL[key_lower]
@@ -128,7 +147,11 @@ def _send_key(key):
     ctypes.windll.user32.keybd_event(vk, 0, _KEYEVENTF_KEYUP, 0)
 
 
-def match_template(filename, img, crop_h_frac=1.0):
+def match_template(
+    filename: str,
+    img: np.ndarray,
+    crop_h_frac: float = 1.0,
+) -> tuple[np.ndarray, float, tuple[int, int]] | None:
     """Run template matching for filename against img.
 
     Returns (template, max_val, max_loc), or None if the template image could not be loaded.
@@ -208,7 +231,7 @@ def find_all_template_matches(
     return sorted(matches, key=lambda m: m[1])
 
 
-def is_template_visible(filename, img):
+def is_template_visible(filename: str, img: np.ndarray) -> bool:
     """Return True if the template image is found in img above the match threshold."""
     if not filename:
         return False
@@ -254,13 +277,13 @@ def show_reticle(x, y, duration_ms=5000, radius=20):
 
 
 def is_button_visible(
-    button_filenames,
-    img,
-    screen_offset=(0, 0),
-    on_found=None,
-    crop_h_frac=1.0,
-    threshold=None,
-):
+    button_filenames: str | list[str],
+    img: np.ndarray,
+    screen_offset: tuple[int, int] = (0, 0),
+    on_found: Any = None,
+    crop_h_frac: float = 1.0,
+    threshold: float | None = None,
+) -> tuple[np.ndarray, float, tuple[int, int]] | None:
     """Return (template, max_val, max_loc) if any button in button_filenames is visible in img, else None.
 
     button_filenames may be a single filename string or a list of filenames.
@@ -291,13 +314,13 @@ def is_button_visible(
 
 
 def click_button_if_visible(
-    button_filenames,
-    img,
-    screen_offset=(0, 0),
-    on_found=None,
-    crop_h_frac=1.0,
-    threshold=None,
-):
+    button_filenames: str | list[str],
+    img: np.ndarray,
+    screen_offset: tuple[int, int] = (0, 0),
+    on_found: Any = None,
+    crop_h_frac: float = 1.0,
+    threshold: float | None = None,
+) -> bool:
     """Click the button if its template is visible in img. Returns True if clicked.
 
     button_filenames may be a single filename string or a list of filenames.
@@ -331,7 +354,13 @@ def click_button_if_visible(
     return True
 
 
-def wait_for_template(filename, sc, window, max_retries=None, delay=None):
+def wait_for_template(
+    filename: str,
+    sc: "ScreenCapture",
+    window: _Window,
+    max_retries: int | None = None,
+    delay: float | None = None,
+) -> np.ndarray | None:
     """Poll until filename is visible. Returns the image it was found in, or None.
 
     Captures a fresh screenshot on each attempt. If the template does not appear
@@ -349,7 +378,13 @@ def wait_for_template(filename, sc, window, max_retries=None, delay=None):
     return None
 
 
-def wait_for_any_template(filenames, sc, window, max_retries=None, delay=None):
+def wait_for_any_template(
+    filenames: list[str],
+    sc: "ScreenCapture",
+    window: _Window,
+    max_retries: int | None = None,
+    delay: float | None = None,
+) -> tuple[str, np.ndarray] | tuple[None, None]:
     """Poll until any template in filenames is visible.
 
     Returns (matched_filename, img) for the first template found, or (None, None)
@@ -372,8 +407,13 @@ def wait_for_any_template(filenames, sc, window, max_retries=None, delay=None):
 
 
 def wait_and_click(
-    filename, sc, window, screen_offset=(0, 0), max_retries=None, delay=None
-):
+    filename: str,
+    sc: "ScreenCapture",
+    window: _Window,
+    screen_offset: tuple[int, int] = (0, 0),
+    max_retries: int | None = None,
+    delay: float | None = None,
+) -> bool:
     """Wait for filename to appear then click it. Returns True if clicked."""
     img = wait_for_template(filename, sc, window, max_retries=max_retries, delay=delay)
     if img is None:
@@ -382,8 +422,13 @@ def wait_and_click(
 
 
 def wait_and_click_any(
-    filenames, sc, window, screen_offset=(0, 0), max_retries=None, delay=None
-):
+    filenames: list[str],
+    sc: "ScreenCapture",
+    window: _Window,
+    screen_offset: tuple[int, int] = (0, 0),
+    max_retries: int | None = None,
+    delay: float | None = None,
+) -> str | None:
     """Wait for any template in filenames to appear, then click the first one visible.
 
     Returns the filename that was clicked, or None if none appeared within the retry limit.
@@ -397,7 +442,7 @@ def wait_and_click_any(
     return matched
 
 
-def get_reader():
+def get_reader() -> easyocr.Reader:
     global _ocr_reader
     if _ocr_reader is None:
         with _ocr_reader_lock:
@@ -466,9 +511,9 @@ class ScreenCapture:
             raise Exception("activate_window: Window is None")
 
         hwnd = window._hWnd
-        _SWP_NOMOVE  = 0x0002
-        _SWP_NOSIZE  = 0x0001
-        _SWP_FLAGS   = _SWP_NOMOVE | _SWP_NOSIZE
+        _SWP_NOMOVE = 0x0002
+        _SWP_NOSIZE = 0x0001
+        _SWP_FLAGS = _SWP_NOMOVE | _SWP_NOSIZE
 
         if win32gui.IsIconic(hwnd):
             logger.info(f"Restoring minimized window: {window.title}")
@@ -478,12 +523,14 @@ class ScreenCapture:
         # ALT key trick — must sleep briefly after so Windows processes the event
         # before SetForegroundWindow is called.
         ctypes.windll.user32.keybd_event(win32con.VK_MENU, 0, 0, 0)
-        ctypes.windll.user32.keybd_event(win32con.VK_MENU, 0, win32con.KEYEVENTF_KEYUP, 0)
+        ctypes.windll.user32.keybd_event(
+            win32con.VK_MENU, 0, win32con.KEYEVENTF_KEYUP, 0
+        )
         time.sleep(0.05)
 
         # Force window to top of Z-order via TOPMOST, then revert so it behaves normally.
-        win32gui.SetWindowPos(hwnd, win32con.HWND_TOPMOST,    0, 0, 0, 0, _SWP_FLAGS)
-        win32gui.SetWindowPos(hwnd, win32con.HWND_NOTOPMOST,  0, 0, 0, 0, _SWP_FLAGS)
+        win32gui.SetWindowPos(hwnd, win32con.HWND_TOPMOST, 0, 0, 0, 0, _SWP_FLAGS)
+        win32gui.SetWindowPos(hwnd, win32con.HWND_NOTOPMOST, 0, 0, 0, 0, _SWP_FLAGS)
 
         win32gui.BringWindowToTop(hwnd)
 
@@ -690,6 +737,7 @@ class ScreenCapture:
             ]
         if nav_buttons is None:
             nav_buttons = [
+                "Red X 1.jpg",
                 "TopLeftBackArrow.jpg",
                 "Nav Left Arrow Mission Screen.jpg",
                 "collect.jpg",

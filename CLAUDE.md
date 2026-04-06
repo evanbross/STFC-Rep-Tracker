@@ -147,4 +147,14 @@ The `faction_selected_snippets` table maps each faction to multiple template ima
 - Multiple snippets per type are supported per faction
 - Managed via the Snippets modal in `Factions.jsx`; auto-pasted filenames follow `Selected-<type>-<CODE>-<N>.png`
 
+## Best Practices
+
+When modifying code, follow established best practices for the language and framework in use. This includes (but is not limited to):
+
+- SOLID principles and clean architecture
+- Proper separation of concerns
+- Secure coding patterns (no injection risks, no overly broad exception catches, validate at boundaries)
+- Idiomatic use of the language and framework — prefer stdlib/framework features over hand-rolled solutions
+- Consistent naming and style conventions already present in the codebase
+
 allowedTools "Edit,Write,Read,Glob,Grep,Agent,Bash(npm run build),Bash(npm run dev)"

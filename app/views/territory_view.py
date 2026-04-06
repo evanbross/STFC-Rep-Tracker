@@ -3,10 +3,26 @@ from flask import Blueprint, current_app, jsonify, request
 territory_bp = Blueprint("territory", __name__)
 
 
+def _annotate_with_calendar(systems: list[dict]) -> list[dict]:
+    """Append calendar_event data to each system if Google Calendar is authenticated.
+
+    Failures are swallowed — calendar checks must never break territory endpoints.
+    """
+    try:
+        from app.google_calendar import check_territory_systems, is_authenticated
+        if is_authenticated():
+            check_territory_systems(systems)
+    except Exception:
+        pass
+    return systems
+
+
 @territory_bp.get("/systems")
 def get_systems():
     db = current_app.config["DATABASE"]
-    return jsonify(db.territory_systems.get_all())
+    systems = db.territory_systems.get_all()
+    _annotate_with_calendar(systems)
+    return jsonify(systems)
 
 
 @territory_bp.post("/systems")
@@ -23,6 +39,7 @@ def upsert_system():
         return jsonify({"error": "day_of_week must be an integer 0–6 (Mon–Sun)"}), 400
 
     system = db.territory_systems.upsert(name, day_of_week, event_time)
+    _annotate_with_calendar([system])
     return jsonify(system), 200
 
 
@@ -42,7 +59,49 @@ def update_system(system_id: int):
     system = db.territory_systems.update(system_id, name, day_of_week, event_time)
     if not system:
         return jsonify({"error": "not found"}), 404
+    _annotate_with_calendar([system])
     return jsonify(system)
+
+
+@territory_bp.post("/systems/check-calendar")
+def check_calendar():
+    """Re-run the Google Calendar lookup for all territory systems and return the results."""
+    db = current_app.config["DATABASE"]
+    systems = db.territory_systems.get_all()
+    _annotate_with_calendar(systems)
+    return jsonify(systems)
+
+
+@territory_bp.get("/calendars")
+def list_calendars():
+    """Return the authenticated user's Google Calendar list."""
+    try:
+        from app.google_calendar import list_calendars as _list_calendars
+        return jsonify(_list_calendars())
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@territory_bp.post("/systems/<int:system_id>/calendar-event")
+def create_calendar_event(system_id: int):
+    """Create a Google Calendar event for the next occurrence of this territory system.
+
+    Accepts an optional JSON body with a 'calendar_id' key (defaults to 'primary').
+    """
+    db = current_app.config["DATABASE"]
+    system = db.territory_systems.get_by_id(system_id)
+    if not system:
+        return jsonify({"error": "not found"}), 404
+
+    data = request.get_json(silent=True) or {}
+    calendar_id: str = data.get("calendar_id", "primary")
+
+    try:
+        from app.google_calendar import create_territory_event
+        system["calendar_event"] = create_territory_event(system, calendar_id=calendar_id)
+        return jsonify(system)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @territory_bp.delete("/systems/<int:system_id>")

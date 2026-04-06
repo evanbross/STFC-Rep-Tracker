@@ -31,9 +31,13 @@ stfc_config:
     avg_entries: 10
     # Minimum match score for SelectedRow snippets to identify highlighted faction
     snippet_threshold: 0.70
-    # Retries / interval (seconds) waiting for a faction to become active after clicking
+    # Timing for waiting on the confirm snippet after clicking a faction button.
+    # The panel animates open, so the first check is delayed longer than the rest.
+    # Total max wait = confirm_first_delay + confirm_retries × confirm_delay
+    #                = 0.5 + 8 × 0.2 = 2.1s
+    confirm_first_delay: 0.5
     confirm_retries: 8
-    confirm_delay: 0.25
+    confirm_delay: 0.2
     # Fraction of snippet height used for template matching on RepButton/SelectedRow snippets.
     # Set < 1.0 to exclude the reputation tier label (e.g. "RESPECTED") from the match,
     # so snippets remain valid after a tier change. The full height is still used for clicks.
@@ -52,14 +56,26 @@ stfc_config:
     collect_delay: 0.25
 
   gifts:
-    # Seconds to wait after each action in the navigation and claim loops
+    # Seconds to wait between navigation steps
     loop_delay: 0.25
+    # Timing for waiting on the Done button after clicking Claim All.
+    # The rewards panel animates open, so the first check is delayed longer.
+    # Total max wait = claim_first_delay + claim_done_retries × claim_done_delay
+    #                = 0.5 + 16 × 0.25 = 4.5s
+    claim_first_delay: 0.5
+    claim_done_retries: 16
+    claim_done_delay: 0.25
+    # Timing for waiting on the gifts list to reload after clicking Done.
+    # Total max wait = reload_first_delay + screen_wait_retries × reload_delay
+    #                = 0.5 + 8 × 0.2 = 2.1s
+    reload_first_delay: 0.5
+    reload_delay: 0.2
 
   google_calendar:
     # OAuth2 client credentials downloaded from Google Cloud Console.
     # Create a project, enable the Google Calendar API, create an OAuth2 Desktop
     # client ID, download the JSON, and save it at this path (relative to project root).
-    credentials_file: google_credentials.json
+    credentials_file: google_credentials 2.json
     # Token written after the first successful auth flow. Refreshed automatically.
     token_file: google_token.json
 

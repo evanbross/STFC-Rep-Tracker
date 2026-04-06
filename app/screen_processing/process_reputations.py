@@ -1,7 +1,12 @@
 import logging
 import os
+import re
+import time
+from datetime import datetime
+from typing import Any
 
 import cv2
+import numpy as np
 
 from app.app_config import capture_cfg
 from app.screen_processing.screen_capture import (
@@ -16,17 +21,28 @@ from app.screen_processing.screen_capture import (
 
 logger = logging.getLogger(__name__)
 
+# Faction dicts as returned by FactionsDAO — typed loosely since the DAO
+# is not yet annotated.
+_FactionDict = dict[str, Any]
+
+# Return type for _navigate_to_factions: success gives (window, None),
+# failure gives (None, error dict).
+_NavResult = tuple[Any, None] | tuple[None, dict[str, str]]
+
 
 class ProcessReputationsOrchestrator:
-    def __init__(self, db):
+    def __init__(self, db: Any) -> None:
         from app.database.status_entries_dao import StatusEntriesDAO
 
-        self.sc = ScreenCapture()
-        self.stat_dao = StatusEntriesDAO(db)
-        self.factions_dao = db.factions
+        self.sc: ScreenCapture = ScreenCapture()
+        self.stat_dao: StatusEntriesDAO = StatusEntriesDAO(db)
+        self.factions_dao: Any = db.factions
 
-    def _navigate_to_factions(self):
-        """Activate window, go home, then click the Factions button.
+    def _navigate_to_factions(self) -> _NavResult:
+        """Activate window, then navigate to the faction store if not already there.
+
+        Checks for the faction store header snippet first — if it's already visible,
+        skips the home-screen navigation and Factions button click entirely.
 
         Returns (window, None) on success or (None, error_dict) on failure.
         """
@@ -36,6 +52,16 @@ class ProcessReputationsOrchestrator:
             logger.error(e)
             return None, {"error": str(e)}
 
+        img = self.sc.capture(window)
+        header_threshold: float = capture_cfg("factions", "header_threshold", default=0.70)
+        header_match = match_template("Faction Store Header.jpg", img)
+        if header_match is not None and header_match[1] >= header_threshold:
+            logger.info(
+                f"Already on faction store (header score={header_match[1]:.3f}) — skipping navigation"
+            )
+            return window, None
+
+        logger.info("Faction store header not detected — navigating from home screen")
         try:
             self.sc.navigate_to_home_screen(window)
         except RuntimeError as e:
@@ -53,16 +79,16 @@ class ProcessReputationsOrchestrator:
 
         return window, None
 
-    def _save_results(self, results: list) -> list:
+    def _save_results(self, results: list[_FactionDict]) -> list[_FactionDict]:
         """Persist captured reputation points to the database.
 
         Iterates results from _process_faction_list, writes each entry that has a
         non-None points value to the status_entries table, and returns a list of
         successfully saved {"faction": name, "points": value} dicts.
         """
-        saved = []
+        saved: list[_FactionDict] = []
         for item in results or []:
-            points = item.get("points")
+            points: int | None = item.get("points")
             if points is None:
                 continue
             try:
@@ -73,7 +99,7 @@ class ProcessReputationsOrchestrator:
                 logger.error(f"Failed to save {item['faction']}: {e}")
         return saved
 
-    def process_single_faction(self, faction_id):
+    def process_single_faction(self, faction_id: int) -> dict[str, Any]:
         window, err = self._navigate_to_factions()
         if err:
             return err
@@ -86,7 +112,7 @@ class ProcessReputationsOrchestrator:
         saved = self._save_results(results)
         return {"saved": saved, "results": results}
 
-    def process_reputations(self):
+    def process_reputations(self) -> dict[str, Any]:
         window, err = self._navigate_to_factions()
         if err:
             return err
@@ -96,7 +122,9 @@ class ProcessReputationsOrchestrator:
         return {"saved": saved, "results": results}
 
 
-def _find_highlighted_faction(img, factions):
+def _find_highlighted_faction(
+    img: np.ndarray, factions: list[_FactionDict]
+) -> str | None:
     """Identify which faction is currently highlighted in the faction store.
 
     Args:
@@ -109,23 +137,23 @@ def _find_highlighted_faction(img, factions):
     if img is None:
         raise ValueError("_find_highlighted_faction: img is None")
 
-    threshold = capture_cfg("factions", "snippet_threshold", default=0.70)
-    best_name = None
-    best_score = -1
+    threshold: float = capture_cfg("factions", "snippet_threshold", default=0.70)
+    best_name: str | None = None
+    best_score: float = -1.0
 
     for faction in factions:
-        fname = faction.get("name", "<unknown>")
-        snippets = faction.get("selected_snippets", [])
+        fname: str = faction.get("name", "<unknown>")
+        snippets: list[dict[str, Any]] = faction.get("selected_snippets", [])
 
-        faction_best = -1
-        faction_best_file = None
+        faction_best: float = -1.0
+        faction_best_file: str | None = None
         for s in snippets:
-            filename = s.get("filename")
+            filename: str | None = s.get("filename")
             if not filename:
                 continue
             try:
                 m = match_template(filename, img)
-                score = m[1] if m is not None else None
+                score: float | None = m[1] if m is not None else None
                 if score is not None:
                     logger.debug(f"'{fname}' {filename} score={score:.3f}")
                     if score > faction_best:
@@ -152,7 +180,7 @@ def _find_highlighted_faction(img, factions):
     return None
 
 
-def capture_and_identify_faction(db):
+def capture_and_identify_faction(db: Any) -> dict[str, Any]:
     """Capture the current STFC window and identify which faction is highlighted.
 
     Returns a dict with {"faction": name} or {"error": message}.
@@ -165,7 +193,7 @@ def capture_and_identify_faction(db):
         return {"error": str(e)}
 
     img = sc.capture(window)
-    factions = sorted(
+    factions: list[_FactionDict] = sorted(
         db.factions.get_all_factions(), key=lambda f: f.get("display_order") or 999
     )
 
@@ -177,14 +205,14 @@ def capture_and_identify_faction(db):
         return {"error": str(e)}
 
 
-def _preprocess_for_ocr(region_bgr):
+def _preprocess_for_ocr(region_bgr: np.ndarray) -> np.ndarray:
     """Scale up and threshold a BGR region to improve OCR accuracy on small UI text.
 
     Uses Otsu's global threshold instead of adaptive thresholding — more reliable
     for game UI text (light text on a dark, mostly-uniform background).
     """
     gray = cv2.cvtColor(region_bgr, cv2.COLOR_BGR2GRAY)
-    scale = capture_cfg("ocr", "scale_factor", default=3)
+    scale: int = capture_cfg("ocr", "scale_factor", default=3)
     scaled = cv2.resize(
         gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_LANCZOS4
     )
@@ -194,27 +222,25 @@ def _preprocess_for_ocr(region_bgr):
     return thresh
 
 
-def _save_debug_crop(region_bgr, preprocessed, label="crop"):
+def _save_debug_crop(
+    region_bgr: np.ndarray, preprocessed: np.ndarray, label: str = "crop"
+) -> None:
     """Save raw and preprocessed crops to Screenshots/debug/ for OCR tuning."""
     debug_dir = os.path.join(
         os.path.dirname(__file__), "..", "..", "Screenshots", "debug"
     )
     os.makedirs(debug_dir, exist_ok=True)
-    from datetime import datetime
-
     ts = datetime.now().strftime("%H-%M-%S")
     cv2.imwrite(os.path.join(debug_dir, f"{ts}_{label}_raw.png"), region_bgr)
     cv2.imwrite(os.path.join(debug_dir, f"{ts}_{label}_preprocessed.png"), preprocessed)
 
 
-def _digit_count(s):
+def _digit_count(s: str) -> int:
     """Return the number of digits in s (ignoring sign and commas)."""
     return len(s.replace("-", "").replace(",", ""))
 
 
-def _extract_points(img):
-    import re
-
+def _extract_points(img: np.ndarray | None) -> int | None:
     if img is None:
         logger.warning("No image provided to _extract_points")
         return None
@@ -224,12 +250,12 @@ def _extract_points(img):
     # "Points: X,XXX" is in the top-left faction panel, not the right panel.
     # Extend the height crop slightly to capture the points row even when the
     # "FACTION STORE" header pushes it down a little.
-    h_frac = capture_cfg("ocr", "points_height_frac", default=0.13)
-    w_frac = capture_cfg("ocr", "points_width_frac", default=0.22)
+    h_frac: float = capture_cfg("ocr", "points_height_frac", default=0.13)
+    w_frac: float = capture_cfg("ocr", "points_width_frac", default=0.22)
     points_region = img[0 : int(height * h_frac), 0 : int(width * w_frac)]
     preprocessed = _preprocess_for_ocr(points_region)
 
-    results = get_reader().readtext(preprocessed, detail=0)
+    results: list[str] = get_reader().readtext(preprocessed, detail=0)
     text = " ".join(results)
     logger.debug(f"Raw OCR results from points region: {results!r}")
     logger.debug(f"Joined OCR text: {text!r}")
@@ -243,7 +269,7 @@ def _extract_points(img):
         return int(match.group(1).replace(",", ""))
 
     # Second-pass: re-run OCR with a digits/minus/comma allowlist to reduce misreads
-    digit_results = get_reader().readtext(
+    digit_results: list[str] = get_reader().readtext(
         preprocessed, detail=0, allowlist="0123456789,-"
     )
     digit_text = " ".join(digit_results)
@@ -252,7 +278,7 @@ def _extract_points(img):
     # Try the Points pattern again with a fuzzier label match, then pull the
     # number from the digit-only pass which is more reliable.
     if re.search(r"[Pp].{0,3}[Nn][Tt][Ss]", text):
-        numbers = re.findall(r"-?[\d,]{3,}", digit_text)
+        numbers: list[str] = re.findall(r"-?[\d,]{3,}", digit_text)
         if numbers:
             if logger.isEnabledFor(logging.DEBUG):
                 _save_debug_crop(points_region, preprocessed, label="points")
@@ -264,7 +290,11 @@ def _extract_points(img):
     return None
 
 
-def click_faction_button(faction, img, screen_offset=(0, 0)):
+def click_faction_button(
+    faction: _FactionDict,
+    img: np.ndarray,
+    screen_offset: tuple[int, int] = (0, 0),
+) -> bool:
     """Locate and click a faction's name button on the left side of the screen.
 
     Uses the RepButton snippet (faction icon + name) to find the correct button
@@ -272,18 +302,20 @@ def click_faction_button(faction, img, screen_offset=(0, 0)):
     that is not set, falls back to RepButton{code}.jpg derived from the faction code.
     Returns True if the button was found and clicked, False otherwise.
     """
-    name = faction.get("name", "<unknown>")
-    filename = faction.get("snippet_unselected")
-    if not filename:
-        code = faction.get("code")
+    name: str = faction.get("name", "<unknown>")
+    raw_filename: str | None = faction.get("snippet_unselected")
+    if raw_filename:
+        filename: str = raw_filename
+    else:
+        code: str | None = faction.get("code")
         if not code:
             logger.warning(f"'{name}' has no snippet_unselected or code")
             return False
         filename = f"RepButton{code.capitalize()}.jpg"
         logger.debug(f"'{name}' no snippet_unselected, derived {filename} from code")
 
-    crop_h_frac = capture_cfg("factions", "snippet_name_height_frac", default=1.0)
-    clicked = click_button_if_visible(
+    crop_h_frac: float = capture_cfg("factions", "snippet_name_height_frac", default=1.0)
+    clicked: bool = click_button_if_visible(
         filename, img, screen_offset, crop_h_frac=crop_h_frac
     )
     if clicked:
@@ -292,7 +324,7 @@ def click_faction_button(faction, img, screen_offset=(0, 0)):
 
     # Button not found at normal threshold — it may already be selected (brighter
     # appearance). Retry with a lower threshold to handle the selected state.
-    fallback_threshold = capture_cfg(
+    fallback_threshold: float = capture_cfg(
         "factions", "button_selected_threshold", default=0.60
     )
     clicked = click_button_if_visible(
@@ -309,7 +341,9 @@ def click_faction_button(faction, img, screen_offset=(0, 0)):
     return clicked
 
 
-def _process_faction_list(factions, window, sc):
+def _process_faction_list(
+    factions: list[_FactionDict], window: Any, sc: ScreenCapture
+) -> list[_FactionDict]:
     """Iterate through a list of faction dicts and capture reputation points.
 
     For each faction:
@@ -325,23 +359,23 @@ def _process_faction_list(factions, window, sc):
     Returns:
         list of dicts: [{"faction": name, "clicked": bool, "points": int|None, "error": str|None}, ...]
     """
-    screen_offset = (window.left, window.top)
-    results = []
+    screen_offset: tuple[int, int] = (window.left, window.top)
+    results: list[_FactionDict] = []
 
     for faction in factions:
-        name = faction.get("name", "<unknown>")
+        name: str = faction.get("name", "<unknown>")
 
-        unselected = faction.get("snippet_unselected")
-        selected_snippets = faction.get("selected_snippets", [])
-        selected_filenames = [
+        unselected: str | None = faction.get("snippet_unselected")
+        selected_snippets: list[dict[str, Any]] = faction.get("selected_snippets", [])
+        selected_filenames: list[str] = [
             s["filename"] for s in selected_snippets if s.get("filename")
         ]
-        desc_filenames = [
+        desc_filenames: list[str] = [
             s["filename"]
             for s in selected_snippets
             if s.get("snippet_type") == "desc" and s.get("filename")
         ]
-        confirm_filenames = desc_filenames if desc_filenames else selected_filenames
+        confirm_filenames: list[str] = desc_filenames if desc_filenames else selected_filenames
 
         logger.info(
             f"Selecting '{name}' — unselected={unselected} "
@@ -360,7 +394,7 @@ def _process_faction_list(factions, window, sc):
             )
             continue
 
-        wait_templates = [unselected] + selected_filenames
+        wait_templates: list[str] = [unselected] + selected_filenames
         filename, img = wait_for_any_template(wait_templates, sc, window)
         if filename is None:
             logger.warning(f"'{name}' — no indicator visible — skipping")
@@ -392,9 +426,16 @@ def _process_faction_list(factions, window, sc):
                 )
                 continue
 
-        points = None
+        points: int | None = None
         if confirm_filenames:
-            confirm_file, _ = wait_for_any_template(confirm_filenames, sc, window)
+            confirm_first_delay: float = capture_cfg("factions", "confirm_first_delay", default=0.5)
+            confirm_retries: int = capture_cfg("factions", "confirm_retries", default=8)
+            confirm_delay: float = capture_cfg("factions", "confirm_delay", default=0.2)
+            time.sleep(confirm_first_delay)
+            confirm_file, _ = wait_for_any_template(
+                confirm_filenames, sc, window,
+                max_retries=confirm_retries, delay=confirm_delay,
+            )
             if confirm_file is not None:
                 fresh_img = sc.capture(window)
                 points = _extract_points(fresh_img)
@@ -416,7 +457,9 @@ def _process_faction_list(factions, window, sc):
     return results
 
 
-def click_all_faction_buttons(factions_dao, window, sc):
+def click_all_faction_buttons(
+    factions_dao: Any, window: Any, sc: ScreenCapture
+) -> list[_FactionDict]:
     """Legacy wrapper — calls _process_faction_list with all factions from the DAO."""
     return _process_faction_list(factions_dao.get_all_factions(), window, sc)
 

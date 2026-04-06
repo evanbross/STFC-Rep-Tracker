@@ -27,6 +27,19 @@ class TerritorySystemsDAO:
             )
         """)
 
+    def get_by_id(self, system_id: int) -> dict | None:
+        with self.db.connect() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT id, name, day_of_week, TO_CHAR(event_time, 'HH24:MI')
+                FROM territory_systems
+                WHERE id = %s
+            """, (system_id,))
+            row = cursor.fetchone()
+        if not row:
+            return None
+        return {"id": row[0], "name": row[1], "day_of_week": row[2], "event_time": row[3]}
+
     def get_all(self) -> list[dict]:
         with self.db.connect() as conn:
             cursor = conn.cursor()
