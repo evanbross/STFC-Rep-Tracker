@@ -77,9 +77,10 @@ def _build_service():
             creds = None
 
     if not creds or not creds.valid:
-        logger.info("No valid token — starting OAuth2 flow.")
-        run_auth_flow()
-        creds = Credentials.from_authorized_user_file(token_file, _SCOPES)
+        raise RuntimeError(
+            "Google Calendar is not authenticated. "
+            "Open the Territory Schedule and connect your calendar first."
+        )
 
     return build("calendar", "v3", credentials=creds)
 
@@ -115,7 +116,21 @@ def run_auth_flow() -> dict:
         )
 
     flow = InstalledAppFlow.from_client_secrets_file(creds_file, _SCOPES)
-    creds = flow.run_local_server(port=0)
+    try:
+        creds = flow.run_local_server(port=0)
+    except OSError as e:
+        import errno
+        if e.errno in (errno.EACCES, 10013):
+            raise RuntimeError(
+                "Google OAuth2 flow failed: Windows blocked the local callback server.\n"
+                "This usually means the OS has reserved most dynamic ports (common with Hyper-V/WSL).\n"
+                "Run this in an admin terminal to check:\n"
+                "  netsh int ipv4 show excludedportrange protocol=tcp\n"
+                "To reset the dynamic port range:\n"
+                "  netsh int ipv4 set dynamicport tcp start=49152 num=16384\n"
+                "  (Restart required)"
+            ) from e
+        raise
 
     token_file = _token_path()
     with open(token_file, "w") as f:
@@ -250,6 +265,10 @@ def create_territory_event(system: dict, calendar_id: str = "primary") -> dict:
         "summary": f"Territory Capture - {system['name']}",
         "start": {"dateTime": event_dt.isoformat(), "timeZone": "UTC"},
         "end": {"dateTime": end_dt.isoformat(), "timeZone": "UTC"},
+        "reminders": {
+            "useDefault": False,
+            "overrides": [{"method": "popup", "minutes": 10}],
+        },
     }
 
     created = service.events().insert(calendarId=calendar_id, body=body).execute()

@@ -8,7 +8,8 @@
       "WebFetch(domain:stfc.space)",
       "WebFetch(domain:web.archive.org)",
       "Bash(python -c \":*)",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(uv --version)"
     ]
   }
 }

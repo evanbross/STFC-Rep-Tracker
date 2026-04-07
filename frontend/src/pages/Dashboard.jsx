@@ -326,7 +326,7 @@ const Dashboard = () => {
             `/api/territory/systems/${id}/calendar-event`,
             { calendar_id: calPickerSelectedId },
         );
-        setTerritorySystems(prev => prev.map(s => s.id === id ? res.data : s));
+        setScheduleList(prev => prev.map(s => s.id === id ? res.data : s));
     };
 
     const openTerritorySchedule = async () => {

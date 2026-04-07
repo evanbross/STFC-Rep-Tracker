@@ -105,7 +105,9 @@ class AwayTeamOrchestrator:
                 break
             collected += 1
             logger.info(f"clicked COLLECT ({collected})")
-            # Loop back — list indicator wait at the top handles the transition delay
+            post_collect_delay = capture_cfg("away_teams", "post_collect_delay", default=2.0)
+            time.sleep(post_collect_delay)
+            # Loop back — list indicator wait at the top handles the remaining transition
 
         logger.info(f"{reports_clicked} report(s), {collected} collected")
         return reports_clicked, collected

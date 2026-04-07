@@ -17,7 +17,7 @@ STFC Rep Tracker is a Star Trek Fleet Command reputation tracking tool. It consi
 
 ```bash
 python main.py
-# Runs on http://localhost:5000
+# Runs on http://localhost:7000
 # Note: requires admin privileges on Windows (main.py auto-relaunches elevated if needed)
 ```
 
@@ -125,7 +125,7 @@ API docs (Flasgger/Swagger UI) available at `/apidocs`.
 - `/factions` → `Factions.jsx` — faction CRUD with snippet image management modal
 - `/reputations` → `Reputations.jsx` — reputation tier viewer
 
-During development, Vite proxies `/api/*` to `http://127.0.0.1:5000`. In production, Flask serves
+During development, Vite proxies `/api/*` to `http://127.0.0.1:7000`. In production, Flask serves
 `frontend/dist/index.html` for all non-API routes.
 
 ### Key Faction Data Model
@@ -156,5 +156,6 @@ When modifying code, follow established best practices for the language and fram
 - Secure coding patterns (no injection risks, no overly broad exception catches, validate at boundaries)
 - Idiomatic use of the language and framework — prefer stdlib/framework features over hand-rolled solutions
 - Consistent naming and style conventions already present in the codebase
+- **OAuth / interactive auth flows must never be triggered from background API calls.** If a token is missing or invalid during a non-auth endpoint, raise an error and return it to the caller — never open a browser window or start a local callback server mid-request. Interactive auth flows belong exclusively in dedicated auth endpoints (e.g. `POST /auth`, `GET /login`) that the user explicitly invokes.
 
 allowedTools "Edit,Write,Read,Glob,Grep,Agent,Bash(npm run build),Bash(npm run dev)"

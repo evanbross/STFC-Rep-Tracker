@@ -1,7 +1,9 @@
 import ctypes
+import errno
 import logging
 import logging.config
 import os
+import socket
 import subprocess
 import sys
 import threading
@@ -179,4 +181,21 @@ if __name__ == "__main__":
         logger.info("Not running as administrator — relaunching with elevation")
         _relaunch_as_admin()
     _build_frontend_if_needed()
-    app.run(debug=app.config["DEBUG"], port=5000)
+    port = 7000
+    try:
+        app.run(debug=app.config["DEBUG"], port=port)
+    except OSError as e:
+        # WSAEACCES (10013) on Windows means the port is either in use or in the
+        # system's excluded port range.  Give a concrete, actionable message.
+        if e.errno in (errno.EACCES, 10013):
+            # Try to identify which process owns the port
+            logger.error(
+                f"Cannot bind to port {port}: access denied.\n"
+                f"  Another application is likely using port {port}, or Windows has excluded it.\n"
+                f"  Run:  netstat -ano | findstr :{port}  to find the conflicting process.\n"
+                f"  Then kill it with:  taskkill /PID <pid> /F\n"
+                f"  Or check excluded ranges with:  netsh int ipv4 show excludedportrange protocol=tcp"
+            )
+        else:
+            logger.error(f"Failed to start server on port {port}: {e}")
+        sys.exit(1)
