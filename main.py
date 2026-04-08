@@ -121,12 +121,13 @@ def _relaunch_as_admin() -> None:
 def create_app():
     """Create and configure the Flask application."""
     from flasgger import Swagger
-    from flask import Flask, send_from_directory
+    from flask import Flask, redirect, send_from_directory
     from flask_cors import CORS
 
     from app.database.database import Database
     from app.views.calendar_view import calendar_bp
     from app.views.capture_screen_view import capture_bp
+    from app.views.community_mod_view import community_mod_bp
     from app.views.factions_view import factions_bp
     from app.views.reputations_view import reputations_bp
     from app.views.status_entries_view import status_entries_bp
@@ -149,11 +150,16 @@ def create_app():
 
     flask_app.register_blueprint(calendar_bp, url_prefix="/api/calendar")
     flask_app.register_blueprint(capture_bp, url_prefix="/api/capture-screen")
+    flask_app.register_blueprint(community_mod_bp, url_prefix="/api/community-mod")
     flask_app.register_blueprint(status_entries_bp, url_prefix="/api/status_entries")
     flask_app.register_blueprint(factions_bp, url_prefix="/api/factions")
     flask_app.register_blueprint(reputations_bp, url_prefix="/api/reputations")
     flask_app.register_blueprint(system_bp, url_prefix="/api/system")
     flask_app.register_blueprint(territory_bp, url_prefix="/api/territory")
+
+    @flask_app.route("/swagger")
+    def swagger_alias():
+        return redirect("/apidocs")
 
     @flask_app.route("/", defaults={"path": ""})
     @flask_app.route("/<path:path>")
