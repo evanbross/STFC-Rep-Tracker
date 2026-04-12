@@ -1,9 +1,12 @@
 import ctypes
+import datetime
 import errno
+import ipaddress
 import logging
 import logging.config
 import os
 import socket
+import ssl
 import subprocess
 import sys
 import threading
@@ -118,6 +121,79 @@ def _relaunch_as_admin() -> None:
     sys.exit(0)
 
 
+def _ensure_community_mod_cert(cert_dir: str) -> tuple[str, str]:
+    """
+    Return (cert_path, key_path), generating a self-signed certificate if either
+    file is missing. The cert is valid for 10 years and covers localhost / 127.0.0.1.
+    """
+    os.makedirs(cert_dir, exist_ok=True)
+    cert_path = os.path.join(cert_dir, "community_mod_cert.pem")
+    key_path = os.path.join(cert_dir, "community_mod_key.pem")
+
+    if os.path.exists(cert_path) and os.path.exists(key_path):
+        logger.info("community-mod HTTPS: using existing cert at %s", cert_path)
+        return cert_path, key_path
+
+    logger.info("community-mod HTTPS: generating self-signed certificate in %s", cert_dir)
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from cryptography.x509.oid import NameOID
+
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    subject = issuer = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "localhost")])
+    now = datetime.datetime.now(datetime.UTC)
+    cert = (
+        x509.CertificateBuilder()
+        .subject_name(subject)
+        .issuer_name(issuer)
+        .public_key(key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now)
+        .not_valid_after(now + datetime.timedelta(days=3650))
+        .add_extension(
+            x509.SubjectAlternativeName([
+                x509.DNSName("localhost"),
+                x509.IPAddress(ipaddress.IPv4Address("127.0.0.1")),
+            ]),
+            critical=False,
+        )
+        .sign(key, hashes.SHA256())
+    )
+
+    with open(key_path, "wb") as f:
+        f.write(key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.TraditionalOpenSSL,
+            encryption_algorithm=serialization.NoEncryption(),
+        ))
+    with open(cert_path, "wb") as f:
+        f.write(cert.public_bytes(serialization.Encoding.PEM))
+
+    logger.info("community-mod HTTPS: certificate generated (valid 10 years)")
+    return cert_path, key_path
+
+
+def _run_community_mod_https_server(cert_path: str, key_path: str, port: int = 7443) -> None:
+    """Run a minimal Flask app serving only the community-mod blueprint over HTTPS."""
+    from flask import Flask
+    from flask_cors import CORS
+    from werkzeug.serving import make_server
+
+    from app.views.community_mod_view import community_mod_bp
+
+    https_app = Flask("community_mod_https")
+    CORS(https_app)
+    https_app.register_blueprint(community_mod_bp, url_prefix="/api/community-mod")
+
+    ssl_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    ssl_ctx.load_cert_chain(cert_path, key_path)
+
+    server = make_server("0.0.0.0", port, https_app, ssl_context=ssl_ctx)
+    logger.info("community-mod HTTPS server listening on https://localhost:%d/api/community-mod", port)
+    server.serve_forever()
+
+
 def create_app():
     """Create and configure the Flask application."""
     from flasgger import Swagger
@@ -180,9 +256,20 @@ app = create_app()
 
 if __name__ == "__main__":
     _check_env()
-    screenshots_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Screenshots")
+    project_root = os.path.dirname(os.path.abspath(__file__))
+
+    screenshots_dir = os.path.join(project_root, "Screenshots")
     t = threading.Thread(target=_screenshots_cleanup_worker, args=(screenshots_dir,), daemon=True)
     t.start()
+
+    cert_path, key_path = _ensure_community_mod_cert(os.path.join(project_root, "certs"))
+    https_thread = threading.Thread(
+        target=_run_community_mod_https_server,
+        args=(cert_path, key_path),
+        daemon=True,
+    )
+    https_thread.start()
+
     if not app.config["DEBUG"] and not _is_admin():
         logger.info("Not running as administrator — relaunching with elevation")
         _relaunch_as_admin()
