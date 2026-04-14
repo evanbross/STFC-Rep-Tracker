@@ -6,6 +6,11 @@ from app.database.faction_selected_snippets_dao import FactionSelectedSnippetsDA
 from app.database.reputations_dao import ReputationsDAO
 from app.database.territory_systems_dao import TerritorySystemsDAO
 
+# Stable advisory lock key used to serialize init_database across workers.
+# Multiple Gunicorn workers can race to run init at startup; the advisory lock
+# makes them queue so only one performs DDL/upserts at a time.
+_INIT_ADVISORY_LOCK_ID = 0x535446435F5245
+
 
 class Database:
 
@@ -42,20 +47,25 @@ class Database:
             conn.close()
 
     def init_database(self):
-        """Initialize the database with required tables"""
+        """Initialize the database with required tables.
+
+        Uses a PostgreSQL session-level advisory lock to serialize this across
+        all worker processes.  Without it, multiple Gunicorn workers starting
+        simultaneously can deadlock on concurrent DELETEs and upserts inside
+        apply_initial_reputations.
+        """
         conn = self.get_connection()
         cursor = conn.cursor()
-
-        # Create all required tables (this also handles initial data application)
-        self._create_tables(cursor)
-
-        ReputationsDAO.initialize_dao_instances(self, self.factions_dao)
-
-        for dao in ReputationsDAO.get_all_dao_by_class_name().values():
-            dao.create_table(cursor)
-
-        conn.commit()
-        conn.close()
+        cursor.execute("SELECT pg_advisory_lock(%s)", (_INIT_ADVISORY_LOCK_ID,))
+        try:
+            self._create_tables(cursor)
+            ReputationsDAO.initialize_dao_instances(self, self.factions_dao)
+            for dao in ReputationsDAO.get_all_dao_by_class_name().values():
+                dao.create_table(cursor)
+            conn.commit()
+        finally:
+            cursor.execute("SELECT pg_advisory_unlock(%s)", (_INIT_ADVISORY_LOCK_ID,))
+            conn.close()
 
     def _create_tables(self, cursor):
         """Create all required tables for the database"""

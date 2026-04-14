@@ -88,6 +88,7 @@ const Dashboard = () => {
     const [availableCalendars, setAvailableCalendars] = useState(null);
     const [calPickerSelectedId, setCalPickerSelectedId] = useState('primary');
     const [scheduleStatus, setScheduleStatus] = useState(null); // null = idle, string = current step label
+    const [cardsCollapsed, setCardsCollapsed] = useState(false);
     const chartRef = useRef(null);
 
     useEffect(() => {
@@ -468,8 +469,14 @@ const Dashboard = () => {
             <h1>STFC Reputation Tracker</h1>
 
             <div className="container">
-                <h2>Faction Summaries</h2>
-                <div className="form-group">
+                <h2
+                    style={{cursor: 'pointer', userSelect: 'none', display: 'flex', alignItems: 'center', gap: '0.5rem'}}
+                    onClick={() => setCardsCollapsed(c => !c)}
+                >
+                    <span style={{fontSize: '0.8em', color: '#888'}}>{cardsCollapsed ? '▶' : '▼'}</span>
+                    Faction Summaries
+                </h2>
+                <div className="form-group" style={cardsCollapsed ? {display: 'none'} : {}}>
                     <div className="faction-buttons">
                         {factions.map(faction => {
                             const isSelected = selectedFaction?.name === faction.name;

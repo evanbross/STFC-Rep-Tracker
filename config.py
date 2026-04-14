@@ -5,7 +5,7 @@ class Config:
     """Base configuration"""
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-secret-key-change-in-production'
     DATABASE_URL = os.environ.get('DATABASE_URL_POOLED') or os.environ.get('DATABASE_URL')
-    CORS_ORIGINS = os.environ.get('CORS_ORIGINS', 'http://localhost:5173,http://localhost:7000').split(',')
+    CORS_ORIGINS = os.environ.get('CORS_ORIGINS', 'http://localhost:5173,http://localhost:7300').split(',')
     DEBUG = False
     TESTING = False
 

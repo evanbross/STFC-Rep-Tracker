@@ -13,6 +13,9 @@ _CAPTURE_FILE = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "..", "..", "community-data.json"
 )
 
+ISOGEN_1_RID = 2991010408
+TRITANIUM_RID = 743985951
+
 
 @community_mod_bp.route("/", methods=["POST"])
 def receive_payload():
@@ -52,14 +55,16 @@ def receive_payload():
     )
 
     capture = {
-        "received_at": datetime.now(UTC).isoformat() + "Z",
+        "received_at": datetime.now(UTC).isoformat(),  # + "Z",
         "headers": dict(request.headers),
         "payload": data,
     }
 
     capture_path = os.path.normpath(_CAPTURE_FILE)
-    with open(capture_path, "w", encoding="utf-8") as f:
+    with open(capture_path, "a", encoding="utf-8") as f:
+        f.write("---\n")
         json.dump(capture, f, indent=2)
+        f.write("\n")
 
-    logger.info("community-mod: payload captured to %s", capture_path)
+    logger.info("community-mod: payload appended to %s", capture_path)
     return jsonify({"status": "captured"}), 200

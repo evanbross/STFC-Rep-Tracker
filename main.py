@@ -274,7 +274,7 @@ if __name__ == "__main__":
         logger.info("Not running as administrator — relaunching with elevation")
         _relaunch_as_admin()
     _build_frontend_if_needed()
-    port = 7000
+    port = 7300
     try:
         app.run(debug=app.config["DEBUG"], port=port)
     except OSError as e:
