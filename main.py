@@ -202,7 +202,6 @@ def create_app():
 
     from app.database.database import Database
     from app.views.calendar_view import calendar_bp
-    from app.views.capture_screen_view import capture_bp
     from app.views.community_mod_view import community_mod_bp
     from app.views.factions_view import factions_bp
     from app.views.reputations_view import reputations_bp
@@ -210,6 +209,11 @@ def create_app():
     from app.views.system_view import system_bp
     from app.views.territory_view import territory_bp
     from config import get_config
+
+    # The capture blueprint imports Windows-only packages (pygetwindow, pyautogui,
+    # pywin32) at module level.  Skip it when running in a container where those
+    # packages are not installed.
+    _capture_disabled = os.environ.get("DISABLE_CAPTURE", "").lower() in ("1", "true", "yes")
 
     flask_app = Flask(
         __name__,
@@ -225,7 +229,9 @@ def create_app():
     flask_app.config["DATABASE"] = database
 
     flask_app.register_blueprint(calendar_bp, url_prefix="/api/calendar")
-    flask_app.register_blueprint(capture_bp, url_prefix="/api/capture-screen")
+    if not _capture_disabled:
+        from app.views.capture_screen_view import capture_bp
+        flask_app.register_blueprint(capture_bp, url_prefix="/api/capture-screen")
     flask_app.register_blueprint(community_mod_bp, url_prefix="/api/community-mod")
     flask_app.register_blueprint(status_entries_bp, url_prefix="/api/status_entries")
     flask_app.register_blueprint(factions_bp, url_prefix="/api/factions")
@@ -274,7 +280,7 @@ if __name__ == "__main__":
         logger.info("Not running as administrator — relaunching with elevation")
         _relaunch_as_admin()
     _build_frontend_if_needed()
-    port = 7300
+    port = int(os.environ.get("PORT", 7300))
     try:
         app.run(debug=app.config["DEBUG"], port=port)
     except OSError as e:

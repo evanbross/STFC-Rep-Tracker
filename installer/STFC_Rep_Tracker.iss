@@ -34,10 +34,15 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 [Files]
 ; ── Application source ────────────────────────────────────────────────────────
 ; Exclude dev-only folders and build artefacts.
-Source: "..\*.py";           DestDir: "{app}";                   Flags: ignoreversion
-Source: "..\*.yaml";         DestDir: "{app}";                   Flags: ignoreversion
-Source: "..\*.txt";          DestDir: "{app}";                   Flags: ignoreversion
-Source: "..\run.bat";        DestDir: "{app}";                   Flags: ignoreversion
+Source: "..\*.py";                  DestDir: "{app}"; Flags: ignoreversion
+Source: "..\run.bat";               DestDir: "{app}"; Flags: ignoreversion
+; Ship example files only — the launcher copies them to the real paths on first run.
+; Never bundle .env (credentials) or settings.yaml (personal config).
+Source: "..\*.example";             DestDir: "{app}"; Flags: ignoreversion
+; logging.yaml is not personal — bundle it directly.
+Source: "..\logging.yaml";          DestDir: "{app}"; Flags: ignoreversion
+; requirements.txt is referenced by some tooling but contains no credentials.
+Source: "..\requirements*.txt";     DestDir: "{app}"; Flags: ignoreversion
 Source: "..\app\*";          DestDir: "{app}\app";               Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "__pycache__\*,*.pyc,*.pyo"
 Source: "..\frontend\dist\*";DestDir: "{app}\frontend\dist";    Flags: ignoreversion recursesubdirs createallsubdirs
 
@@ -103,6 +108,9 @@ Filename: "{app}\python\python.exe"; \
 [UninstallDelete]
 ; Remove the Python runtime we installed (not tracked by Inno Setup as individual files)
 Type: filesandordirs; Name: "{app}\python"
-; Remove screenshots and the SQLite database created at runtime
+; Remove runtime-generated files (not tracked as installed files)
 Type: filesandordirs; Name: "{app}\Screenshots"
-Type: files;          Name: "{app}\stfc_rep_tracker.db"
+Type: files;          Name: "{app}\server.log"
+Type: files;          Name: "{app}\.env"
+Type: files;          Name: "{app}\settings.yaml"
+Type: files;          Name: "{app}\google_token.json"

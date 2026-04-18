@@ -1,0 +1,148 @@
+stfc_config:
+  # Directory where screenshots are saved
+  screenshots_dir: Screenshots
+  # Max poll attempts waiting for a screen transition (collect, list indicator, etc.)
+  screen_wait_retries: 8
+  # Seconds between each poll attempt
+  screen_wait_delay: 0.25
+
+
+  # Directory containing template snippet images
+  snippets_dir: app/screen_snippets
+
+  # STFC window title substrings to search for (first match wins)
+  window_titles:
+    - "Star Trek Fleet Command"
+    - STFC
+
+  # Minimum template match confidence to consider a button "visible"
+  button_match_threshold: 0.85
+
+  navigation:
+    # Max capture-and-check cycles before giving up
+    max_retries: 8
+    # Seconds to pause after clicking a nav button
+    wait_after_click: 1.0
+    # Seconds to wait when a busy/loading screen is detected
+    busy_wait: 1.5
+
+  factions:
+    # Number of recent status entries to retrieve and average for rate/projection calculations
+    avg_entries: 10
+    # Minimum match score for SelectedRow snippets to identify highlighted faction
+    snippet_threshold: 0.70
+    # Timing for waiting on the confirm snippet after clicking a faction button.
+    # The panel animates open, so the first check is delayed longer than the rest.
+    # Total max wait = confirm_first_delay + confirm_retries × confirm_delay
+    #                = 0.5 + 8 × 0.2 = 2.1s
+    confirm_first_delay: 0.5
+    confirm_retries: 8
+    confirm_delay: 0.2
+    # Fraction of snippet height used for template matching on RepButton/SelectedRow snippets.
+    # Set < 1.0 to exclude the reputation tier label (e.g. "RESPECTED") from the match,
+    # so snippets remain valid after a tier change. The full height is still used for clicks.
+    snippet_name_height_frac: 0.60
+    # Fallback threshold for clicking a faction button that is already in its selected
+    # (brighter) state and scores below the normal button_match_threshold.
+    button_selected_threshold: 0.60
+
+  away_teams:
+    # Timing for waiting on the COLLECT button after clicking REPORT.
+    # The panel animates open, so the first check is delayed longer than the rest.
+    # Total max wait = collect_first_delay + collect_retries × collect_delay
+    #                = 0.5 + 16 × 0.25 = 4.5s
+    collect_first_delay: 0.5
+    collect_retries: 16
+    collect_delay: 0.25
+    # Seconds to wait after clicking COLLECT before checking for the next REPORT.
+    # The game shows a reward panel that must dismiss before the list is interactive again.
+    post_collect_delay: 2.0
+
+  gifts:
+    # Seconds to wait between navigation steps
+    loop_delay: 0.25
+    # Timing for waiting on the Done button after clicking Claim All.
+    # The rewards panel animates open, so the first check is delayed longer.
+    # Total max wait = claim_first_delay + claim_done_retries × claim_done_delay
+    #                = 0.5 + 16 × 0.25 = 4.5s
+    claim_first_delay: 0.5
+    claim_done_retries: 16
+    claim_done_delay: 0.25
+    # Timing for waiting on the gifts list to reload after clicking Done.
+    # Total max wait = reload_first_delay + screen_wait_retries × reload_delay
+    #                = 0.5 + 8 × 0.2 = 2.1s
+    reload_first_delay: 0.5
+    reload_delay: 0.2
+
+  google_calendar:
+    # OAuth2 client credentials downloaded from Google Cloud Console.
+    # Create a project, enable the Google Calendar API, create an OAuth2 Desktop
+    # client ID, download the JSON, and save it at this path (relative to project root).
+    credentials_file: google_credentials.json
+    # Token written after the first successful auth flow. Refreshed automatically.
+    token_file: google_token.json
+
+  territory:
+    # Known territory systems. Each entry needs a display name and one or more
+    # snippet filenames for template matching. Add entries here for systems your
+    # alliance controls — no code changes required.
+    systems: []
+
+    # How many name-template-heights below the name snippet to search for the
+    # timer text.  Scales automatically with display resolution.
+    timer_strip_frac: 3.0
+
+    # Fallback pixels to crop from the top of the screenshot before OCR,
+    # used only when Alliance Territory Zone Slots 1.jpg is not found on screen.
+    title_bar_crop_px: 40
+    # Minimum EasyOCR confidence to keep a result (0.0–1.0).
+    # Lower this if system names with special characters (e.g. accents) are dropped.
+    ocr_min_confidence: 0.2
+    # Maximum vertical distance in pixels between a system name and its timer
+    # for them to be paired together.
+    ocr_pair_max_gap_px: 300
+    # Badge/emblem labels sit ~10-13% of image height below their timer.
+    # System names sit ~18-19% of image height below the previous timer.
+    # This fraction is resolution-independent — works the same on HD and 4K.
+    # Safe range is anything between 0.13 and 0.18.
+    emblem_skip_frac: 0.15
+    # Maximum vertical distance (px) to search below a portrait for its
+    # matching Next Takeover label.  Should exceed one full row height.
+    max_row_height_px: 300
+    # Match threshold for the Next Takeover label template.  Lower than the
+    # main button_match_threshold because text templates are harder to match.
+    next_takeover_threshold: 0.75
+    # When the Next Takeover template is not found, strip height is this
+    # fraction of the portrait-to-portrait row spacing.  Timer sits at ~24%
+    # of row height; badges start at ~70%.  0.50 is a safe midpoint.
+    name_timer_height_frac: 0.65
+    # How many times to wait for the load-ready template (Next Takeover / green flag)
+    # before giving up and attempting OCR anyway.
+    ocr_retries: 4
+    ocr_retry_delay: 1.0
+
+  ocr:
+    # Upscale factor applied to the region before OCR runs
+    scale_factor: 3
+    # Fraction of the window height / width to crop for the Points region
+    points_height_frac: 0.20
+    points_width_frac: 0.22
+
+  performance:
+    # Cache template images in memory after first load.
+    # Avoids re-reading the same snippet file from disk on every match call.
+    # Disable only if snippet files change while the app is running.
+    template_cache: true
+
+    # Screenshot pipeline: "disk" saves each capture as a PNG then reloads it
+    # (classic behaviour — good for step-by-step debugging); "memory" keeps
+    # frames as numpy arrays and skips all disk I/O during polling loops (faster).
+    capture_mode: memory   # "disk" | "memory"
+
+    # When capture_mode is "memory", also write each captured frame to
+    # screenshots_dir on a background thread for post-mortem review.
+    # Has no effect when capture_mode is "disk" (files are always written there).
+    write_behind: false
+
+    # Maximum frames queued for write-behind before new frames are dropped silently.
+    write_behind_queue_size: 20
