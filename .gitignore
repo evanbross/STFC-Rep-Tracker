@@ -11,3 +11,4 @@ google_token*.json
 /google_credentials.py
 /community-data.json
 /certs/
+/server.log
