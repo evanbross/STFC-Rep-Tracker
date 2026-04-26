@@ -1,3 +1,10 @@
+@../Dev-Standards/COMMON_CODING_STANDARDS.md
+@../Dev-Standards/PYTHON_STANDARDS.md
+@../Dev-Standards/DATABASE_STANDARDS.md
+@../Dev-Standards/REACT_STANDARDS.md
+@../Dev-Standards/INFRASTRUCTURE_STANDARDS.md
+@../Dev-Standards/WINDOWS_STANDARDS.md
+
 # CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.

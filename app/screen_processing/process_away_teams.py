@@ -28,11 +28,32 @@ class AwayTeamOrchestrator:
 
     def _navigate_to_away_teams(self, window, screen_offset):
         """Navigate to the Away Teams tab. Returns an error dict on failure, else None."""
-        self.sc.press_key(window, "c")
         tab_selected_name = "Away Teams Tab Selected.jpg"
         tab_unselected_name = "Away Teams Tab Unselected.jpg"
         tab_images = [tab_selected_name, tab_unselected_name]
 
+        # Check current screen state before pressing anything.
+        visible_tab, img = wait_for_any_template(
+            [tab_selected_name, tab_unselected_name],
+            self.sc,
+            window,
+            max_retries=3,
+        )
+
+        if visible_tab == tab_selected_name:
+            logger.info("already on Away Teams page, skipping navigation")
+            return None
+
+        if visible_tab == tab_unselected_name:
+            if not click_button_if_visible("Away Teams Tab Unselected.jpg", img, screen_offset):
+                logger.error("could not click Away Teams Tab Unselected")
+                return {"error": "Away Teams Tab Unselected not clickable"}
+            logger.info("clicked Away Teams Tab Unselected")
+            time.sleep(0.5)
+            return None
+
+        # Not on the missions panel at all — try pressing "c" to open it.
+        self.sc.press_key(window, "c")
         visible_tab, img = wait_for_any_template(
             [tab_selected_name, tab_unselected_name],
             self.sc,
@@ -40,35 +61,39 @@ class AwayTeamOrchestrator:
         )
 
         if visible_tab == tab_selected_name:
-            logger.info("already on Away Teams page, skipping navigation")
-        elif visible_tab == tab_unselected_name:
+            logger.info("Away Teams page opened via 'c' key")
+            return None
+
+        if visible_tab == tab_unselected_name:
             if not click_button_if_visible("Away Teams Tab Unselected.jpg", img, screen_offset):
                 logger.error("could not click Away Teams Tab Unselected")
                 return {"error": "Away Teams Tab Unselected not clickable"}
-            logger.info("clicked Away Teams Tab Unselected")
+            logger.info("clicked Away Teams Tab Unselected (after 'c' key)")
             time.sleep(0.5)
-        else:
-            try:
-                self.sc.navigate_to_home_screen(window)
-            except RuntimeError as e:
-                logger.error(f"could not reach home screen: {e}")
-                return {"error": str(e)}
+            return None
 
-            img = self.sc.capture(window)
-            if not click_button_if_visible(
-                ["Mission Button.jpg", "Mission Button 2.jpg"], img, screen_offset
-            ):
-                logger.error("Mission Button not found")
-                return {"error": "Mission Button not found — add Mission Button.jpg to app/screen_snippets/"}
-            logger.info("clicked Mission Button")
-            time.sleep(0.5)
+        # Last resort: navigate via home screen → Mission Button → Away Teams tab.
+        try:
+            self.sc.navigate_to_home_screen(window)
+        except RuntimeError as e:
+            logger.error(f"could not reach home screen: {e}")
+            return {"error": str(e)}
 
-            img = self.sc.capture(window)
-            if not click_button_if_visible(tab_images, img, screen_offset):
-                logger.error("Away Teams Tab (Un)selected not found")
-                return {"error": "Away Teams Tab (Un)selected not found — add Away Teams Tab Unselected.jpg to app/screen_snippets/"}
-            logger.info("clicked Away Teams Tab")
-            time.sleep(0.5)
+        img = self.sc.capture(window)
+        if not click_button_if_visible(
+            ["Mission Button.jpg", "Mission Button 2.jpg"], img, screen_offset
+        ):
+            logger.error("Mission Button not found")
+            return {"error": "Mission Button not found — add Mission Button.jpg to app/screen_snippets/"}
+        logger.info("clicked Mission Button")
+        time.sleep(0.5)
+
+        img = self.sc.capture(window)
+        if not click_button_if_visible(tab_images, img, screen_offset):
+            logger.error("Away Teams Tab (Un)selected not found")
+            return {"error": "Away Teams Tab (Un)selected not found — add Away Teams Tab Unselected.jpg to app/screen_snippets/"}
+        logger.info("clicked Away Teams Tab")
+        time.sleep(0.5)
 
         return None
 

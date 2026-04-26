@@ -10,7 +10,9 @@
       "Bash(python -c \":*)",
       "Bash(npm run:*)",
       "Bash(uv --version)",
-      "Bash(netsh int:*)"
+      "Bash(netsh int:*)",
+      "Read(//f/Evan-F/**)",
+      "Read(//f//**)"
     ]
   }
 }
