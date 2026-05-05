@@ -46,6 +46,7 @@ Only requires calendar.readonly scope.
 
 import logging
 import os
+import sys
 from datetime import datetime, timedelta, timezone
 
 logger = logging.getLogger(__name__)
@@ -55,15 +56,17 @@ _SCOPES = [
     "https://www.googleapis.com/auth/calendar.events",
 ]
 
-# app/google_calendar.py lives inside the app/ package; project root is one level up
-_PROJECT_ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
+def _runtime_dir() -> str:
+    if getattr(sys, "frozen", False):
+        return os.path.dirname(sys.executable)
+    return os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
 
 
 def _credentials_path() -> str:
     from app.app_config import capture_cfg
 
     return os.path.join(
-        _PROJECT_ROOT,
+        _runtime_dir(),
         capture_cfg("google_calendar", "credentials_file"),
     )
 
@@ -72,7 +75,7 @@ def _token_path() -> str:
     from app.app_config import capture_cfg
 
     return os.path.join(
-        _PROJECT_ROOT,
+        _runtime_dir(),
         capture_cfg("google_calendar", "token_file"),
     )
 

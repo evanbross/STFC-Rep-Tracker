@@ -12,3 +12,4 @@ google_token*.json
 /community-data.json
 /certs/
 /server.log
+/frontend/dist

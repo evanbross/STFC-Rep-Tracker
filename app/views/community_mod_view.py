@@ -34,6 +34,7 @@
 import json
 import logging
 import os
+import sys
 from datetime import datetime, UTC
 
 from flask import Blueprint, jsonify, request
@@ -42,9 +43,14 @@ logger = logging.getLogger(__name__)
 
 community_mod_bp = Blueprint("community_mod", __name__)
 
-_CAPTURE_FILE = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "..", "..", "community-data.json"
-)
+
+def _runtime_dir() -> str:
+    if getattr(sys, "frozen", False):
+        return os.path.dirname(sys.executable)
+    return os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
+
+
+_CAPTURE_FILE = os.path.join(_runtime_dir(), "community-data.json")
 
 ISOGEN_1_RID = 2991010408
 TRITANIUM_RID = 743985951

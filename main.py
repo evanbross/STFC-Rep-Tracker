@@ -55,6 +55,20 @@ except ImportError:
     pass
 
 
+def _runtime_dir() -> str:
+    """Return the writable application directory for source and frozen runs."""
+    if getattr(sys, "frozen", False):
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+def _resource_path(relative_path: str) -> str:
+    """Return a bundled read-only resource path when running from PyInstaller."""
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        return os.path.join(sys._MEIPASS, relative_path)
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), relative_path)
+
+
 def _screenshots_cleanup_worker(folder: str, keep: int = 30, interval: int = 300) -> None:
     """Background thread: every `interval` seconds, delete oldest files in `folder` beyond `keep`."""
     while True:
@@ -87,6 +101,10 @@ def _check_env() -> None:
 
 def _build_frontend_if_needed() -> None:
     """Run 'npm run build' if any frontend source file is newer than dist/index.html."""
+    if getattr(sys, "frozen", False):
+        logger.info("running from packaged executable, skipping frontend build check")
+        return
+
     project_root = os.path.dirname(os.path.abspath(__file__))
     dist_index = os.path.join(project_root, "frontend", "dist", "index.html")
     watch_paths = [
@@ -250,8 +268,8 @@ def create_app():
 
     flask_app = Flask(
         __name__,
-        template_folder="frontend/dist",
-        static_folder="frontend/dist",
+        template_folder=_resource_path(os.path.join("frontend", "dist")),
+        static_folder=_resource_path(os.path.join("frontend", "dist")),
         static_url_path="/static",
     )
     flask_app.config.from_object(get_config())
@@ -287,7 +305,7 @@ def create_app():
     return flask_app
 
 
-with open("logging.yaml") as f:
+with open(_resource_path("logging.yaml")) as f:
     logging.config.dictConfig(yaml.safe_load(f))
 logger = logging.getLogger(__name__)
 
@@ -295,7 +313,7 @@ app = create_app()
 
 if __name__ == "__main__":
     _check_env()
-    project_root = os.path.dirname(os.path.abspath(__file__))
+    project_root = _runtime_dir()
 
     screenshots_dir = os.path.join(project_root, "Screenshots")
     t = threading.Thread(target=_screenshots_cleanup_worker, args=(screenshots_dir,), daemon=True)

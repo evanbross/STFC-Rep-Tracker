@@ -42,14 +42,20 @@ Usage:
 """
 import logging
 import os
+import sys
 
 import yaml
 
 logger = logging.getLogger(__name__)
 
-_SETTINGS_PATH = os.path.normpath(
-    os.path.join(os.path.dirname(__file__), "..", "settings.yaml")
-)
+
+def _runtime_dir() -> str:
+    if getattr(sys, "frozen", False):
+        return os.path.dirname(sys.executable)
+    return os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
+
+
+_SETTINGS_PATH = os.path.join(_runtime_dir(), "settings.yaml")
 
 _cfg: dict = {}
 

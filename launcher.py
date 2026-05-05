@@ -33,6 +33,7 @@
 # =============================================================================
 import ctypes
 import os
+import runpy
 import secrets
 import shutil
 import socket
@@ -47,8 +48,12 @@ from tkinter import messagebox, ttk
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
-_HERE = os.path.dirname(os.path.abspath(__file__))
+if getattr(sys, "frozen", False):
+    _HERE = os.path.dirname(sys.executable)
+else:
+    _HERE = os.path.dirname(os.path.abspath(__file__))
 _PREFERRED_PORT = 7300
+_BACKEND_ARG = "--backend"
 
 _BG = "#1a1a2e"
 _FG = "#cfd8dc"
@@ -147,18 +152,34 @@ def _relaunch_as_admin() -> None:
     sys.exit(0)
 
 
+def _run_backend_child() -> None:
+    sys.argv = ["main.py"]
+    runpy.run_module("main", run_name="__main__")
+
+
 # ── Port / server helpers ─────────────────────────────────────────────────────
 
 def _find_free_port(start: int = _PREFERRED_PORT, attempts: int = 20) -> int:
     for port in range(start, start + attempts):
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            try:
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 s.bind(("127.0.0.1", port))
                 return port
-            except OSError:
-                continue
-    raise RuntimeError(f"No free port found in range {start}–{start + attempts - 1}")
+        except OSError:
+            continue
+    # Fallback: let the OS assign any available port
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(("127.0.0.1", 0))
+            return s.getsockname()[1]
+    except OSError as exc:
+        raise RuntimeError(
+            f"No free port found in range {start}–{start + attempts - 1} and OS fallback "
+            f"also failed: {exc}\n"
+            "Diagnostic: run  netsh int ipv4 show excludedportrange protocol=tcp\n"
+            "If Winsock is corrupt: run  netsh winsock reset  then reboot."
+        ) from exc
 
 
 def _wait_for_server(port: int, timeout: int = 60) -> bool:
@@ -438,14 +459,18 @@ class LauncherWindow:
             env = os.environ.copy()
             env["PORT"] = str(port)
 
-            python = os.path.join(_HERE, "python", "python.exe")
-            if not os.path.exists(python):
-                python = sys.executable
+            if getattr(sys, "frozen", False):
+                command = [sys.executable, _BACKEND_ARG]
+            else:
+                python = os.path.join(_HERE, "python", "python.exe")
+                if not os.path.exists(python):
+                    python = sys.executable
+                command = [python, os.path.join(_HERE, "main.py")]
 
             log_path = os.path.join(_HERE, "server.log")
             with open(log_path, "w", encoding="utf-8") as log_file:
                 self._process = subprocess.Popen(
-                    [python, os.path.join(_HERE, "main.py")],
+                    command,
                     env=env,
                     cwd=_HERE,
                     stdout=log_file,
@@ -513,6 +538,10 @@ class LauncherWindow:
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 def main() -> None:
+    if _BACKEND_ARG in sys.argv:
+        _run_backend_child()
+        return
+
     if not _is_admin():
         _relaunch_as_admin()
         return
