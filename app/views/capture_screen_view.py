@@ -87,17 +87,17 @@ def capture_reputations():
     )
 
 
-@capture_bp.route("/reputations/<int:faction_id>", methods=["POST"])
-def capture_single_faction_reputation(faction_id):
+@capture_bp.route("/reputations/<string:faction_code>", methods=["POST"])
+def capture_single_faction_reputation(faction_code):
     """
     Navigate to the Faction Store and capture reputation points for a single faction
     ---
     tags:
       - Capture
     parameters:
-      - name: faction_id
+      - name: faction_code
         in: path
-        type: integer
+        type: string
         required: true
     responses:
       200:
@@ -109,7 +109,7 @@ def capture_single_faction_reputation(faction_id):
     """
     return _run_capture(
         lambda: ProcessReputationsOrchestrator(_get_db()),
-        lambda o: o.process_single_faction(faction_id),
+        lambda o: o.process_single_faction(faction_code),
         "Error during single faction screen capture",
         "Faction capture failed",
     )

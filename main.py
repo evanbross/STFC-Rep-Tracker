@@ -35,10 +35,8 @@ import ctypes
 import datetime
 import errno
 import ipaddress
-import logging
 import logging.config
 import os
-import socket
 import ssl
 import subprocess
 import sys

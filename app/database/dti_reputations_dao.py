@@ -62,9 +62,10 @@ class DTIReputationsDAO(ReputationsDAO):
             'ON dti_reputations (name)'
         )
 
-        # Add high_limit column if missing (migration for existing tables)
-        if "high_limit" not in columns:
-            cursor.execute("ALTER TABLE dti_reputations ADD COLUMN high_limit INTEGER")
+        # Migration for existing tables; harmless for fresh tables created above.
+        cursor.execute(
+            "ALTER TABLE dti_reputations ADD COLUMN IF NOT EXISTS high_limit INTEGER"
+        )
 
         self.apply_initial_reputations(cursor)
 

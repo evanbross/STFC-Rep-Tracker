@@ -91,14 +91,17 @@ class ReputationsDAO:
             ReputationsDAO.dao_instances_by_class[dao.__class__.__name__] = dao
 
     @staticmethod
-    def initialize_dao_instances(db: Any, factions_dao: Any) -> None:
+    def initialize_dao_instances(db: Any, factions_dao: Any, cursor: Any | None = None) -> None:
         """Initialize all reputation DAO instances based on factions in the database"""
         # Clear existing instances to avoid duplicates if re-initialized
         with ReputationsDAO._registry_lock:
             ReputationsDAO.dao_instances_by_faction.clear()
             ReputationsDAO.dao_instances_by_class.clear()
 
-        factions = factions_dao.get_all_factions()
+        if cursor is None:
+            factions = factions_dao.get_all_factions()
+        else:
+            factions = factions_dao.get_all_factions_with_cursor(cursor)
         for faction in factions:
             rep_table_name = faction.get("reputation_table_name")
             rep_dao_name = faction.get("reputation_dao_name")
@@ -192,6 +195,7 @@ class ReputationsDAO:
 
     def create_table(self, cursor: Any) -> None:
         """Create reputation table and handle migrations"""
+        logger.info("Creating reputation table")
         columns = self._get_columns(cursor, self.table_name)
         name_col = self._resolve_name_col(columns)
 

@@ -132,14 +132,14 @@ class ProcessReputationsOrchestrator:
                 logger.error(f"Failed to save {item['faction']}: {e}")
         return saved
 
-    def process_single_faction(self, faction_id: int) -> dict[str, Any]:
+    def process_single_faction(self, faction_code: str) -> dict[str, Any]:
         window, err = self._navigate_to_factions()
         if err:
             return err
 
-        faction = self.factions_dao.get_faction_by_id(faction_id)
+        faction = self.factions_dao.get_faction_by_code(faction_code)
         if not faction:
-            return {"error": f"Faction {faction_id} not found"}
+            return {"error": f"Faction '{faction_code}' not found"}
 
         results = _process_faction_list([faction], window, self.sc)
         saved = self._save_results(results)

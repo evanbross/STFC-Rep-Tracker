@@ -451,9 +451,13 @@ const Dashboard = () => {
             x: {
                 type: 'time',
                 time: {
-                    unit: 'minute',
+                    minUnit: 'minute',
                     displayFormats: {
-                        minute: 'MMM d, HH:mm'
+                        minute: 'MMM d, HH:mm',
+                        hour:   'MMM d, HH:mm',
+                        day:    'MMM d',
+                        week:   'MMM d',
+                        month:  'MMM yyyy',
                     }
                 },
                 title: {

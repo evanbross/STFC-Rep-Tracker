@@ -62,11 +62,10 @@ class FactionsDAO:
         cursor.execute("""
                        CREATE TABLE IF NOT EXISTS factions
                        (
-                           id                      SERIAL PRIMARY KEY,
+                           code                    TEXT PRIMARY KEY,
                            name                    TEXT NOT NULL UNIQUE,
                            on_chart                INTEGER NOT NULL DEFAULT 0,
                            display_order           INTEGER,
-                           code                    TEXT,
                            color                   TEXT,
                            reputation_table_name   TEXT,
                            reputation_dao_name     TEXT,
@@ -76,6 +75,12 @@ class FactionsDAO:
                        """)
 
         columns = _get_columns(cursor, "factions")
+
+        # One-time migration: promote code to PRIMARY KEY, drop legacy integer id
+        if "id" in columns:
+            self._migrate_pk_to_code(cursor)
+            columns = _get_columns(cursor, "factions")
+
         if "on_chart" not in columns:
             cursor.execute(
                 "ALTER TABLE factions ADD COLUMN on_chart INTEGER NOT NULL DEFAULT 0"
@@ -128,34 +133,100 @@ class FactionsDAO:
             SET snippet_unselected = 'RepButton' || upper(substr(code, 1, 1)) || lower(substr(code, 2)) || '.jpg'
             WHERE snippet_unselected IS NULL AND code IS NOT NULL
         """)
+        logger.info(f"Completed create_table")
+
+    @staticmethod
+    def _migrate_pk_to_code(cursor):
+        """One-time migration: change factions PK from integer id to code TEXT."""
+        logger.info("Migrating factions primary key from id to code…")
+
+        cursor.execute("SELECT COUNT(*) FROM factions WHERE code IS NULL")
+        null_count = cursor.fetchone()[0]
+        if null_count > 0:
+            raise RuntimeError(
+                f"{null_count} faction(s) have NULL code — cannot migrate. "
+                "Set a code on every faction row first."
+            )
+
+        # Migrate faction_selected_snippets (has FK to factions.id)
+        fss_cols = _get_columns(cursor, "faction_selected_snippets")
+        if fss_cols:
+            cursor.execute(
+                "ALTER TABLE faction_selected_snippets ADD COLUMN IF NOT EXISTS faction_code TEXT"
+            )
+            cursor.execute("""
+                UPDATE faction_selected_snippets fss
+                SET faction_code = f.code
+                FROM factions f
+                WHERE fss.faction_id = f.id
+            """)
+            cursor.execute("ALTER TABLE faction_selected_snippets DROP COLUMN faction_id CASCADE")
+            cursor.execute(
+                "ALTER TABLE faction_selected_snippets RENAME COLUMN faction_code TO faction_id"
+            )
+            cursor.execute(
+                "ALTER TABLE faction_selected_snippets ALTER COLUMN faction_id SET NOT NULL"
+            )
+
+        # Migrate status_entries (has FK to factions.id)
+        se_cols = _get_columns(cursor, "status_entries")
+        if se_cols:
+            cursor.execute(
+                "ALTER TABLE status_entries ADD COLUMN IF NOT EXISTS faction_code TEXT"
+            )
+            # Backfill only rows not yet set (idempotent if already done manually)
+            cursor.execute("""
+                UPDATE status_entries se
+                SET faction_code = f.code
+                FROM factions f
+                WHERE se.faction_id = f.id
+                  AND se.faction_code IS NULL
+            """)
+            if "faction_id" in se_cols:
+                cursor.execute("ALTER TABLE status_entries DROP COLUMN faction_id CASCADE")
+            cursor.execute("ALTER TABLE status_entries ALTER COLUMN faction_code SET NOT NULL")
+
+        # Promote code to PRIMARY KEY on factions
+        cursor.execute("ALTER TABLE factions ALTER COLUMN code SET NOT NULL")
+        #cursor.execute("ALTER TABLE factions DROP CONSTRAINT factions_pkey")
+        #cursor.execute("ALTER TABLE factions ADD PRIMARY KEY (code)")
+        cursor.execute("ALTER TABLE factions DROP COLUMN id")
+
+        logger.info("Migration complete: factions.code is now the primary key.")
 
     @staticmethod
     def _row_to_dict(row, selected_snippets) -> dict[str, Any]:
-        """Convert a factions SELECT row (10-column tuple) to a faction dict."""
+        """Convert a factions SELECT row (9-column tuple) to a faction dict.
+
+        Column order: code, name, on_chart, color, reputation_table_name,
+                      display_order, reputation_dao_name, snippet_selected_button,
+                      snippet_unselected
+        """
+        code = row[0]
         return {
-            "id": row[0],
+            "id": code,   # backward-compat alias — value is the code string
+            "code": code,
             "name": row[1],
-            "code": row[2],
-            "on_chart": row[3],
-            "color": row[4],
-            "reputation_table_name": row[5],
-            "display_order": row[6],
-            "reputation_dao_name": row[7],
-            "snippet_selected_button": row[8],
-            "snippet_unselected": row[9],
-            "faction_type": row[2],
+            "on_chart": row[2],
+            "color": row[3],
+            "reputation_table_name": row[4],
+            "display_order": row[5],
+            "reputation_dao_name": row[6],
+            "snippet_selected_button": row[7],
+            "snippet_unselected": row[8],
+            "faction_type": code,
             "selected_snippets": selected_snippets,
         }
 
     @staticmethod
-    def _params_to_dict(id, name, code, color, reputation_table_name, on_chart,
+    def _params_to_dict(code, name, color, reputation_table_name, on_chart,
                         display_order, reputation_dao_name, snippet_selected_button,
                         snippet_unselected) -> dict[str, Any]:
         """Build a faction response dict from individual field values."""
         return {
-            "id": id,
-            "name": name,
+            "id": code,   # backward-compat alias
             "code": code,
+            "name": name,
             "color": color,
             "reputation_table_name": reputation_table_name,
             "on_chart": on_chart,
@@ -165,30 +236,33 @@ class FactionsDAO:
             "snippet_unselected": snippet_unselected,
         }
 
+    def get_all_factions_with_cursor(self, cursor: Any) -> list[dict[str, Any]]:
+        """Get list of all factions with their selected snippets using an existing cursor."""
+        cursor.execute("""
+                       SELECT f.code, f.name, f.on_chart, f.color, f.reputation_table_name, f.display_order, f.reputation_dao_name, f.snippet_selected_button, f.snippet_unselected
+                       FROM factions f
+                       ORDER BY f.display_order
+                       """)
+        rows = cursor.fetchall()
+
+        cursor.execute("""
+                       SELECT faction_id, id, filename, snippet_type
+                       FROM faction_selected_snippets
+                       ORDER BY faction_id, snippet_type, filename
+                       """)
+        snippets_by_faction: dict[str, list] = {}
+        for row in cursor.fetchall():
+            snippets_by_faction.setdefault(row[0], []).append(
+                {"id": row[1], "filename": row[2], "snippet_type": row[3]}
+            )
+
+        return [self._row_to_dict(row, snippets_by_faction.get(row[0], [])) for row in rows]
+
     def get_all_factions(self) -> list[dict[str, Any]]:
         """Get list of all factions with their selected snippets."""
         with self.db.connect() as conn:
             cursor = conn.cursor()
-
-            cursor.execute("""
-                           SELECT f.id, f.name, f.code, f.on_chart, f.color, f.reputation_table_name, f.display_order, f.reputation_dao_name, f.snippet_selected_button, f.snippet_unselected
-                           FROM factions f
-                           ORDER BY f.display_order
-                           """)
-            rows = cursor.fetchall()
-
-            cursor.execute("""
-                           SELECT faction_id, id, filename, snippet_type
-                           FROM faction_selected_snippets
-                           ORDER BY faction_id, snippet_type, filename
-                           """)
-            snippets_by_faction = {}
-            for r in cursor.fetchall():
-                snippets_by_faction.setdefault(r[0], []).append(
-                    {"id": r[1], "filename": r[2], "snippet_type": r[3]}
-                )
-
-            return [self._row_to_dict(row, snippets_by_faction.get(row[0], [])) for row in rows]
+            return self.get_all_factions_with_cursor(cursor)
 
     def add_faction(
         self,
@@ -208,13 +282,12 @@ class FactionsDAO:
             try:
                 cursor.execute(
                     """
-                               INSERT INTO factions (name, code, color, reputation_table_name, on_chart, display_order, reputation_dao_name, snippet_selected_button, snippet_unselected)
+                               INSERT INTO factions (code, name, color, reputation_table_name, on_chart, display_order, reputation_dao_name, snippet_selected_button, snippet_unselected)
                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                               RETURNING id
                                """,
                     (
-                        name,
                         code,
+                        name,
                         color,
                         reputation_table_name,
                         on_chart,
@@ -225,19 +298,18 @@ class FactionsDAO:
                     ),
                 )
             except psycopg2.errors.UniqueViolation:
-                raise ValueError(f"Faction with name '{name}' already exists")
+                raise ValueError(f"Faction with name '{name}' or code '{code}' already exists")
 
-            new_id = cursor.fetchone()[0]
             return self._params_to_dict(
-                new_id, name, code, color, reputation_table_name, on_chart,
+                code, name, color, reputation_table_name, on_chart,
                 display_order, reputation_dao_name, snippet_selected_button, snippet_unselected,
             )
 
     def update_faction(
         self,
-        id,
+        current_code,
         name,
-        code,
+        new_code,
         color=None,
         reputation_table_name=None,
         on_chart=0,
@@ -246,20 +318,20 @@ class FactionsDAO:
         snippet_selected_button=None,
         snippet_unselected=None,
     ):
-        """Update an existing faction"""
+        """Update an existing faction identified by current_code."""
         with self.db.connect() as conn:
             cursor = conn.cursor()
 
-            cursor.execute("SELECT id FROM factions WHERE id = %s", (id,))
+            cursor.execute("SELECT code FROM factions WHERE code = %s", (current_code,))
             if not cursor.fetchone():
-                raise ValueError(f"Faction with id {id} not found")
+                raise ValueError(f"Faction with code '{current_code}' not found")
 
             try:
                 cursor.execute(
                     """
                                UPDATE factions
-                               SET name                  = %s,
-                                   code                  = %s,
+                               SET code                  = %s,
+                                   name                  = %s,
                                    color                 = %s,
                                    reputation_table_name = %s,
                                    on_chart              = %s,
@@ -267,11 +339,11 @@ class FactionsDAO:
                                    reputation_dao_name   = %s,
                                    snippet_selected_button      = %s,
                                    snippet_unselected    = %s
-                               WHERE id = %s
+                               WHERE code = %s
                                """,
                     (
+                        new_code,
                         name,
-                        code,
                         color,
                         reputation_table_name,
                         on_chart,
@@ -279,26 +351,26 @@ class FactionsDAO:
                         reputation_dao_name,
                         snippet_selected_button,
                         snippet_unselected,
-                        id,
+                        current_code,
                     ),
                 )
             except psycopg2.errors.UniqueViolation:
-                raise ValueError(f"Faction with name '{name}' already exists")
+                raise ValueError(f"Faction with name '{name}' or code '{new_code}' already exists")
 
             return self._params_to_dict(
-                id, name, code, color, reputation_table_name, on_chart,
+                new_code, name, color, reputation_table_name, on_chart,
                 display_order, reputation_dao_name, snippet_selected_button, snippet_unselected,
             )
 
-    def get_faction_by_id(self, faction_id):
-        """Get a single faction by id with its selected snippets."""
+    def get_faction_by_code(self, faction_code: str):
+        """Get a single faction by code with its selected snippets."""
         with self.db.connect() as conn:
             cursor = conn.cursor()
             cursor.execute("""
-                SELECT f.id, f.name, f.code, f.on_chart, f.color, f.reputation_table_name, f.display_order, f.reputation_dao_name, f.snippet_selected_button, f.snippet_unselected
+                SELECT f.code, f.name, f.on_chart, f.color, f.reputation_table_name, f.display_order, f.reputation_dao_name, f.snippet_selected_button, f.snippet_unselected
                 FROM factions f
-                WHERE f.id = %s
-            """, (faction_id,))
+                WHERE f.code = %s
+            """, (faction_code,))
             row = cursor.fetchone()
             if not row:
                 return None
@@ -307,7 +379,7 @@ class FactionsDAO:
                 FROM faction_selected_snippets
                 WHERE faction_id = %s
                 ORDER BY snippet_type, filename
-            """, (faction_id,))
+            """, (faction_code,))
             snippets = [{"id": r[0], "filename": r[1], "snippet_type": r[2]} for r in cursor.fetchall()]
             return self._row_to_dict(row, snippets)
 
@@ -326,7 +398,7 @@ class FactionsDAO:
             f"""
                SELECT value, timestamp
                FROM status_entries
-               WHERE faction_id = %s
+               WHERE faction_code = %s
                ORDER BY timestamp DESC
                LIMIT {int(avg_entries)}
             """,
@@ -337,7 +409,7 @@ class FactionsDAO:
         previous = entries[1] if len(entries) > 1 else None
 
         cursor.execute(
-            "SELECT COUNT(*) FROM status_entries WHERE faction_id = %s",
+            "SELECT COUNT(*) FROM status_entries WHERE faction_code = %s",
             (faction_id,),
         )
         entry_count = cursor.fetchone()[0]
@@ -431,22 +503,23 @@ class FactionsDAO:
         with self.db.connect() as conn:
             cursor = conn.cursor()
             cursor.execute("""
-                           SELECT f.id, f.name, f.code, f.on_chart, f.color, f.reputation_table_name, f.display_order, f.reputation_dao_name
+                           SELECT f.code, f.name, f.on_chart, f.color, f.reputation_table_name, f.display_order, f.reputation_dao_name
                            FROM factions f
                            ORDER BY f.display_order
                            """)
             factions_list = cursor.fetchall()
 
             result = []
-            for faction_id, name, faction_type_code, on_chart, color, reputation_table_name, display_order, reputation_dao_name in factions_list:
-                entries, entry_count, latest, previous = self._fetch_entries_and_count(cursor, faction_id)
+            for faction_code, name, on_chart, color, reputation_table_name, display_order, reputation_dao_name in factions_list:
+                entries, entry_count, latest, previous = self._fetch_entries_and_count(cursor, faction_code)
                 status, rep_level, value_delta = self._compute_faction_status(
                     conn, entries, latest, previous, name, reputation_table_name
                 )
                 result.append({
-                    "id": faction_id,
+                    "id": faction_code,   # backward-compat alias
+                    "code": faction_code,
                     "name": name,
-                    "faction_type": faction_type_code,
+                    "faction_type": faction_code,
                     "on_chart": on_chart,
                     "display_order": display_order,
                     "reputation_table_name": reputation_table_name,

@@ -40,22 +40,22 @@ class FactionSelectedSnippetsDAO:
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS faction_selected_snippets (
                 id           SERIAL PRIMARY KEY,
-                faction_id   INTEGER NOT NULL,
-                filename     TEXT    NOT NULL,
+                faction_id   TEXT NOT NULL,
+                filename     TEXT NOT NULL,
                 snippet_type TEXT,
-                FOREIGN KEY (faction_id) REFERENCES factions(id)
+                FOREIGN KEY (faction_id) REFERENCES factions(code) ON UPDATE CASCADE
             )
         """)
 
         # Migrate legacy snippet_selected_button column into the new table
         cursor.execute("""
             INSERT INTO faction_selected_snippets (faction_id, filename, snippet_type)
-            SELECT id, snippet_selected_button, 'button'
+            SELECT code, snippet_selected_button, 'button'
             FROM factions
             WHERE snippet_selected_button IS NOT NULL
               AND NOT EXISTS (
                 SELECT 1 FROM faction_selected_snippets fss
-                WHERE fss.faction_id = factions.id
+                WHERE fss.faction_id = factions.code
                   AND fss.filename = factions.snippet_selected_button
               )
         """)

@@ -53,15 +53,15 @@ def _snippets_dir():
     )
 
 
-@factions_bp.route("/<int:faction_id>/selected-snippets", methods=["GET"])
-def get_selected_snippets(faction_id):
+@factions_bp.route("/<string:faction_code>/selected-snippets", methods=["GET"])
+def get_selected_snippets(faction_code):
     db = current_app.config["DATABASE"]
-    snippets = db.selected_snippets.get_snippets_for_faction(faction_id)
+    snippets = db.selected_snippets.get_snippets_for_faction(faction_code)
     return jsonify(snippets)
 
 
-@factions_bp.route("/<int:faction_id>/selected-snippets", methods=["POST"])
-def add_selected_snippet(faction_id):
+@factions_bp.route("/<string:faction_code>/selected-snippets", methods=["POST"])
+def add_selected_snippet(faction_code):
     """Upload an image file and register it as a selected snippet for a faction."""
     db = current_app.config["DATABASE"]
     if "file" not in request.files:
@@ -79,8 +79,8 @@ def add_selected_snippet(faction_id):
     os.makedirs(os.path.dirname(dest), exist_ok=True)
     file.save(dest)
 
-    new_id = db.selected_snippets.add_snippet(faction_id, filename, snippet_type)
-    return jsonify({"id": new_id, "faction_id": faction_id, "filename": filename, "snippet_type": snippet_type}), 201
+    new_id = db.selected_snippets.add_snippet(faction_code, filename, snippet_type)
+    return jsonify({"id": new_id, "faction_id": faction_code, "filename": filename, "snippet_type": snippet_type}), 201
 
 
 @factions_bp.route("/selected-snippets/<int:snippet_id>", methods=["DELETE"])
@@ -171,17 +171,17 @@ def add_faction():
         return jsonify({"error": "Failed to add faction"}), 500
 
 
-@factions_bp.route("/<int:id>", methods=["PUT"])
-def update_faction(id):
+@factions_bp.route("/<string:current_code>", methods=["PUT"])
+def update_faction(current_code):
     """
     Update an existing faction
     ---
     tags:
       - Factions
     parameters:
-      - name: id
+      - name: current_code
         in: path
-        type: integer
+        type: string
         required: true
       - name: body
         in: body
@@ -215,20 +215,20 @@ def update_faction(id):
     if not data:
         return jsonify({"error": "Request body must be valid JSON"}), 400
     name = data.get("name")
-    code = data.get("code")
+    new_code = data.get("code")
     color = data.get("color")
     reputation_table_name = data.get("reputation_table_name")
     on_chart = data.get("on_chart", 0)
     display_order = data.get("display_order")
 
-    if not name or not code:
+    if not name or not new_code:
         return jsonify({"error": "Missing name or code"}), 400
 
     try:
         result = db.factions.update_faction(
-            id,
+            current_code,
             name,
-            code,
+            new_code,
             color,
             reputation_table_name,
             int(on_chart),

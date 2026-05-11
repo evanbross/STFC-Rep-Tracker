@@ -12,7 +12,9 @@
       "Bash(uv --version)",
       "Bash(netsh int:*)",
       "Read(//f/Evan-F/**)",
-      "Read(//f//**)"
+      "Read(//f//**)",
+      "Bash(.venv/Scripts/python.exe -c \"import click; print\\(click.__version__\\)\")",
+      "Bash(.venv/Scripts/pip.exe show *)"
     ]
   }
 }

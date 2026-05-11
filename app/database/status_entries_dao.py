@@ -44,12 +44,12 @@ class StatusEntriesDAO:
         cursor.execute("""
                        CREATE TABLE IF NOT EXISTS status_entries
                        (
-                           id         SERIAL PRIMARY KEY,
-                           faction_id INTEGER NOT NULL,
-                           timestamp  TEXT NOT NULL,
-                           value      INTEGER NOT NULL,
-                           value_delta INTEGER DEFAULT 0,
-                           FOREIGN KEY (faction_id) REFERENCES factions(id)
+                           id           SERIAL PRIMARY KEY,
+                           faction_code TEXT NOT NULL,
+                           timestamp    TEXT NOT NULL,
+                           value        INTEGER NOT NULL,
+                           value_delta  INTEGER DEFAULT 0,
+                           FOREIGN KEY (faction_code) REFERENCES factions(code) ON UPDATE CASCADE
                        )
                        """)
 
@@ -60,7 +60,7 @@ class StatusEntriesDAO:
 
             cursor.execute(
                 """
-                           SELECT f.id
+                           SELECT f.code
                            FROM factions f
                            WHERE f.name = %s
                            """,
@@ -71,18 +71,18 @@ class StatusEntriesDAO:
             if not result:
                 raise ValueError(f"Faction '{faction_name}' not found")
 
-            faction_id = result[0]
+            faction_code = result[0]
 
             timestamp = datetime.now(timezone.utc).isoformat()
             cursor.execute(
                 """
-                           INSERT INTO status_entries (faction_id, timestamp, value)
+                           INSERT INTO status_entries (faction_code, timestamp, value)
                            VALUES (%s, %s, %s)
                            """,
-                (faction_id, timestamp, value),
+                (faction_code, timestamp, value),
             )
 
-            return {"faction_id": faction_id, "timestamp": timestamp, "value": value}
+            return {"faction_code": faction_code, "timestamp": timestamp, "value": value}
 
     def get_faction_entries(self, faction_name: str) -> list[dict[str, Any]]:
         """Get all stat entries for a specific faction"""
@@ -90,9 +90,9 @@ class StatusEntriesDAO:
             cursor = conn.cursor()
             cursor.execute(
                 """
-                           SELECT se.timestamp, se.value, se.value_delta, se.faction_id
+                           SELECT se.timestamp, se.value, se.value_delta, se.faction_code
                            FROM status_entries se
-                                    JOIN factions f ON se.faction_id = f.id
+                                    JOIN factions f ON se.faction_code = f.code
                            WHERE f.name = %s
                            ORDER BY se.timestamp ASC
                            """,
@@ -103,18 +103,18 @@ class StatusEntriesDAO:
                     "timestamp": row[0],
                     "value": row[1],
                     "value_delta": row[2],
-                    "faction_id": row[3],
+                    "faction_code": row[3],
                 }
                 for row in cursor.fetchall()
             ]
 
     _ALLOWED_SORT_COLUMNS = {
         "se.id",
-        "se.faction_id",
+        "se.faction_code",
         "se.timestamp",
         "se.value",
         "id",
-        "faction_id",
+        "faction_code",
         "timestamp",
         "value",
         "faction_name",
@@ -132,9 +132,9 @@ class StatusEntriesDAO:
             cursor = conn.cursor()
 
             query = """
-                    SELECT se.id, se.faction_id, f.name AS faction_name, se.timestamp, se.value
+                    SELECT se.id, se.faction_code, f.name AS faction_name, se.timestamp, se.value
                     FROM status_entries se
-                             JOIN factions f ON se.faction_id = f.id
+                             JOIN factions f ON se.faction_code = f.code
                     """
             params: list[Any] = []
             if faction_name is not None:
@@ -163,7 +163,7 @@ class StatusEntriesDAO:
             return [
                 {
                     "id": row[0],
-                    "faction_id": row[1],
+                    "faction_code": row[1],
                     "faction_name": row[2],
                     "timestamp": row[3],
                     "value": row[4],
@@ -171,7 +171,7 @@ class StatusEntriesDAO:
                 for row in cursor.fetchall()
             ]
 
-    _ALLOWED_FACTION_SORT_COLUMNS = {"f.id", "f.name", "id", "name"}
+    _ALLOWED_FACTION_SORT_COLUMNS = {"f.code", "f.name", "code", "name"}
 
     def get_all_entries_for_factions_summaries(
         self,
@@ -184,7 +184,7 @@ class StatusEntriesDAO:
         with self.db.connect() as conn:
             cursor = conn.cursor()
 
-            query = "SELECT f.id, f.name FROM factions f"
+            query = "SELECT f.code, f.name FROM factions f"
             params: list[Any] = []
             if faction_name is not None:
                 query += " WHERE f.name = %s"
@@ -212,16 +212,16 @@ class StatusEntriesDAO:
             factions = cursor.fetchall()
 
             result: dict[str, list[dict[str, Any]]] = {}
-            for faction_id, name in factions:
+            for faction_code, name in factions:
                 cursor.execute(
                     """
-                               SELECT timestamp, value, faction_id
+                               SELECT timestamp, value, faction_code
                                FROM status_entries
-                               WHERE faction_id = %s
+                               WHERE faction_code = %s
                                ORDER BY id DESC
                                LIMIT 2
                                """,
-                    (faction_id,),
+                    (faction_code,),
                 )
                 rows = cursor.fetchall()
                 entries: list[dict[str, Any]] = []
@@ -236,7 +236,7 @@ class StatusEntriesDAO:
                         {
                             "timestamp": latest_row[0],
                             "value": latest_row[1],
-                            "faction_id": latest_row[2],
+                            "faction_code": latest_row[2],
                         }
                     )
                 result[name] = entries
