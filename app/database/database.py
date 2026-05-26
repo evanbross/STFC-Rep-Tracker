@@ -65,9 +65,7 @@ class Database:
         self.territory_systems_dao = TerritorySystemsDAO(self)
         self.territory_systems = self.territory_systems_dao
 
-        logger.info(f"Calling init_database")
         self.init_database()
-        logger.info(f"After init_database")
 
     def get_connection(self):
         return psycopg2.connect(self.db_url)
@@ -100,7 +98,6 @@ class Database:
             self._create_tables(cursor)
             ReputationsDAO.initialize_dao_instances(self, self.factions_dao, cursor)
             for dao in ReputationsDAO.get_all_dao_by_class_name().values():
-                logger.info(f"creating table {dao.__class__.__name__}")
                 dao.create_table(cursor)
             conn.commit()
         except Exception as ex:
@@ -114,13 +111,9 @@ class Database:
     def _create_tables(self, cursor):
         """Create all required tables for the database"""
         self.factions_dao.create_table(cursor)
-        logger.info("After factions")
         self.status_entries_dao.create_table(cursor)
-        logger.info("After status_entries")
         self.selected_snippets_dao.create_table(cursor)
-        logger.info("After snippets")
         self.territory_systems_dao.create_table(cursor)
-        logger.info("After territory")
 
     def get_factions_dao(self):
         return self.factions_dao

@@ -32,6 +32,7 @@
 # --- END AI SYSTEMS DIRECTIVE ---
 # =============================================================================
 import ctypes
+import json
 import os
 import runpy
 import secrets
@@ -42,6 +43,8 @@ import sys
 import threading
 import time
 import tkinter as tk
+import urllib.error
+import urllib.request
 import webbrowser
 from tkinter import font as tkfont
 from tkinter import messagebox, ttk
@@ -193,6 +196,41 @@ def _wait_for_server(port: int, timeout: int = 60) -> bool:
     return False
 
 
+# ── Caddy helpers ─────────────────────────────────────────────────────────────
+
+def _caddy_register(name: str, port: int, *, admin_url: str) -> bool:
+    """Register name.localhost → host.docker.internal:port with Caddy. Returns True if successful."""
+    _caddy_delete_route(f"app-{name}", admin_url=admin_url)
+    route = {
+        "@id": f"app-{name}",
+        "match": [{"host": [f"{name}.localhost"]}],
+        "handle": [{"handler": "reverse_proxy", "upstreams": [{"dial": f"host.docker.internal:{port}"}]}],
+    }
+    req = urllib.request.Request(
+        f"{admin_url}/config/apps/http/servers/dev/routes",
+        data=json.dumps(route).encode(),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        urllib.request.urlopen(req, timeout=3)
+        return True
+    except (urllib.error.URLError, OSError):
+        return False
+
+
+def _caddy_deregister(name: str, *, admin_url: str) -> None:
+    _caddy_delete_route(f"app-{name}", admin_url=admin_url)
+
+
+def _caddy_delete_route(route_id: str, *, admin_url: str) -> None:
+    try:
+        req = urllib.request.Request(f"{admin_url}/id/{route_id}", method="DELETE")
+        urllib.request.urlopen(req, timeout=3)
+    except (urllib.error.HTTPError, urllib.error.URLError, OSError):
+        pass
+
+
 # ── Setup dialog ──────────────────────────────────────────────────────────────
 
 class SetupDialog(tk.Toplevel):
@@ -338,6 +376,9 @@ class LauncherWindow:
         self._process: subprocess.Popen | None = None
         self._port: int | None = None
         self._restart_btn: ttk.Button | None = None
+        self._app_url: str | None = None
+        self._caddy_admin_url: str = "http://localhost:2019"
+        self._caddy_app_name: str = "stfc-rep-tracker"
 
         self._configure_styles()
         self._build_ui()
@@ -433,6 +474,8 @@ class LauncherWindow:
             shutil.copy2(env_example, env_path)
 
         env_data = _parse_env_file(env_path)
+        self._caddy_admin_url = env_data.get("CADDY_ADMIN_URL", "http://localhost:2019")
+        self._caddy_app_name = env_data.get("CADDY_APP_NAME", "stfc-rep-tracker")
 
         if _needs_setup(env_data):
             self._status_var.set("Setup required — please fill in the configuration.")
@@ -480,7 +523,14 @@ class LauncherWindow:
 
             self._set_status(f"Waiting for server on port {port}…")
             if _wait_for_server(port):
-                url = f"http://localhost:{port}"
+                caddy_ok = _caddy_register(
+                    self._caddy_app_name, port, admin_url=self._caddy_admin_url
+                )
+                url = (
+                    f"http://{self._caddy_app_name}.localhost"
+                    if caddy_ok
+                    else f"http://localhost:{port}"
+                )
                 self.root.after(0, lambda: self._on_server_ready(url))
             else:
                 self._set_status("Server did not start — check server.log for details.")
@@ -490,6 +540,7 @@ class LauncherWindow:
             self.root.after(0, lambda: self._set_restart_button_state("normal"))
 
     def _on_server_ready(self, url: str) -> None:
+        self._app_url = url
         self._status_var.set(f"Running on {url}")
         self._open_btn.config(state="normal")
         self._set_restart_button_state("normal")
@@ -497,8 +548,8 @@ class LauncherWindow:
     # ── Actions ───────────────────────────────────────────────────────────────
 
     def _open_browser(self) -> None:
-        if self._port:
-            webbrowser.open(f"http://localhost:{self._port}")
+        if self._app_url:
+            webbrowser.open(self._app_url)
 
     def _restart_backend(self) -> None:
         self._open_btn.config(state="disabled")
@@ -515,6 +566,8 @@ class LauncherWindow:
         self.root.destroy()
 
     def _stop_backend(self) -> None:
+        _caddy_deregister(self._caddy_app_name, admin_url=self._caddy_admin_url)
+        self._app_url = None
         if self._process and self._process.poll() is None:
             self._process.terminate()
             try:

@@ -38,14 +38,7 @@ class DTIReputationsDAO(ReputationsDAO):
         super().__init__(db, 'dti_reputations')
 
     def create_table(self, cursor):
-        """Create dti_reputations table and handle migrations"""
-        columns = self._get_columns(cursor, 'dti_reputations')
-
-        # Migrate reputation_name → name if needed
-        if "reputation_name" in columns and "name" not in columns:
-            cursor.execute("ALTER TABLE dti_reputations RENAME COLUMN reputation_name TO name")
-            columns = [c if c != "reputation_name" else "name" for c in columns]
-
+        """Create the current dti_reputations table schema."""
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS dti_reputations (
                 id             SERIAL PRIMARY KEY,
@@ -61,12 +54,6 @@ class DTIReputationsDAO(ReputationsDAO):
             'CREATE UNIQUE INDEX IF NOT EXISTS "dti_reputations_name_key" '
             'ON dti_reputations (name)'
         )
-
-        # Migration for existing tables; harmless for fresh tables created above.
-        cursor.execute(
-            "ALTER TABLE dti_reputations ADD COLUMN IF NOT EXISTS high_limit INTEGER"
-        )
-
         self.apply_initial_reputations(cursor)
 
     def get_initial_reputations(self):

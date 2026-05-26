@@ -14,7 +14,12 @@
       "Read(//f/Evan-F/**)",
       "Read(//f//**)",
       "Bash(.venv/Scripts/python.exe -c \"import click; print\\(click.__version__\\)\")",
-      "Bash(.venv/Scripts/pip.exe show *)"
+      "Bash(.venv/Scripts/pip.exe show *)",
+      "Bash(Get-ChildItem -Path \"F:\\\\Evan-F\\\\Projects\\\\job-hunt-assistant\" -Recurse -Force)",
+      "Bash(Select-Object FullName)",
+      "Bash(Get-ChildItem -Path \"F:\\\\Evan-F\\\\Projects\\\\STFC-Rep-Tracker\" -Force)",
+      "Bash(Select-Object Name, PSIsContainer)",
+      "Bash(Get-ChildItem *)"
     ]
   }
 }

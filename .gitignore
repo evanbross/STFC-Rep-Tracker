@@ -13,3 +13,5 @@ google_token*.json
 /certs/
 /server.log
 /frontend/dist
+/build
+/dist

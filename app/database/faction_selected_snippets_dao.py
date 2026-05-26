@@ -36,7 +36,7 @@ class FactionSelectedSnippetsDAO:
         self.db = db
 
     def create_table(self, cursor):
-        """Create faction_selected_snippets table and seed from legacy columns."""
+        """Create the current faction_selected_snippets table schema."""
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS faction_selected_snippets (
                 id           SERIAL PRIMARY KEY,
@@ -45,19 +45,6 @@ class FactionSelectedSnippetsDAO:
                 snippet_type TEXT,
                 FOREIGN KEY (faction_id) REFERENCES factions(code) ON UPDATE CASCADE
             )
-        """)
-
-        # Migrate legacy snippet_selected_button column into the new table
-        cursor.execute("""
-            INSERT INTO faction_selected_snippets (faction_id, filename, snippet_type)
-            SELECT code, snippet_selected_button, 'button'
-            FROM factions
-            WHERE snippet_selected_button IS NOT NULL
-              AND NOT EXISTS (
-                SELECT 1 FROM faction_selected_snippets fss
-                WHERE fss.faction_id = factions.code
-                  AND fss.filename = factions.snippet_selected_button
-              )
         """)
 
     def get_snippets_for_faction(self, faction_id, snippet_type=None):

@@ -34,11 +34,17 @@
 import os
 
 
+_caddy_app_name = os.environ.get("CADDY_APP_NAME", "stfc-rep-tracker")
+
+
 class Config:
     """Base configuration"""
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-secret-key-change-in-production'
     DATABASE_URL = os.environ.get('DATABASE_URL_POOLED') or os.environ.get('DATABASE_URL')
-    CORS_ORIGINS = os.environ.get('CORS_ORIGINS', 'http://localhost:5173,http://localhost:7300').split(',')
+    CORS_ORIGINS = os.environ.get(
+        'CORS_ORIGINS',
+        f'http://localhost:5173,http://localhost:7300,http://{_caddy_app_name}.localhost',
+    ).split(',')
     DEBUG = False
     TESTING = False
 

@@ -33,11 +33,12 @@
 # =============================================================================
 import importlib
 import logging
+import re
 import threading
-from abc import abstractmethod
 from typing import Any
 
 logger = logging.getLogger(__name__)
+TABLE_NAME_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 class ReputationsDAO:
@@ -47,7 +48,7 @@ class ReputationsDAO:
 
     def __init__(self, db: Any, table_name: str) -> None:
         self.db = db
-        self.table_name = table_name
+        self.table_name = self._validate_table_name(table_name)
 
     @staticmethod
     def get_dao_by_faction_name(name: str) -> "ReputationsDAO | None":
@@ -72,6 +73,7 @@ class ReputationsDAO:
     @staticmethod
     def _get_columns(cursor: Any, table_name: str) -> list[str]:
         """Return lowercase column names for table_name via information_schema."""
+        ReputationsDAO._validate_table_name(table_name)
         cursor.execute(
             "SELECT column_name FROM information_schema.columns "
             "WHERE table_name = %s AND table_schema = 'public'",
@@ -83,6 +85,12 @@ class ReputationsDAO:
     def _resolve_name_col(columns: list[str]) -> str:
         """Return the correct column name for the name column (always lowercase 'name')."""
         return "name"
+
+    @staticmethod
+    def _validate_table_name(table_name: str) -> str:
+        if not TABLE_NAME_PATTERN.fullmatch(table_name):
+            raise ValueError(f"Invalid reputation table name: {table_name}")
+        return table_name
 
     @staticmethod
     def register_dao(faction_name: str, dao: "ReputationsDAO") -> None:
@@ -109,11 +117,15 @@ class ReputationsDAO:
 
             if not rep_dao_name:
                 continue
+            if not rep_table_name:
+                logger.error("Faction %s has no reputation table name", faction_name)
+                continue
 
             # If we haven't created a DAO for this table yet, do it now
             rep_dao = ReputationsDAO.get_dao_by_class_name(rep_dao_name)
             if rep_dao is None:
                 try:
+                    ReputationsDAO._validate_table_name(rep_table_name)
                     module = importlib.import_module(
                         "app.database." + rep_table_name + "_dao"
                     )
@@ -124,7 +136,7 @@ class ReputationsDAO:
                         rep_dao = dao_class(db, rep_table_name)
                     else:
                         rep_dao = dao_class(db)
-                except (ImportError, AttributeError) as e:
+                except (ImportError, AttributeError, ValueError) as e:
                     logger.error(
                         f"Failed to initialize DAO {rep_dao_name} for faction {faction_name}: {e}"
                     )
@@ -194,8 +206,7 @@ class ReputationsDAO:
             raise ValueError(f"Error fetching reputations from {table_name}: {e}") from e
 
     def create_table(self, cursor: Any) -> None:
-        """Create reputation table and handle migrations"""
-        logger.info("Creating reputation table")
+        """Create the current reputation table schema."""
         columns = self._get_columns(cursor, self.table_name)
         name_col = self._resolve_name_col(columns)
 
@@ -209,7 +220,6 @@ class ReputationsDAO:
                        )
                 """)
 
-        # Ensure the unique constraint exists (handles tables created before this migration)
         cursor.execute(
             f'CREATE UNIQUE INDEX IF NOT EXISTS "{self.table_name}_name_key" '
             f'ON "{self.table_name}" (name)'
@@ -218,9 +228,8 @@ class ReputationsDAO:
         # Apply initial reputations
         self.apply_initial_reputations(cursor)
 
-    @abstractmethod
     def get_initial_reputations(self) -> list[tuple]:
-        pass
+        raise NotImplementedError("subclasses must define initial reputation rows")
 
     def apply_initial_reputations(self, cursor: Any) -> None:
         columns = self._get_columns(cursor, self.table_name)
@@ -286,7 +295,8 @@ class ReputationsDAO:
                 f"""
                            SELECT rep.name, rep.low_limit, rep.high_limit
                            FROM "{self.table_name}" AS rep
-                           WHERE rep.low_limit <= %s AND rep.high_limit >= %s
+                           WHERE rep.low_limit <= %s
+                             AND (rep.high_limit >= %s OR rep.high_limit IS NULL)
                            """,
                 (value, value),
             )

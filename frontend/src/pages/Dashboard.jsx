@@ -625,17 +625,16 @@ const Dashboard = () => {
                         Reputations
                     </button>
                     <button
-                        onClick={() => handleCaptureScreen('away_team_collect')}
-                        disabled={isCapturing}
+                        disabled={true}
                         style={{
                             flex: 1,
                             padding: '1rem',
                             fontSize: '1.1rem',
-                            backgroundColor: isCapturing ? '#ccc' : '#4CAF50',
+                            backgroundColor: '#ccc',
                             color: 'white',
                             border: 'none',
                             borderRadius: '4px',
-                            cursor: isCapturing ? 'not-allowed' : 'pointer'
+                            cursor: 'not-allowed'
                         }}
                     >
                         Away Team<br/>Collect Only
@@ -673,18 +672,16 @@ const Dashboard = () => {
                         Gifts
                     </button>
                     <button
-                        onClick={() => alert('This feature is not available yet')}
-                        disabled={isCapturing}
+                        disabled={true}
                         style={{
                             flex: 1,
                             padding: '1rem',
                             fontSize: '1.1rem',
-                            backgroundColor: isCapturing ? '#ccc' : '#E65100',
+                            backgroundColor: '#ccc',
                             color: 'white',
                             border: 'none',
                             borderRadius: '4px',
-                            cursor: isCapturing ? 'not-allowed' : 'pointer',
-                            textDecoration: 'line-through'
+                            cursor: 'not-allowed'
                         }}
                     >
                         Event Rewards
