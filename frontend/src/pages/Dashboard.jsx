@@ -75,12 +75,13 @@ const colorToRgba = (color, alpha) => {
 
 const formatShort = (value, decimals = 0) => {
     if (value == null) return null;
+    const sign = value < 0 ? '-' : '';
     const abs = Math.abs(value);
     const fmt = (n) => decimals > 0 ? n.toFixed(decimals) : String(Math.floor(n));
-    if (abs >= 1_000_000_000) return `${fmt(abs / 1_000_000_000)}b`;
-    if (abs >= 1_000_000) return `${fmt(abs / 1_000_000)}m`;
-    if (abs >= 1_000) return `${fmt(abs / 1_000)}k`;
-    return String(abs);
+    if (abs >= 1_000_000_000) return `${sign}${fmt(abs / 1_000_000_000)}b`;
+    if (abs >= 1_000_000) return `${sign}${fmt(abs / 1_000_000)}m`;
+    if (abs >= 1_000) return `${sign}${fmt(abs / 1_000)}k`;
+    return `${sign}${abs}`;
 };
 
 const formatMinutes = (minutes) => {
@@ -542,7 +543,7 @@ const Dashboard = () => {
                                         <div className="status-item full-width">
                                             <span className="status-label">Value / Change:</span>
                                             <span className="status-value">
-                                                {formatShort(faction.current_value, 3)} / {faction.last_delta >= 0 ? '+' : '-'}{formatShort(faction.last_delta, 3)}
+                                                {formatShort(faction.current_value, 3)} / {faction.last_delta >= 0 ? '+' : ''}{formatShort(faction.last_delta, 3)}
                                             </span>
                                         </div>
                                         <div className="status-item full-width">
@@ -623,21 +624,6 @@ const Dashboard = () => {
                         }}
                     >
                         Reputations
-                    </button>
-                    <button
-                        disabled={true}
-                        style={{
-                            flex: 1,
-                            padding: '1rem',
-                            fontSize: '1.1rem',
-                            backgroundColor: '#ccc',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '4px',
-                            cursor: 'not-allowed'
-                        }}
-                    >
-                        Away Team<br/>Collect Only
                     </button>
                     <button
                         onClick={() => handleCaptureScreen('away_team')}

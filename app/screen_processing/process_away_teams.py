@@ -38,6 +38,7 @@ from app.app_config import capture_cfg
 from app.screen_processing.screen_capture import (
     ScreenCapture,
     click_button_if_visible,
+    match_template,
     wait_and_click,
     wait_and_click_any,
     wait_for_any_template,
@@ -130,6 +131,11 @@ class AwayTeamOrchestrator:
 
         return None
 
+    # Templates that confirm the Away Teams list is fully rendered.
+    # "Away Teams List Indicator.jpg" only appears when missions are in-progress;
+    # "Away Teams Refresh.jpg" is always present regardless of mission state.
+    _LIST_READY_TEMPLATES = ["Away Teams List Indicator.jpg", "Away Teams Refresh.jpg"]
+
     def _collect_reports(self, window, screen_offset):
         """Click REPORT → COLLECT for all completed missions. Returns (reports_clicked, collected)."""
         reports_clicked = 0
@@ -138,14 +144,28 @@ class AwayTeamOrchestrator:
             # Wait for the list to be fully rendered before looking for a REPORT button.
             # "Away Teams Tab Selected.jpg" appears as soon as the nav bar is visible,
             # which is before the list items have loaded — use the list indicator instead.
-            if wait_for_template("Away Teams List Indicator.jpg", self.sc, window, max_retries=20) is None:
+            matched, _ = wait_for_any_template(self._LIST_READY_TEMPLATES, self.sc, window, max_retries=20)
+            if matched is None:
                 logger.warning("Away Teams list not detected, stopping collect cycle")
                 break
+            logger.debug("Away Teams list ready (matched: %s)", matched)
 
             img = self.sc.capture(window)
             if img is None:
+                logger.warning("could not capture screenshot in collect loop — stopping")
                 break
             if not click_button_if_visible("Away Teams Report.jpg", img, screen_offset):
+                try:
+                    m = match_template("Away Teams Report.jpg", img)
+                    if m:
+                        threshold = capture_cfg("button_match_threshold", default=0.85)
+                        logger.info(
+                            "Away Teams Report.jpg score %.2f (threshold %.2f) — "
+                            "no match; template may need updating",
+                            m[1], threshold,
+                        )
+                except FileNotFoundError:
+                    logger.warning("Away Teams Report.jpg snippet file is missing")
                 logger.info("no REPORT button visible — collect cycle complete")
                 break
             reports_clicked += 1
@@ -174,13 +194,16 @@ class AwayTeamOrchestrator:
         """Start new expeditions via START → AUTO → START. Returns expeditions_started count."""
         expeditions_started = 0
         while True:
-            if wait_for_template("Away Teams List Indicator.jpg", self.sc, window, max_retries=20) is None:
+            matched, _ = wait_for_any_template(self._LIST_READY_TEMPLATES, self.sc, window, max_retries=20)
+            if matched is None:
                 logger.warning("Away Teams list not detected, stopping")
                 break
+            logger.debug("Away Teams list ready (matched: %s)", matched)
 
             time.sleep(0.5)
             img = self.sc.capture(window)
             if img is None:
+                logger.warning("could not capture screenshot in expedition loop — stopping")
                 break
 
             if not click_button_if_visible("Away Teams Start Blue.jpg", img, screen_offset):

@@ -19,7 +19,9 @@
       "Bash(Select-Object FullName)",
       "Bash(Get-ChildItem -Path \"F:\\\\Evan-F\\\\Projects\\\\STFC-Rep-Tracker\" -Force)",
       "Bash(Select-Object Name, PSIsContainer)",
-      "Bash(Get-ChildItem *)"
+      "Bash(Get-ChildItem *)",
+      "Bash(xargs grep -l \"factions.*add_faction\\\\|initialize.*faction\")",
+      "Bash(xargs grep -l \"INSERT.*factions\\\\|add_faction\")"
     ]
   }
 }
