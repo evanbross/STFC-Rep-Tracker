@@ -21,7 +21,8 @@
       "Bash(Select-Object Name, PSIsContainer)",
       "Bash(Get-ChildItem *)",
       "Bash(xargs grep -l \"factions.*add_faction\\\\|initialize.*faction\")",
-      "Bash(xargs grep -l \"INSERT.*factions\\\\|add_faction\")"
+      "Bash(xargs grep -l \"INSERT.*factions\\\\|add_faction\")",
+      "Bash(git -C \"F:\\\\Evan-F\\\\Projects\\\\STFC-Rep-Tracker\" log --oneline)"
     ]
   }
 }

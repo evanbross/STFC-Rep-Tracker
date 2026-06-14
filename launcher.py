@@ -377,8 +377,8 @@ class LauncherWindow:
         self._port: int | None = None
         self._restart_btn: ttk.Button | None = None
         self._app_url: str | None = None
-        self._caddy_admin_url: str = "http://localhost:2019"
-        self._caddy_app_name: str = "stfc-rep-tracker"
+        self._caddy_admin_url: str = "http://localhost:3019"
+        self._caddy_app_name: str = "stfc"
 
         self._configure_styles()
         self._build_ui()
@@ -474,8 +474,8 @@ class LauncherWindow:
             shutil.copy2(env_example, env_path)
 
         env_data = _parse_env_file(env_path)
-        self._caddy_admin_url = env_data.get("CADDY_ADMIN_URL", "http://localhost:2019")
-        self._caddy_app_name = env_data.get("CADDY_APP_NAME", "stfc-rep-tracker")
+        self._caddy_admin_url = env_data.get("CADDY_ADMIN_URL", "http://localhost:3019")
+        self._caddy_app_name = env_data.get("CADDY_APP_NAME", "stfc")
 
         if _needs_setup(env_data):
             self._status_var.set("Setup required — please fill in the configuration.")
@@ -541,7 +541,7 @@ class LauncherWindow:
 
     def _on_server_ready(self, url: str) -> None:
         self._app_url = url
-        self._status_var.set(f"Running on {url}")
+        self._status_var.set(f"Now running on {url} (using port {self._port})")
         self._open_btn.config(state="normal")
         self._set_restart_button_state("normal")
 

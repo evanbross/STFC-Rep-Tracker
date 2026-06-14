@@ -34,7 +34,7 @@
 import os
 
 
-_caddy_app_name = os.environ.get("CADDY_APP_NAME", "stfc-rep-tracker")
+_caddy_app_name = os.environ.get("CADDY_APP_NAME", "stfc")
 
 
 class Config:
