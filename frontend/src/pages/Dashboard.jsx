@@ -218,13 +218,19 @@ const Dashboard = () => {
 
 
     const submitEntry = async (factionName, value) => {
+        const parsed = parseInt(value, 10);
+        if (!Number.isFinite(parsed)) {
+            alert('Enter a valid number.');
+            return false;
+        }
         try {
             await axios.post('/api/status_entries/', {
                 faction: factionName,
-                value: parseInt(value)
+                value: parsed
             });
             const list = await loadFactions();
             await loadEntries(list);
+            return true;
         } catch (error) {
             console.error('Error adding entry:', error);
             if (!error.response) {
@@ -232,6 +238,7 @@ const Dashboard = () => {
             } else {
                 alert('Failed to add entry.');
             }
+            return false;
         }
     };
 
@@ -357,11 +364,16 @@ const Dashboard = () => {
     };
 
     const addToCalendar = async (id) => {
-        const res = await axios.post(
-            `/api/territory/systems/${id}/calendar-event`,
-            { calendar_id: calPickerSelectedId },
-        );
-        setScheduleList(prev => prev.map(s => s.id === id ? res.data : s));
+        try {
+            const res = await axios.post(
+                `/api/territory/systems/${id}/calendar-event`,
+                { calendar_id: calPickerSelectedId },
+            );
+            setScheduleList(prev => prev.map(s => s.id === id ? res.data : s));
+        } catch (error) {
+            console.error('Error adding calendar event:', error);
+            alert(`Failed to add calendar event: ${error.response?.data?.error || error.message}`);
+        }
     };
 
     const openTerritorySchedule = async () => {
@@ -403,30 +415,35 @@ const Dashboard = () => {
     const saveScheduleEntry = async () => {
         const {name, day_of_week, event_time} = scheduleForm;
         if (!name.trim() || !event_time) return;
-        let saved;
-        if (editingId !== null) {
-            const res = await axios.put(`/api/territory/systems/${editingId}`, {
-                name: name.trim(),
-                day_of_week: parseInt(day_of_week),
-                event_time,
-            });
-            saved = res.data;
-            setScheduleList(prev => prev.map(s => s.id === editingId ? saved : s));
-            setEditingId(null);
-        } else {
-            const res = await axios.post('/api/territory/systems', {
-                name: name.trim(),
-                day_of_week: parseInt(day_of_week),
-                event_time,
-            });
-            saved = res.data;
-            // Upsert: replace existing entry with same name, or append new one
-            setScheduleList(prev => {
-                const idx = prev.findIndex(s => s.name === saved.name);
-                return idx >= 0 ? prev.map(s => s.name === saved.name ? saved : s) : [...prev, saved];
-            });
+        try {
+            let saved;
+            if (editingId !== null) {
+                const res = await axios.put(`/api/territory/systems/${editingId}`, {
+                    name: name.trim(),
+                    day_of_week: parseInt(day_of_week, 10),
+                    event_time,
+                });
+                saved = res.data;
+                setScheduleList(prev => prev.map(s => s.id === editingId ? saved : s));
+                setEditingId(null);
+            } else {
+                const res = await axios.post('/api/territory/systems', {
+                    name: name.trim(),
+                    day_of_week: parseInt(day_of_week, 10),
+                    event_time,
+                });
+                saved = res.data;
+                // Upsert: replace existing entry with same name, or append new one
+                setScheduleList(prev => {
+                    const idx = prev.findIndex(s => s.name === saved.name);
+                    return idx >= 0 ? prev.map(s => s.name === saved.name ? saved : s) : [...prev, saved];
+                });
+            }
+            setScheduleForm({name: '', day_of_week: 0, event_time: ''});
+        } catch (error) {
+            console.error('Error saving schedule entry:', error);
+            alert(`Failed to save schedule entry: ${error.response?.data?.error || error.message}`);
         }
-        setScheduleForm({name: '', day_of_week: 0, event_time: ''});
     };
 
     const startEdit = (entry) => {
@@ -440,9 +457,14 @@ const Dashboard = () => {
     };
 
     const deleteScheduleEntry = async (id) => {
-        await axios.delete(`/api/territory/systems/${id}`);
-        if (editingId === id) cancelEdit();
-        await loadSchedule();
+        try {
+            await axios.delete(`/api/territory/systems/${id}`);
+            if (editingId === id) cancelEdit();
+            await loadSchedule();
+        } catch (error) {
+            console.error('Error deleting schedule entry:', error);
+            alert(`Failed to delete schedule entry: ${error.response?.data?.error || error.message}`);
+        }
     };
 
     const chartOptions = {
@@ -527,6 +549,9 @@ const Dashboard = () => {
                                 };
                             }
 
+                            const progressPct = faction.status?.goal_value
+                                ? Math.min(100, Math.max(0, (faction.current_value / faction.status.goal_value) * 100))
+                                : 0;
                             return (
                                 <div
                                     key={faction.name}
@@ -537,65 +562,81 @@ const Dashboard = () => {
                                     } : {}}
                                     onClick={() => setSelectedFaction(faction)}
                                 >
-                                    <div className="faction-name" style={factionNameStyle}>{faction.name}</div>
-                                    <div className="faction-rep-level">{faction.rep_level}</div>
-                                    <div className="faction-status">
-                                        <div className="status-item full-width">
-                                            <span className="status-label">Value / Change:</span>
-                                            <span className="status-value">
-                                                {formatShort(faction.current_value, 3)} / {faction.last_delta >= 0 ? '+' : ''}{formatShort(faction.last_delta, 3)}
-                                            </span>
+                                    <div className="faction-content">
+                                        <div className="faction-header">
+                                            <span className="faction-name" style={factionNameStyle}>{faction.name}</span>
+                                            {faction.rep_level && (
+                                                <span
+                                                    className="faction-rep-badge"
+                                                    style={faction.color ? {borderColor: faction.color + '55', color: faction.color} : {}}
+                                                >{faction.rep_level}</span>
+                                            )}
                                         </div>
-                                        <div className="status-item full-width">
-                                            <span className="status-label">Last Change Rate:</span>
-                                            <span
-                                                className="status-value">{Math.round(faction.status?.raw_value_delta_per_minute || 0)}/min</span>
+                                        <div className="faction-value-row">
+                                            <span className="faction-value">{formatShort(faction.current_value, 1)}</span>
+                                            {faction.last_delta != null && (
+                                                <span className={`faction-delta ${faction.last_delta > 0 ? 'pos' : faction.last_delta < 0 ? 'neg' : 'zero'}`}>
+                                                    {faction.last_delta >= 0 ? '+' : ''}{formatShort(faction.last_delta, 1)}
+                                                </span>
+                                            )}
                                         </div>
-                                        <div className="status-item full-width">
-                                            <span className="status-label">Avg Change Rate:</span>
-                                            <span
-                                                className="status-value">{Math.round(faction.status?.avg_value_delta_per_minute || 0)}/min</span>
+                                        <div className="faction-stats">
+                                            <span className="stat-label">Rate</span>
+                                            <span className="stat-value">{Math.round(faction.status?.raw_value_delta_per_minute || 0)}/min</span>
+                                            <span className="stat-label">Avg</span>
+                                            <span className="stat-value">{Math.round(faction.status?.avg_value_delta_per_minute || 0)}/min</span>
+                                            {faction.status?.minutes_to_goal != null && (
+                                                <span className="stat-goal">
+                                                    → {faction.status.next_rep_level || 'Goal'}
+                                                    {faction.status.goal_value ? ` (${formatShort(faction.status.goal_value, 1)})` : ''}: {formatMinutes(faction.status.minutes_to_goal)}
+                                                </span>
+                                            )}
                                         </div>
-                                        <div className="status-item full-width">
-                                            <span className="status-label">
-                                                Time to {faction.status?.next_rep_level || 'Goal'}{formatShort(faction.status?.goal_value, 1) ? ` (${formatShort(faction.status?.goal_value, 1)})` : ''}:
-                                            </span>
-                                            <span
-                                                className="status-value">{formatMinutes(faction.status?.minutes_to_goal)}</span>
+                                        <div className="quick-edit" onClick={e => e.stopPropagation()}>
+                                            <input
+                                                type="number"
+                                                className="quick-edit-input"
+                                                placeholder="New value"
+                                                onKeyDown={e => {
+                                                    if (e.key === 'Enter') {
+                                                        const input = e.target;
+                                                        submitEntry(faction.name, input.value).then(success => {
+                                                            if (success) input.value = '';
+                                                        });
+                                                    }
+                                                }}
+                                            />
+                                            <button
+                                                className="quick-edit-btn"
+                                                onClick={e => {
+                                                    const input = e.currentTarget.previousElementSibling;
+                                                    submitEntry(faction.name, input.value).then(success => {
+                                                        if (success) input.value = '';
+                                                    });
+                                                }}
+                                            >
+                                                Save
+                                            </button>
+                                        </div>
+                                        <div className="quick-edit" onClick={e => e.stopPropagation()}>
+                                            <button
+                                                className="quick-edit-btn"
+                                                style={{width: '100%'}}
+                                                disabled={isCapturing || capturingFactionId !== null}
+                                                onClick={() => handleCaptureSingleFaction(faction)}
+                                            >
+                                                {capturingFactionId === faction.id ? 'Capturing…' : 'Capture'}
+                                            </button>
                                         </div>
                                     </div>
-                                    <div className="quick-edit" onClick={e => e.stopPropagation()}>
-                                        <input
-                                            type="number"
-                                            className="quick-edit-input"
-                                            placeholder="New Value"
-                                            onKeyDown={e => {
-                                                if (e.key === 'Enter') {
-                                                    submitEntry(faction.name, e.target.value);
-                                                    e.target.value = '';
-                                                }
+                                    <div className="faction-progress">
+                                        <div
+                                            className="faction-progress-fill"
+                                            style={{
+                                                width: `${progressPct}%`,
+                                                backgroundColor: faction.color || 'var(--c-accent)',
                                             }}
                                         />
-                                        <button
-                                            className="quick-edit-btn"
-                                            onClick={e => {
-                                                const input = e.currentTarget.previousElementSibling;
-                                                submitEntry(faction.name, input.value);
-                                                input.value = '';
-                                            }}
-                                        >
-                                            Save
-                                        </button>
-                                    </div>
-                                    <div className="quick-edit" onClick={e => e.stopPropagation()}>
-                                        <button
-                                            className="quick-edit-btn"
-                                            style={{width: '100%'}}
-                                            disabled={isCapturing || capturingFactionId !== null}
-                                            onClick={() => handleCaptureSingleFaction(faction)}
-                                        >
-                                            {capturingFactionId === faction.id ? 'Capturing...' : 'Capture'}
-                                        </button>
                                     </div>
                                 </div>
                             );
@@ -609,83 +650,20 @@ const Dashboard = () => {
                     switch to the selected screen, and take a screenshot for processing.
                 </p>
                 <div style={{display: 'flex', gap: '0.75rem'}}>
-                    <button
-                        onClick={() => handleCaptureScreen('reputations')}
-                        disabled={isCapturing}
-                        style={{
-                            flex: 1,
-                            padding: '1rem',
-                            fontSize: '1.1rem',
-                            backgroundColor: isCapturing ? '#ccc' : '#2196F3',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '4px',
-                            cursor: isCapturing ? 'not-allowed' : 'pointer'
-                        }}
-                    >
+                    <button className="btn-capture" onClick={() => handleCaptureScreen('reputations')} disabled={isCapturing}>
                         Reputations
                     </button>
-                    <button
-                        onClick={() => handleCaptureScreen('away_team')}
-                        disabled={isCapturing}
-                        style={{
-                            flex: 1,
-                            padding: '1rem',
-                            fontSize: '1.1rem',
-                            backgroundColor: isCapturing ? '#ccc' : '#388E3C',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '4px',
-                            cursor: isCapturing ? 'not-allowed' : 'pointer'
-                        }}
-                    >
-                        Away Team<br/>All
+                    <button className="btn-capture" onClick={() => handleCaptureScreen('away_team')} disabled={isCapturing}>
+                        Away Team
                     </button>
-                    <button
-                        onClick={() => handleCaptureScreen('gifts')}
-                        disabled={isCapturing}
-                        style={{
-                            flex: 1,
-                            padding: '1rem',
-                            fontSize: '1.1rem',
-                            backgroundColor: isCapturing ? '#ccc' : '#9C27B0',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '4px',
-                            cursor: isCapturing ? 'not-allowed' : 'pointer'
-                        }}
-                    >
+                    <button className="btn-capture" onClick={() => handleCaptureScreen('gifts')} disabled={isCapturing}>
                         Gifts
                     </button>
-                    <button
-                        disabled={true}
-                        style={{
-                            flex: 1,
-                            padding: '1rem',
-                            fontSize: '1.1rem',
-                            backgroundColor: '#ccc',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '4px',
-                            cursor: 'not-allowed'
-                        }}
-                    >
+                    <button className="btn-capture" disabled={true}>
                         Event Rewards
                     </button>
-                    <button
-                        onClick={openTerritorySchedule}
-                        style={{
-                            flex: 1,
-                            padding: '1rem',
-                            fontSize: '1.1rem',
-                            backgroundColor: '#37474F',
-                            color: 'white',
-                            border: '1px solid #546E7A',
-                            borderRadius: '4px',
-                            cursor: 'pointer',
-                        }}
-                    >
-                        Territory<br/>Schedule
+                    <button className="btn-outline" onClick={openTerritorySchedule}>
+                        TC Schedule
                     </button>
                 </div>
 

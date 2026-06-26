@@ -38,6 +38,7 @@ from app.app_config import capture_cfg
 from app.screen_processing.screen_capture import (
     ScreenCapture,
     click_button_if_visible,
+    click_template_match_at,
     match_template,
     wait_and_click,
     wait_and_click_any,
@@ -154,7 +155,8 @@ class AwayTeamOrchestrator:
             if img is None:
                 logger.warning("could not capture screenshot in collect loop — stopping")
                 break
-            if not click_button_if_visible("Away Teams Report.jpg", img, screen_offset):
+            # ai: claude-sonnet-4-6 | 2026-06-26
+            if not click_template_match_at("Away Teams Report.jpg", img, screen_offset, index=0):
                 try:
                     m = match_template("Away Teams Report.jpg", img)
                     if m:
@@ -206,7 +208,8 @@ class AwayTeamOrchestrator:
                 logger.warning("could not capture screenshot in expedition loop — stopping")
                 break
 
-            if not click_button_if_visible("Away Teams Start Blue.jpg", img, screen_offset):
+            # ai: claude-sonnet-4-6 | 2026-06-26
+            if not click_template_match_at("Away Teams Start Blue.jpg", img, screen_offset, index=-1):
                 logger.info("no blue START button found — all expeditions started")
                 break
             logger.info("clicked START (opening expedition setup)")

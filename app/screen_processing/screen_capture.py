@@ -36,7 +36,7 @@ import os
 import queue
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Any
 
 import cv2
@@ -387,6 +387,38 @@ def click_button_if_visible(
     return True
 
 
+# ai: claude-sonnet-4-6 | 2026-06-26
+def click_template_match_at(
+    filename: str,
+    img: np.ndarray,
+    screen_offset: tuple[int, int] = (0, 0),
+    index: int = 0,
+    threshold: float | None = None,
+) -> bool:
+    """Click the match at position index (sorted top-to-bottom by y coordinate).
+
+    index=0 clicks the topmost match; index=-1 clicks the bottommost.
+    Returns True if a match was found and clicked, False if no matches exist or
+    the template file is missing.
+    """
+    try:
+        matches = find_all_template_matches(filename, img, threshold=threshold)
+    except FileNotFoundError:
+        logger.error(f"Snippet file missing: {os.path.join(_SNIPPETS_DIR, filename)}")
+        return False
+    if not matches:
+        return False
+    x, y, w, h = matches[index]
+    center_x = screen_offset[0] + x + w // 2
+    center_y = screen_offset[1] + y + h // 2
+    logger.debug(
+        "Clicking %s match[%d] at (%d, %d) — %d total match(es)",
+        filename, index, center_x, center_y, len(matches),
+    )
+    pyautogui.click(center_x, center_y)
+    return True
+
+
 def wait_for_template(
     filename: str,
     sc: "ScreenCapture",
@@ -601,7 +633,7 @@ class ScreenCapture:
             self.activate_window(window)
 
         left, top, width, height = window.left, window.top, window.width, window.height
-        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        timestamp = datetime.now(UTC).strftime("%Y-%m-%d_%H-%M-%S")
         filepath = os.path.join(self.output_dir, f"capture_{timestamp}.png")
 
         if delay:
@@ -628,7 +660,7 @@ class ScreenCapture:
         logger.debug("Captured window to numpy array (in-memory)")
 
         if capture_cfg("performance", "write_behind", default=False):
-            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S_%f")
+            timestamp = datetime.now(UTC).strftime("%Y-%m-%d_%H-%M-%S_%f")
             filepath = os.path.join(self.output_dir, f"capture_{timestamp}.png")
             try:
                 _get_write_queue().put_nowait((img_bgr.copy(), filepath))
