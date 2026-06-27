@@ -400,14 +400,41 @@ def click_template_match_at(
     index=0 clicks the topmost match; index=-1 clicks the bottommost.
     Returns True if a match was found and clicked, False if no matches exist or
     the template file is missing.
+
+    Uses exact template-size suppression (not the 2x used by find_all_template_matches)
+    so closely-spaced buttons are each detected as separate matches.
     """
-    try:
-        matches = find_all_template_matches(filename, img, threshold=threshold)
-    except FileNotFoundError:
-        logger.error(f"Snippet file missing: {os.path.join(_SNIPPETS_DIR, filename)}")
+    if threshold is None:
+        threshold = _BUTTON_MATCH_THRESHOLD
+
+    template_path = os.path.normpath(os.path.join(_SNIPPETS_DIR, filename))
+    if not os.path.isfile(template_path):
+        logger.error(f"Snippet file missing: {template_path}")
         return False
+
+    template = _load_template(template_path)
+    if template is None:
+        return False
+
+    th, tw = template.shape[:2]
+    score_map = cv2.matchTemplate(img, template, cv2.TM_CCOEFF_NORMED)
+
+    # Collect all peaks with exact template-size suppression so buttons that are
+    # spaced less than 2x the template height apart are still found individually.
+    matches: list[tuple[int, int, int, int]] = []
+    wmap = score_map.copy()
+    while True:
+        _, max_val, _, max_loc = cv2.minMaxLoc(wmap)
+        if max_val < threshold:
+            break
+        x, y = max_loc
+        matches.append((x, y, tw, th))
+        wmap[y: min(y + th, wmap.shape[0]), x: min(x + tw, wmap.shape[1])] = 0.0
+
     if not matches:
         return False
+
+    matches.sort(key=lambda m: m[1])  # top-to-bottom by y
     x, y, w, h = matches[index]
     center_x = screen_offset[0] + x + w // 2
     center_y = screen_offset[1] + y + h // 2
