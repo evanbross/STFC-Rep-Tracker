@@ -33,7 +33,7 @@
 # =============================================================================
 import logging
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 
 import cv2
 import numpy as np
@@ -332,7 +332,7 @@ def _ocr_strips(strips: list[tuple[np.ndarray, int]]) -> list[dict]:
     reader = get_reader()
     scale = capture_cfg("ocr", "scale_factor", default=3)
     min_conf = capture_cfg("territory", "ocr_min_confidence", default=0.2)
-    now = datetime.now()
+    now = datetime.now(UTC)
     systems: list[dict] = []
 
     for strip, row_y in strips:
@@ -416,7 +416,7 @@ def _ocr_full_image(img: np.ndarray, img_height: int) -> list[dict]:
     ]
     results.sort(key=lambda r: _bbox_top_y(r[0]))
 
-    now = datetime.now()
+    now = datetime.now(UTC)
     systems: list[dict] = []
     consumed: set[int] = set()
 
@@ -495,7 +495,7 @@ def _extract_by_name_templates(img: np.ndarray) -> list[dict]:
     min_conf = capture_cfg("territory", "ocr_min_confidence", default=0.2)
 
     reader = get_reader()
-    now = datetime.now()
+    now = datetime.now(UTC)
     img_h, img_w = img.shape[:2]
     systems: list[dict] = []
 

@@ -54,8 +54,9 @@ def google_calendar_status():
     try:
         from app.google_calendar import is_authenticated
         return jsonify({"authenticated": is_authenticated()})
-    except Exception as e:
-        return jsonify({"authenticated": False, "error": str(e)})
+    except Exception:
+        logger.exception("Error checking Google Calendar auth status")
+        return jsonify({"authenticated": False, "error": "Failed to check authentication status"})
 
 
 @calendar_bp.route("/auth", methods=["POST"])
@@ -85,7 +86,7 @@ def google_calendar_auth():
         return jsonify(result)
     except FileNotFoundError as e:
         logger.error("Google credentials file missing: %s", e)
-        return jsonify({"error": str(e)}), 500
-    except Exception as e:
+        return jsonify({"error": "Google credentials file not found"}), 500
+    except Exception:
         logger.exception("Google Calendar auth flow failed")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Google Calendar auth flow failed"}), 500

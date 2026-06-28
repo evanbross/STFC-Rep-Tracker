@@ -50,9 +50,9 @@ def _validate_table_name(table_name: str) -> tuple[Response, int] | None:
     return None
 
 
-def _get_faction_reputations(faction_key: str, display_name: str) -> tuple[Response, int] | Response:
+def _get_faction_reputations(table_name: str, display_name: str) -> tuple[Response, int] | Response:
     """Shared handler for per-faction reputation GET routes."""
-    dao = ReputationsDAO.get_dao_by_faction_name(faction_key)
+    dao = ReputationsDAO.get_dao_by_table_name(table_name)
     if not dao:
         return jsonify({"error": f"{display_name} reputation DAO not found"}), 404
     return jsonify(dao.get_all())
@@ -229,8 +229,10 @@ def get_reputations_by_table(table_name: str) -> tuple[Response, int] | Response
     if err:
         return err
     db = current_app.config["DATABASE"]
+    dao = ReputationsDAO.get_dao_by_table_name(table_name)
+    if dao is None:
+        return jsonify({"error": f"Unknown reputation table: '{table_name}'"}), 404
     try:
-        dao = ReputationsDAO.get_dao_by_faction_name(table_name)
         reputations = dao.get_all(db)
         return jsonify(reputations)
     except Exception:

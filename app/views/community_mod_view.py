@@ -39,6 +39,8 @@ from datetime import datetime, UTC
 
 from flask import Blueprint, jsonify, request
 
+from app.app_config import capture_cfg
+
 logger = logging.getLogger(__name__)
 
 community_mod_bp = Blueprint("community_mod", __name__)
@@ -54,6 +56,8 @@ _CAPTURE_FILE = os.path.join(_runtime_dir(), "community-data.json")
 
 ISOGEN_1_RID = 2991010408
 TRITANIUM_RID = 743985951
+
+_SENSITIVE_HEADERS = {"authorization", "cookie", "x-api-key", "x-auth-token"}
 
 
 @community_mod_bp.route("/", methods=["POST"])
@@ -82,6 +86,15 @@ def receive_payload():
         request.content_length,
     )
 
+    max_payload_bytes = capture_cfg("community_mod", "max_payload_bytes", default=1_000_000)
+    if request.content_length is not None and request.content_length > max_payload_bytes:
+        logger.warning(
+            "community-mod: rejected payload of %d bytes (limit %d)",
+            request.content_length,
+            max_payload_bytes,
+        )
+        return jsonify({"error": "Payload too large"}), 413
+
     data = request.get_json(force=True, silent=True)
     if data is None:
         logger.warning("community-mod: received non-JSON payload")
@@ -93,9 +106,12 @@ def receive_payload():
         list(data.keys()) if isinstance(data, dict) else "(list/other)",
     )
 
+    safe_headers = {
+        k: v for k, v in request.headers.items() if k.lower() not in _SENSITIVE_HEADERS
+    }
     capture = {
         "received_at": datetime.now(UTC).isoformat(),  # + "Z",
-        "headers": dict(request.headers),
+        "headers": safe_headers,
         "payload": data,
     }
 

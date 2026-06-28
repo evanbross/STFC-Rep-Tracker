@@ -57,6 +57,9 @@ def _run_capture(make_orchestrator, capture_fn, log_msg, error_msg):
     """Run a capture operation, returning a JSON response with appropriate status code."""
     try:
         result = capture_fn(make_orchestrator())
+        if isinstance(result, dict) and "error" in result:
+            status_code = 404 if "not found" in str(result["error"]).lower() else 500
+            return jsonify(result), status_code
         return jsonify(result)
     except Exception as e:
         logger.exception(log_msg)
@@ -132,6 +135,9 @@ def identify_faction():
     """
     try:
         result = capture_and_identify_faction(_get_db())
+        if isinstance(result, dict) and "error" in result:
+            status_code = 404 if "not found" in str(result["error"]).lower() else 500
+            return jsonify(result), status_code
         return jsonify(result)
     except Exception as e:
         logger.exception("Error identifying faction")

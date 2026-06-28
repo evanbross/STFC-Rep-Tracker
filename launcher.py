@@ -32,7 +32,6 @@
 # --- END AI SYSTEMS DIRECTIVE ---
 # =============================================================================
 import ctypes
-import json
 import os
 import runpy
 import secrets
@@ -43,8 +42,6 @@ import sys
 import threading
 import time
 import tkinter as tk
-import urllib.error
-import urllib.request
 import webbrowser
 from tkinter import font as tkfont
 from tkinter import messagebox, ttk
@@ -57,6 +54,13 @@ else:
     _HERE = os.path.dirname(os.path.abspath(__file__))
 _PREFERRED_PORT = 7300
 _BACKEND_ARG = "--backend"
+
+# ai: claude-sonnet-4-6 | 2026-06-26
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "infra"))
+try:
+    import caddy_registry as _caddy_registry
+except ImportError:
+    _caddy_registry = None
 
 _BG = "#1a1a2e"
 _FG = "#cfd8dc"
@@ -195,40 +199,6 @@ def _wait_for_server(port: int, timeout: int = 60) -> bool:
             time.sleep(0.5)
     return False
 
-
-# ── Caddy helpers ─────────────────────────────────────────────────────────────
-
-def _caddy_register(name: str, port: int, *, admin_url: str) -> bool:
-    """Register name.localhost → host.docker.internal:port with Caddy. Returns True if successful."""
-    _caddy_delete_route(f"app-{name}", admin_url=admin_url)
-    route = {
-        "@id": f"app-{name}",
-        "match": [{"host": [f"{name}.localhost"]}],
-        "handle": [{"handler": "reverse_proxy", "upstreams": [{"dial": f"host.docker.internal:{port}"}]}],
-    }
-    req = urllib.request.Request(
-        f"{admin_url}/config/apps/http/servers/dev/routes",
-        data=json.dumps(route).encode(),
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    try:
-        urllib.request.urlopen(req, timeout=3)
-        return True
-    except (urllib.error.URLError, OSError):
-        return False
-
-
-def _caddy_deregister(name: str, *, admin_url: str) -> None:
-    _caddy_delete_route(f"app-{name}", admin_url=admin_url)
-
-
-def _caddy_delete_route(route_id: str, *, admin_url: str) -> None:
-    try:
-        req = urllib.request.Request(f"{admin_url}/id/{route_id}", method="DELETE")
-        urllib.request.urlopen(req, timeout=3)
-    except (urllib.error.HTTPError, urllib.error.URLError, OSError):
-        pass
 
 
 # ── Setup dialog ──────────────────────────────────────────────────────────────
@@ -377,7 +347,6 @@ class LauncherWindow:
         self._port: int | None = None
         self._restart_btn: ttk.Button | None = None
         self._app_url: str | None = None
-        self._caddy_admin_url: str = "http://localhost:3019"
         self._caddy_app_name: str = "stfc"
 
         self._configure_styles()
@@ -474,7 +443,6 @@ class LauncherWindow:
             shutil.copy2(env_example, env_path)
 
         env_data = _parse_env_file(env_path)
-        self._caddy_admin_url = env_data.get("CADDY_ADMIN_URL", "http://localhost:3019")
         self._caddy_app_name = env_data.get("CADDY_APP_NAME", "stfc")
 
         if _needs_setup(env_data):
@@ -523,9 +491,9 @@ class LauncherWindow:
 
             self._set_status(f"Waiting for server on port {port}…")
             if _wait_for_server(port):
-                caddy_ok = _caddy_register(
-                    self._caddy_app_name, port, admin_url=self._caddy_admin_url
-                )
+                if _caddy_registry is not None:
+                    _caddy_registry.register(self._caddy_app_name, port)
+                caddy_ok = _caddy_registry is not None
                 url = (
                     f"http://{self._caddy_app_name}.localhost"
                     if caddy_ok
@@ -566,7 +534,8 @@ class LauncherWindow:
         self.root.destroy()
 
     def _stop_backend(self) -> None:
-        _caddy_deregister(self._caddy_app_name, admin_url=self._caddy_admin_url)
+        if _caddy_registry is not None:
+            _caddy_registry.deregister(self._caddy_app_name)
         self._app_url = None
         if self._process and self._process.poll() is None:
             self._process.terminate()

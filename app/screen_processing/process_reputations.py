@@ -35,7 +35,7 @@ import logging
 import os
 import re
 import time
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Any
 
 import cv2
@@ -263,7 +263,7 @@ def _save_debug_crop(
         os.path.dirname(__file__), "..", "..", "Screenshots", "debug"
     )
     os.makedirs(debug_dir, exist_ok=True)
-    ts = datetime.now().strftime("%H-%M-%S")
+    ts = datetime.now(UTC).strftime("%H-%M-%S")
     cv2.imwrite(os.path.join(debug_dir, f"{ts}_{label}_raw.png"), region_bgr)
     cv2.imwrite(os.path.join(debug_dir, f"{ts}_{label}_preprocessed.png"), preprocessed)
 

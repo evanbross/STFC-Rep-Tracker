@@ -34,6 +34,7 @@
 import logging
 import os
 
+import psycopg2.errors
 from flask import Blueprint, jsonify, request, current_app, send_from_directory
 from werkzeug.utils import secure_filename
 
@@ -42,6 +43,9 @@ from app.app_config import capture_cfg
 logger = logging.getLogger(__name__)
 
 factions_bp = Blueprint("factions", __name__)
+
+_ALLOWED_SNIPPET_TYPES = {"button", "desc", None}
+_ALLOWED_SNIPPET_EXTENSIONS = {".jpg", ".jpeg", ".png"}
 
 
 def _snippets_dir():
@@ -67,19 +71,37 @@ def add_selected_snippet(faction_code):
     if "file" not in request.files:
         return jsonify({"error": "No file provided"}), 400
 
+    if not db.factions.get_faction_by_code(faction_code):
+        return jsonify({"error": f"Faction '{faction_code}' not found"}), 404
+
     file = request.files["file"]
     snippet_type = request.form.get("snippet_type") or None
+    if snippet_type not in _ALLOWED_SNIPPET_TYPES:
+        return jsonify({"error": f"Invalid snippet_type: '{snippet_type}'"}), 400
+
     custom_name = request.form.get("filename", "").strip()
 
     filename = secure_filename(custom_name if custom_name else file.filename)
     if not filename:
         return jsonify({"error": "No filename"}), 400
 
+    ext = os.path.splitext(filename)[1].lower()
+    if ext not in _ALLOWED_SNIPPET_EXTENSIONS:
+        return jsonify({"error": f"Unsupported file extension: '{ext}'"}), 400
+
     dest = os.path.join(_snippets_dir(), filename)
+    if os.path.exists(dest):
+        return jsonify({"error": f"Snippet file '{filename}' already exists"}), 409
+
     os.makedirs(os.path.dirname(dest), exist_ok=True)
     file.save(dest)
 
-    new_id = db.selected_snippets.add_snippet(faction_code, filename, snippet_type)
+    try:
+        new_id = db.selected_snippets.add_snippet(faction_code, filename, snippet_type)
+    except psycopg2.errors.ForeignKeyViolation:
+        os.remove(dest)
+        return jsonify({"error": f"Faction '{faction_code}' not found"}), 404
+
     return jsonify({"id": new_id, "faction_id": faction_code, "filename": filename, "snippet_type": snippet_type}), 201
 
 
@@ -134,6 +156,12 @@ def add_faction():
               default: 0
             display_order:
               type: integer
+            reputation_dao_name:
+              type: string
+            snippet_selected_button:
+              type: string
+            snippet_unselected:
+              type: string
     responses:
       201:
         description: Faction created successfully
@@ -150,6 +178,9 @@ def add_faction():
     reputation_table_name = data.get("reputation_table_name")
     on_chart = data.get("on_chart", 0)
     display_order = data.get("display_order")
+    reputation_dao_name = data.get("reputation_dao_name")
+    snippet_selected_button = data.get("snippet_selected_button")
+    snippet_unselected = data.get("snippet_unselected")
 
     if not name or not code:
         return jsonify({"error": "Missing name or code"}), 400
@@ -162,6 +193,9 @@ def add_faction():
             reputation_table_name,
             int(on_chart),
             int(display_order) if display_order is not None else None,
+            reputation_dao_name,
+            snippet_selected_button,
+            snippet_unselected,
         )
         return jsonify(result), 201
     except ValueError as e:
@@ -204,6 +238,12 @@ def update_faction(current_code):
               type: integer
             display_order:
               type: integer
+            reputation_dao_name:
+              type: string
+            snippet_selected_button:
+              type: string
+            snippet_unselected:
+              type: string
     responses:
       200:
         description: Faction updated successfully
@@ -220,6 +260,9 @@ def update_faction(current_code):
     reputation_table_name = data.get("reputation_table_name")
     on_chart = data.get("on_chart", 0)
     display_order = data.get("display_order")
+    reputation_dao_name = data.get("reputation_dao_name")
+    snippet_selected_button = data.get("snippet_selected_button")
+    snippet_unselected = data.get("snippet_unselected")
 
     if not name or not new_code:
         return jsonify({"error": "Missing name or code"}), 400
@@ -233,6 +276,9 @@ def update_faction(current_code):
             reputation_table_name,
             int(on_chart),
             int(display_order) if display_order is not None else None,
+            reputation_dao_name,
+            snippet_selected_button,
+            snippet_unselected,
         )
         return jsonify(result), 200
     except ValueError as e:

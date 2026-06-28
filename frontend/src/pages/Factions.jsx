@@ -86,6 +86,15 @@ const SnippetsModal = ({ faction, onClose }) => {
 
     useEffect(() => { loadSnippets(); }, [faction.id]);
 
+    // Revoke the pending preview's object URL on unmount (e.g. modal close)
+    const pendingFileRef = React.useRef(pendingFile);
+    pendingFileRef.current = pendingFile;
+    useEffect(() => {
+        return () => {
+            if (pendingFileRef.current) URL.revokeObjectURL(pendingFileRef.current.previewUrl);
+        };
+    }, []);
+
     // Global paste listener when paste zone is active
     useEffect(() => {
         if (!pasteActive) return;
@@ -93,7 +102,10 @@ const SnippetsModal = ({ faction, onClose }) => {
             const item = Array.from(e.clipboardData.items).find(i => i.type.startsWith('image/'));
             if (!item) return;
             const file = item.getAsFile();
-            setPendingFile({ file, previewUrl: URL.createObjectURL(file) });
+            setPendingFile(prev => {
+                if (prev) URL.revokeObjectURL(prev.previewUrl);
+                return { file, previewUrl: URL.createObjectURL(file) };
+            });
             setNewFilename(nextSnippetFilename(newType));
         };
         window.addEventListener('paste', handlePaste);
@@ -103,7 +115,10 @@ const SnippetsModal = ({ faction, onClose }) => {
     const handleFileSelect = (e) => {
         const file = e.target.files[0];
         if (!file) return;
-        setPendingFile({ file, previewUrl: URL.createObjectURL(file) });
+        setPendingFile(prev => {
+            if (prev) URL.revokeObjectURL(prev.previewUrl);
+            return { file, previewUrl: URL.createObjectURL(file) };
+        });
         if (!newFilename) setNewFilename(file.name);
     };
 
@@ -152,7 +167,7 @@ const SnippetsModal = ({ faction, onClose }) => {
     };
 
     const handleDelete = async (snippetId) => {
-        if (!confirm('Delete this snippet record? (The image file is kept.)')) return;
+        if (!window.confirm('Delete this snippet record? (The image file is kept.)')) return;
         try {
             await axios.delete(`/api/factions/selected-snippets/${snippetId}`);
             loadSnippets();

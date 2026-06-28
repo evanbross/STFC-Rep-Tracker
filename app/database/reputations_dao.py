@@ -43,6 +43,7 @@ TABLE_NAME_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 class ReputationsDAO:
     dao_instances_by_faction: dict[str, "ReputationsDAO"] = {}
+    dao_instances_by_table_name: dict[str, "ReputationsDAO"] = {}
     dao_instances_by_class: dict[str, "ReputationsDAO"] = {}
     _registry_lock = threading.Lock()
 
@@ -54,6 +55,11 @@ class ReputationsDAO:
     def get_dao_by_faction_name(name: str) -> "ReputationsDAO | None":
         with ReputationsDAO._registry_lock:
             return ReputationsDAO.dao_instances_by_faction.get(name)
+
+    @staticmethod
+    def get_dao_by_table_name(table_name: str) -> "ReputationsDAO | None":
+        with ReputationsDAO._registry_lock:
+            return ReputationsDAO.dao_instances_by_table_name.get(table_name)
 
     @staticmethod
     def get_dao_by_class_name(name: str) -> "ReputationsDAO | None":
@@ -96,6 +102,7 @@ class ReputationsDAO:
     def register_dao(faction_name: str, dao: "ReputationsDAO") -> None:
         with ReputationsDAO._registry_lock:
             ReputationsDAO.dao_instances_by_faction[faction_name] = dao
+            ReputationsDAO.dao_instances_by_table_name[dao.table_name] = dao
             ReputationsDAO.dao_instances_by_class[dao.__class__.__name__] = dao
 
     @staticmethod
@@ -104,6 +111,7 @@ class ReputationsDAO:
         # Clear existing instances to avoid duplicates if re-initialized
         with ReputationsDAO._registry_lock:
             ReputationsDAO.dao_instances_by_faction.clear()
+            ReputationsDAO.dao_instances_by_table_name.clear()
             ReputationsDAO.dao_instances_by_class.clear()
 
         if cursor is None:
