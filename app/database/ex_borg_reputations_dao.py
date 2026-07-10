@@ -40,5 +40,11 @@ class ExBorgReputationsDAO(ReputationsDAO):
     def get_initial_reputations(self):
         """Apply initial reputation levels to the ex_borg_reputations table"""
         return [
-            ('Neutral', 0, 1000) # Placeholder as specific data was not provided
+            ('Neutral', 0, 22499),
+            ('Distinguished', 22500, 62999),
+            ('Celebrated', 63000, 104999),
+            ('Esteemed', 105000, 153999),
+            ('Venerated', 154000, 204999),
+            ('Exalted', 205000, 259999),
+            ('Liberator', 260000, 10000000)
         ]

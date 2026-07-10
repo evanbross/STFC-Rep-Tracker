@@ -273,7 +273,8 @@ def _digit_count(s: str) -> int:
     return len(s.replace("-", "").replace(",", ""))
 
 
-def _extract_points(img: np.ndarray | None) -> int | None:
+# ai: claude-sonnet-5 | 2026-07-10
+def _extract_points(img: np.ndarray | None, faction_name: str = "") -> int | None:
     if img is None:
         logger.warning("No image provided to _extract_points")
         return None
@@ -291,7 +292,7 @@ def _extract_points(img: np.ndarray | None) -> int | None:
     results: list[str] = get_reader().readtext(preprocessed, detail=0)
     text = " ".join(results)
     logger.debug(f"Raw OCR results from points region: {results!r}")
-    logger.debug(f"Joined OCR text: {text!r}")
+    logger.info(f"'{faction_name}' reputation OCR text: {text!r}")
 
     # Parse out the number after "Points" — support negative values (e.g. "-1,234")
     # and allow common OCR substitutions in the label (e.g. "Polnts", "P0ints").
@@ -440,7 +441,12 @@ def _process_faction_list(
                 }
             )
             continue
-        logger.info(f"'{name}' found via {filename}")
+
+        # ai: claude-sonnet-5 | 2026-07-10
+        if filename == unselected:
+            logger.info(f"'{name}' unselected button located (template='{filename}')")
+        else:
+            logger.info(f"'{name}' already selected — selected button located (template='{filename}')")
 
         clicked = False
         if filename == unselected:
@@ -470,8 +476,9 @@ def _process_faction_list(
                 max_retries=confirm_retries, delay=confirm_delay,
             )
             if confirm_file is not None:
+                logger.info(f"'{name}' selected button found (template='{confirm_file}')")  # ai: claude-sonnet-5 | 2026-07-10
                 fresh_img = sc.capture(window)
-                points = _extract_points(fresh_img)
+                points = _extract_points(fresh_img, faction_name=name)
                 if points is None:
                     logger.info(f"'{name}' has no reputation — skipping")
                 else:

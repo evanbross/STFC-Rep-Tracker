@@ -329,9 +329,11 @@ const SnippetsModal = ({ faction, onClose }) => {
     );
 };
 
+// ai: claude-sonnet-5 | 2026-07-10
 const EMPTY_FORM_DATA = {
     id: null, name: '', code: '', color: '',
-    reputation_table_name: '', on_chart: 0, display_order: ''
+    reputation_table_name: '', on_chart: 0, display_order: '',
+    reputation_dao_name: '', snippet_selected_button: '', snippet_unselected: ''
 };
 
 const Factions = () => {
@@ -354,6 +356,7 @@ const Factions = () => {
     };
 
     const handleEdit = (faction) => {
+        // ai: claude-sonnet-5 | 2026-07-10
         setFormData({
             id: faction.id,
             name: faction.name,
@@ -361,7 +364,10 @@ const Factions = () => {
             color: faction.color || '',
             reputation_table_name: faction.reputation_table_name || '',
             on_chart: faction.on_chart || 0,
-            display_order: faction.display_order ?? ''
+            display_order: faction.display_order ?? '',
+            reputation_dao_name: faction.reputation_dao_name || '',
+            snippet_selected_button: faction.snippet_selected_button || '',
+            snippet_unselected: faction.snippet_unselected || ''
         });
         setShowForm(true);
     };
@@ -432,6 +438,36 @@ const Factions = () => {
                                 onChange={e => setFormData({...formData, reputation_table_name: e.target.value})}
                                 placeholder="e.g. fkr_reputations"
                             />
+                        </div>
+                        {/* ai: claude-sonnet-5 | 2026-07-10 */}
+                        <div className="form-group">
+                            <label>Reputation DAO Name:</label>
+                            <input
+                                type="text"
+                                value={formData.reputation_dao_name}
+                                onChange={e => setFormData({...formData, reputation_dao_name: e.target.value})}
+                                placeholder="e.g. FKRReputationsDAO"
+                            />
+                        </div>
+                        <div className="form-row">
+                            <div className="form-group">
+                                <label>Selected Button Snippet:</label>
+                                <input
+                                    type="text"
+                                    value={formData.snippet_selected_button}
+                                    onChange={e => setFormData({...formData, snippet_selected_button: e.target.value})}
+                                    placeholder="e.g. Selected-Button-Fed.jpg"
+                                />
+                            </div>
+                            <div className="form-group">
+                                <label>Unselected Button Snippet:</label>
+                                <input
+                                    type="text"
+                                    value={formData.snippet_unselected}
+                                    onChange={e => setFormData({...formData, snippet_unselected: e.target.value})}
+                                    placeholder="e.g. Unselected-Button-Fed.jpg"
+                                />
+                            </div>
                         </div>
                         <div className="form-row">
                             <div className="form-group">
