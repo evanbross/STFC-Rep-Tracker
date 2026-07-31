@@ -491,15 +491,8 @@ class LauncherWindow:
 
             self._set_status(f"Waiting for server on port {port}…")
             if _wait_for_server(port):
-                if _caddy_registry is not None:
-                    _caddy_registry.register(self._caddy_app_name, port)
-                caddy_ok = _caddy_registry is not None
-                url = (
-                    f"http://{self._caddy_app_name}.localhost"
-                    if caddy_ok
-                    else f"http://localhost:{port}"
-                )
-                self.root.after(0, lambda: self._on_server_ready(url))
+                url, caddy_ok = self._resolve_app_url(port)
+                self.root.after(0, lambda: self._on_server_ready(url, caddy_ok))
             else:
                 self._set_status("Server did not start — check server.log for details.")
                 self.root.after(0, lambda: self._set_restart_button_state("normal"))
@@ -507,15 +500,43 @@ class LauncherWindow:
             self._set_status(f"Error: {exc}")
             self.root.after(0, lambda: self._set_restart_button_state("normal"))
 
-    def _on_server_ready(self, url: str) -> None:
+    # ai: claude-sonnet-5 | 2026-07-31
+    def _resolve_app_url(self, port: int) -> tuple[str, bool]:
+        """Attempt Caddy registration and return (url, caddy_ok).
+
+        caddy_ok reflects whether register() actually succeeded, not just
+        whether the caddy_registry module imported — a prior version of this
+        code conflated the two, which let the UI show/open http://<name>.localhost
+        even when Caddy never registered the route (e.g. Caddy started after
+        this app, or isn't running at all).
+        """
+        caddy_ok = _caddy_registry is not None and _caddy_registry.register(
+            self._caddy_app_name, port
+        )
+        url = (
+            f"http://{self._caddy_app_name}.localhost"
+            if caddy_ok
+            else f"http://localhost:{port}"
+        )
+        return url, caddy_ok
+
+    def _on_server_ready(self, url: str, caddy_ok: bool) -> None:
         self._app_url = url
-        self._status_var.set(f"Now running on {url} (using port {self._port})")
+        suffix = "" if caddy_ok else " — Caddy unavailable, using direct port"
+        self._status_var.set(f"Now running on {url} (using port {self._port}){suffix}")
         self._open_btn.config(state="normal")
         self._set_restart_button_state("normal")
 
     # ── Actions ───────────────────────────────────────────────────────────────
 
+    # ai: claude-sonnet-5 | 2026-07-31
     def _open_browser(self) -> None:
+        # Re-resolve on each click (not a background poll — only runs on this
+        # explicit user action) so a Caddy stack that started late is picked
+        # up without requiring an app restart.
+        if self._port is not None:
+            url, caddy_ok = self._resolve_app_url(self._port)
+            self._on_server_ready(url, caddy_ok)
         if self._app_url:
             webbrowser.open(self._app_url)
 
