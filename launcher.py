@@ -44,7 +44,7 @@ import time
 import tkinter as tk
 import webbrowser
 from tkinter import font as tkfont
-from tkinter import messagebox, ttk
+from tkinter import messagebox, scrolledtext, ttk
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -67,6 +67,9 @@ _FG = "#cfd8dc"
 _ACCENT = "#00b4d8"
 _MUTED = "#607d8b"
 _ENTRY_BG = "#263238"
+_LOG_BG = "#10101c"
+_LOG_FG = "#a5d6a7"
+_MAX_LOG_LINES = 2000
 
 # Keys we require the user to fill in, with user-facing help text.
 _SETUP_FIELDS: list[tuple[str, str, str]] = [
@@ -380,7 +383,7 @@ class LauncherWindow:
 
     def _build_ui(self) -> None:
         self.root.title("STFC Rep Tracker")
-        self.root.resizable(False, False)
+        self.root.resizable(True, True)
         self.root.configure(bg=_BG)
 
         title_font = tkfont.Font(family="Segoe UI", size=13, weight="bold")
@@ -426,6 +429,28 @@ class LauncherWindow:
 
         ttk.Button(btn_frame, text="Stop", style="Stop.TButton", command=self._on_close).grid(row=0, column=2)
 
+        # ai: claude-sonnet-5 | 2026-08-01
+        tk.Label(self.root, text="Console Output", font=status_font, fg=_MUTED, bg=_BG, anchor="w").pack(
+            fill="x", padx=20
+        )
+
+        log_frame = tk.Frame(self.root, bg=_BG)
+        log_frame.pack(fill="both", expand=True, padx=20, pady=(4, 14))
+
+        self._log_widget = scrolledtext.ScrolledText(
+            log_frame,
+            height=18,
+            width=90,
+            bg=_LOG_BG,
+            fg=_LOG_FG,
+            insertbackground=_LOG_FG,
+            font=tkfont.Font(family="Consolas", size=9),
+            relief="flat",
+            state="disabled",
+            wrap="word",
+        )
+        self._log_widget.pack(fill="both", expand=True)
+
     # ── Config / first-run ────────────────────────────────────────────────────
 
     def _ensure_config(self) -> None:
@@ -466,6 +491,7 @@ class LauncherWindow:
             self._set_status(f"Starting server on port {port}…")
             self.root.after(0, lambda: self._open_btn.config(state="disabled"))
             self.root.after(0, lambda: self._set_restart_button_state("disabled"))
+            self.root.after(0, self._clear_log)
 
             env = os.environ.copy()
             env["PORT"] = str(port)
@@ -479,15 +505,21 @@ class LauncherWindow:
                 command = [python, os.path.join(_HERE, "main.py")]
 
             log_path = os.path.join(_HERE, "server.log")
-            with open(log_path, "w", encoding="utf-8") as log_file:
-                self._process = subprocess.Popen(
-                    command,
-                    env=env,
-                    cwd=_HERE,
-                    stdout=log_file,
-                    stderr=log_file,
-                    creationflags=subprocess.CREATE_NO_WINDOW,
-                )
+            self._process = subprocess.Popen(
+                command,
+                env=env,
+                cwd=_HERE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                bufsize=1,
+                creationflags=subprocess.CREATE_NO_WINDOW,
+            )
+            threading.Thread(
+                target=self._pump_output, args=(self._process, log_path), daemon=True
+            ).start()
 
             self._set_status(f"Waiting for server on port {port}…")
             if _wait_for_server(port):
@@ -576,6 +608,31 @@ class LauncherWindow:
     def _set_restart_button_state(self, state: str) -> None:
         if self._restart_btn:
             self._restart_btn.config(state=state)
+
+    # ai: claude-sonnet-5 | 2026-08-01
+    def _pump_output(self, process: subprocess.Popen, log_path: str) -> None:
+        """Tee the child process's stdout/stderr to server.log and the console pane."""
+        with open(log_path, "w", encoding="utf-8") as log_file:
+            assert process.stdout is not None
+            for line in process.stdout:
+                log_file.write(line)
+                log_file.flush()
+                self.root.after(0, self._append_log, line)
+        process.stdout.close()
+
+    def _append_log(self, line: str) -> None:
+        self._log_widget.configure(state="normal")
+        self._log_widget.insert("end", line)
+        line_count = int(self._log_widget.index("end-1c").split(".")[0])
+        if line_count > _MAX_LOG_LINES:
+            self._log_widget.delete("1.0", f"{line_count - _MAX_LOG_LINES}.0")
+        self._log_widget.see("end")
+        self._log_widget.configure(state="disabled")
+
+    def _clear_log(self) -> None:
+        self._log_widget.configure(state="normal")
+        self._log_widget.delete("1.0", "end")
+        self._log_widget.configure(state="disabled")
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
