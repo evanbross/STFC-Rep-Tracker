@@ -54,6 +54,10 @@ else:
     _HERE = os.path.dirname(os.path.abspath(__file__))
 _PREFERRED_PORT = 7300
 _BACKEND_ARG = "--backend"
+_MUTEX_NAME = "Global\\STFCRepTrackerLauncher"
+_ERROR_ALREADY_EXISTS = 183
+
+_singleton_mutex_handle: int | None = None
 
 # ai: claude-sonnet-4-6 | 2026-06-26
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "infra"))
@@ -162,6 +166,29 @@ def _relaunch_as_admin() -> None:
     sys.exit(0)
 
 
+# ── Single-instance helpers ───────────────────────────────────────────────────
+
+def _acquire_single_instance_lock() -> bool:
+    """Return False if another instance already holds the global mutex."""
+    global _singleton_mutex_handle
+    ctypes.windll.kernel32.SetLastError(0)
+    handle = ctypes.windll.kernel32.CreateMutexW(None, False, _MUTEX_NAME)
+    if not handle:
+        return True  # CreateMutexW itself failed — fail open, don't block startup
+    _singleton_mutex_handle = handle
+    return ctypes.windll.kernel32.GetLastError() != _ERROR_ALREADY_EXISTS
+
+
+def _warn_already_running_and_exit() -> None:
+    ctypes.windll.user32.MessageBoxW(
+        0,
+        "STFC Rep Tracker is already running. Check your taskbar for the existing window.",
+        "STFC Rep Tracker",
+        0x40,  # MB_ICONINFORMATION
+    )
+    sys.exit(0)
+
+
 def _run_backend_child() -> None:
     sys.argv = ["main.py"]
     runpy.run_module("main", run_name="__main__")
@@ -173,7 +200,6 @@ def _find_free_port(start: int = _PREFERRED_PORT, attempts: int = 20) -> int:
     for port in range(start, start + attempts):
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 s.bind(("127.0.0.1", port))
                 return port
         except OSError:
@@ -644,6 +670,10 @@ def main() -> None:
 
     if not _is_admin():
         _relaunch_as_admin()
+        return
+
+    if not _acquire_single_instance_lock():
+        _warn_already_running_and_exit()
         return
 
     root = tk.Tk()
