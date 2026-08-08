@@ -170,6 +170,29 @@ def _relaunch_as_admin() -> None:
     sys.exit(0)
 
 
+# ── Single-instance helpers ───────────────────────────────────────────────────
+# Werkzeug's server (used by both app.run() below and _run_community_mod_https_server)
+# sets allow_reuse_address on its listening socket, which on Windows lets a second
+# backend process silently bind the same port instead of failing — see launcher.py's
+# analogous guard. This mutex stops a second `main.py` instance (started via the
+# launcher or directly, e.g. `python main.py`) before it ever reaches a bind() call.
+_SINGLE_INSTANCE_MUTEX_NAME = "Global\\STFCRepTrackerBackend"
+_ERROR_ALREADY_EXISTS = 183
+
+_singleton_mutex_handle: int | None = None
+
+
+def _acquire_single_instance_lock() -> bool:
+    """Return False if another backend instance already holds the global mutex."""
+    global _singleton_mutex_handle
+    ctypes.windll.kernel32.SetLastError(0)
+    handle = ctypes.windll.kernel32.CreateMutexW(None, False, _SINGLE_INSTANCE_MUTEX_NAME)
+    if not handle:
+        return True  # CreateMutexW itself failed — fail open, don't block startup
+    _singleton_mutex_handle = handle
+    return ctypes.windll.kernel32.GetLastError() != _ERROR_ALREADY_EXISTS
+
+
 def _ensure_community_mod_cert(cert_dir: str) -> tuple[str, str]:
     """
     Return (cert_path, key_path), generating a self-signed certificate if either
@@ -310,6 +333,13 @@ logger = logging.getLogger(__name__)
 app = create_app()
 
 if __name__ == "__main__":
+    if not _acquire_single_instance_lock():
+        logger.error(
+            "Another STFC Rep Tracker backend instance is already running — "
+            "exiting instead of racing it for ports 7300/7443."
+        )
+        sys.exit(1)
+
     _check_env()
     project_root = _runtime_dir()
 
@@ -331,7 +361,7 @@ if __name__ == "__main__":
     _build_frontend_if_needed()
     port = int(os.environ.get("PORT", 7300))
     try:
-        app.run(debug=app.config["DEBUG"], port=port)
+        app.run(debug=app.config["DEBUG"], port=port, use_reloader=False)
     except OSError as e:
         # WSAEACCES (10013) on Windows means the port is either in use or in the
         # system's excluded port range.  Give a concrete, actionable message.
