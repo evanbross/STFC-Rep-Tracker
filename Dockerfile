@@ -10,7 +10,7 @@ RUN npm run build
 
 
 # ── Stage 2: Python API ───────────────────────────────────────────────────────
-FROM python:3.12-slim AS api
+FROM python:3.14-slim AS api
 WORKDIR /app
 
 # libffi is needed by the cryptography package (cert generation).

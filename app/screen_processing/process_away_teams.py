@@ -67,12 +67,15 @@ class AwayTeamOrchestrator:
         tab_unselected_name = "Away Teams Tab Unselected.jpg"
         tab_images = [tab_selected_name, tab_unselected_name]
 
-        # Check current screen state before pressing anything.
+        # ai: claude-sonnet-5 | 2026-08-27
+        # Check current screen state before pressing anything. Uses the default
+        # screen_wait_retries/delay (not a short-circuited count) so a tab icon
+        # that's mid-transition or carrying a notification badge still gets
+        # detected instead of falsely triggering the "not on this panel" path.
         visible_tab, img = wait_for_any_template(
             [tab_selected_name, tab_unselected_name],
             self.sc,
             window,
-            max_retries=3,
         )
 
         if visible_tab == tab_selected_name:
@@ -88,7 +91,12 @@ class AwayTeamOrchestrator:
             return None
 
         # Not on the missions panel at all — try pressing "c" to open it.
-        self.sc.press_key(window, "c")
+        # ai: claude-sonnet-5 | 2026-08-27
+        # click_center_and_press (not press_key) clicks the game canvas first to
+        # blur any focused in-game text box (e.g. a chat input on system-view
+        # screens) — otherwise the "c" keystroke can land in chat instead of
+        # triggering the Away Teams hotkey.
+        self.sc.click_center_and_press(window, "c")
         visible_tab, img = wait_for_any_template(
             [tab_selected_name, tab_unselected_name],
             self.sc,
