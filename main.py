@@ -279,6 +279,7 @@ def create_app():
     from app.views.reputations_view import reputations_bp
     from app.views.status_entries_view import status_entries_bp
     from app.views.system_view import system_bp
+    from app.views.target_types_view import target_types_bp
     from app.views.territory_view import territory_bp
     from config import get_config
 
@@ -309,6 +310,7 @@ def create_app():
     flask_app.register_blueprint(factions_bp, url_prefix="/api/factions")
     flask_app.register_blueprint(reputations_bp, url_prefix="/api/reputations")
     flask_app.register_blueprint(system_bp, url_prefix="/api/system")
+    flask_app.register_blueprint(target_types_bp, url_prefix="/api/target-types")
     flask_app.register_blueprint(territory_bp, url_prefix="/api/territory")
 
     @flask_app.route("/swagger")

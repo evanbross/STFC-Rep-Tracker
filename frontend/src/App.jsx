@@ -37,6 +37,8 @@ import { BrowserRouter as Router, Routes, Route, NavLink } from 'react-router-do
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Factions = lazy(() => import('./pages/Factions'))
 const Reputations = lazy(() => import('./pages/Reputations'))
+const SystemTargets = lazy(() => import('./pages/SystemTargets'))
+const Combat = lazy(() => import('./pages/Combat'))
 
 function App() {
   return (
@@ -46,6 +48,8 @@ function App() {
           <NavLink to="/" className={({ isActive }) => isActive ? 'active' : ''}>Dashboard</NavLink>
           <NavLink to="/factions" className={({ isActive }) => isActive ? 'active' : ''}>Factions</NavLink>
           <NavLink to="/reputations" className={({ isActive }) => isActive ? 'active' : ''}>Reputations</NavLink>
+          <NavLink to="/system-targets" className={({ isActive }) => isActive ? 'active' : ''}>System Targets</NavLink>
+          <NavLink to="/combat" className={({ isActive }) => isActive ? 'active' : ''}>Combat</NavLink>
         </nav>
 
         <Suspense fallback={<div>Loading...</div>}>
@@ -53,6 +57,8 @@ function App() {
             <Route path="/" element={<Dashboard />} />
             <Route path="/factions" element={<Factions />} />
             <Route path="/reputations" element={<Reputations />} />
+            <Route path="/system-targets" element={<SystemTargets />} />
+            <Route path="/combat" element={<Combat />} />
           </Routes>
         </Suspense>
       </div>

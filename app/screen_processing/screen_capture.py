@@ -58,6 +58,11 @@ _SNIPPETS_DIR = os.path.join(
 )
 _BUTTON_MATCH_THRESHOLD = capture_cfg("button_match_threshold", default=0.85)
 
+
+def get_snippets_dir() -> str:
+    """Return the absolute path to the configured snippets directory."""
+    return _SNIPPETS_DIR
+
 _ocr_reader = None
 _ocr_reader_lock = threading.Lock()
 

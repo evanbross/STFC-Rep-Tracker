@@ -33,11 +33,12 @@
 # =============================================================================
 import logging
 
-from flask import Blueprint, jsonify, current_app
+from flask import Blueprint, jsonify, current_app, request
 
 from app.screen_processing.process_away_teams import AwayTeamOrchestrator
 from app.screen_processing.process_event_rewards import EventRewardsOrchestrator
 from app.screen_processing.process_gifts import GiftsOrchestrator
+from app.screen_processing.process_system_targets import SystemTargetOrchestrator
 from app.screen_processing.process_territory_capture import TerritoryCaptureOrchestrator
 from app.screen_processing.process_reputations import (
     ProcessReputationsOrchestrator,
@@ -257,4 +258,132 @@ def capture_event_rewards():
         lambda o: o.capture_event_rewards(),
         "Error during Event Rewards screen capture",
         "Event Rewards capture failed",
+    )
+
+
+@capture_bp.route("/system-targets/scan", methods=["POST"])
+def scan_system_targets():
+    """
+    Scan the current system screen for attackable targets, ranked best-first
+    ---
+    tags:
+      - Capture
+    responses:
+      200:
+        description: Candidate targets detected and scored
+      404:
+        description: Game window not found
+      500:
+        description: Unexpected error during capture
+    """
+    return _run_capture(
+        lambda: SystemTargetOrchestrator(_get_db()),
+        lambda o: o.scan_targets(),
+        "Error scanning system targets",
+        "System target scan failed",
+    )
+
+
+@capture_bp.route("/system-targets/refresh", methods=["POST"])
+def refresh_system_targets():
+    """
+    Cheaply re-rank the current target list without re-clicking any target
+    ---
+    tags:
+      - Capture
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          required: [system_name]
+          properties:
+            system_name:
+              type: string
+            known_candidates:
+              type: array
+              description: The candidate list from the last scan/refresh, used to carry forward cargo/hull/shield.
+              items:
+                type: object
+    responses:
+      200:
+        description: Candidates re-ranked with fresh position/intercept data
+      400:
+        description: Missing system_name
+      404:
+        description: Game window not found
+      500:
+        description: Unexpected error during capture
+    """
+    data = request.get_json(silent=True) or {}
+    system_name = data.get("system_name")
+    if not system_name:
+        return jsonify({"error": "system_name is required"}), 400
+    known_candidates = data.get("known_candidates") or []
+
+    return _run_capture(
+        lambda: SystemTargetOrchestrator(_get_db()),
+        lambda o: o.refresh_targets(system_name, known_candidates),
+        "Error refreshing system targets",
+        "System target refresh failed",
+    )
+
+
+@capture_bp.route("/system-targets/attack", methods=["POST"])
+def attack_system_target():
+    """
+    Re-select a previously scanned target and click Attack
+    ---
+    tags:
+      - Capture
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          required: [click_x, click_y]
+          properties:
+            click_x:
+              type: integer
+            click_y:
+              type: integer
+            vx:
+              type: number
+              description: Target's tracked velocity in px/sec, from the scan candidate.
+            vy:
+              type: number
+            scanned_at:
+              type: number
+              description: Epoch seconds the position was captured at, from the scan candidate.
+    responses:
+      200:
+        description: Target selected and Attack clicked
+      400:
+        description: Missing or invalid click coordinates
+      404:
+        description: Game window not found
+      500:
+        description: Unexpected error during capture
+    """
+    data = request.get_json(silent=True) or {}
+    try:
+        click_x = int(data["click_x"])
+        click_y = int(data["click_y"])
+    except (KeyError, TypeError, ValueError):
+        return jsonify({"error": "click_x and click_y are required integers"}), 400
+
+    try:
+        vx = float(data.get("vx", 0.0))
+        vy = float(data.get("vy", 0.0))
+        scanned_at = float(data["scanned_at"]) if "scanned_at" in data else None
+    except (TypeError, ValueError):
+        return jsonify({"error": "vx, vy, and scanned_at must be numbers"}), 400
+
+    return _run_capture(
+        lambda: SystemTargetOrchestrator(_get_db()),
+        lambda o: o.attack_target(click_x, click_y, vx, vy, scanned_at),
+        "Error attacking system target",
+        "Attack failed",
     )

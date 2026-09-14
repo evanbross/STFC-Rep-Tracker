@@ -133,6 +133,128 @@ stfc_config:
     ocr_retries: 4
     ocr_retry_delay: 1.0
 
+  combat:
+    # Crop region for OCR-ing the current system's name, as a fraction of the
+    # captured window (x/y = top-left offset, w/h = size). Target-type history
+    # is tracked per system, so this must find real text for scanning to work.
+    # TODO: calibrate against a real screenshot — these are starting guesses
+    # assuming the system name is shown near the top-center of the screen.
+    system_name_x_frac: 0.35
+    system_name_y_frac: 0.0
+    system_name_w_frac: 0.3
+    system_name_h_frac: 0.08
+
+    # Template snippet filenames for hostile ship icons on the system starmap.
+    # TODO: capture real crops from the game and list them here — empty by
+    # default so scan_targets() fails loudly instead of matching nothing.
+    hostile_ship_templates: []
+
+    # Ships whose name label matches this regex are treated as player-owned
+    # and excluded from targeting (never attack another player).
+    # Default assumes player ships show an alliance tag like "[TAG] Name".
+    player_name_pattern: '\[.*?\]'
+
+    # Name/level label crop, relative to each detected ship icon's bounding box.
+    # The label sits above the icon in most STFC system views.
+    # TODO: calibrate against a real screenshot — these are starting guesses.
+    label_gap_frac: 0.1        # gap between icon top and label bottom, × icon height
+    label_height_frac: 0.6     # label crop height, × icon height
+    label_width_multiplier: 3.0  # label crop width, × icon width (centered on icon)
+
+    # Regex used to pull a level number out of the OCR'd label text.
+    level_pattern: '\bL(?:v|vl|evel)?\.?\s*(\d{1,3})\b'
+    # Minimum EasyOCR confidence to keep a name/level token (0.0-1.0).
+    ocr_min_confidence: 0.2
+
+    # Template snippet filenames for YOUR active/selected ship's icon on the
+    # starmap (the one with the highlighted background in the dock bar).
+    # Used once per scan to compute distance/intercept time. If left empty,
+    # scanning still works but skips the intercept-time scoring factor.
+    # TODO: capture a real crop of your active ship's map icon.
+    own_ship_templates: []
+    # Your active ship's speed in pixels/second AT YOUR CURRENT ZOOM LEVEL —
+    # not a real game unit. Calibrate by sending your ship somewhere, timing
+    # two screenshots a known number of seconds apart, and measuring how far
+    # its icon moved on screen.
+    # TODO: calibrate — 40.0 is a placeholder, not a measured value.
+    own_ship_speed_px_per_sec: 40.0
+
+    # Targets drift continuously, so scan_targets() samples two screenshots
+    # this many seconds apart to derive each target's velocity vector.
+    velocity_sample_interval: 1.5
+    # Same idea, but for refresh_targets() — the lightweight re-rank used
+    # while polling during active combat. Shorter than velocity_sample_interval
+    # so each refresh tick stays fast; velocity estimates are noisier as a
+    # result, which is an acceptable tradeoff for a value that gets
+    # recomputed every few seconds anyway.
+    refresh_velocity_sample_interval: 0.8
+    # Maximum pixels a target can have moved between the two velocity-sample
+    # frames and still be considered the same ship. Raise this if fast
+    # targets are being missed/split into two tracks; lower it if unrelated
+    # targets are being matched to each other.
+    max_track_distance_px: 250
+    # Maximum pixels a target can have drifted from its predicted position
+    # before a re-acquire (done just before every click) gives up and falls
+    # back to clicking the raw predicted position.
+    reacquire_max_distance_px: 200
+
+    # How many surviving (non-player) candidates to click through and inspect
+    # for cargo/hull/shield. Keep this low — each one is a real click + wait.
+    max_candidates_to_inspect: 6
+    # Seconds to wait after clicking a candidate before the info panel is
+    # assumed to be fully rendered.
+    inspect_click_delay: 0.4
+    # Key sent to close the info panel between candidates.
+    deselect_key: esc
+    deselect_delay: 0.3
+
+    # Info panel crop shown after selecting a target, as a fraction of the
+    # captured window size (x/y = top-left offset, w/h = size).
+    # TODO: calibrate against a real screenshot of the selected-target panel.
+    info_panel_x_frac: 0.65
+    info_panel_y_frac: 0.15
+    info_panel_w_frac: 0.33
+    info_panel_h_frac: 0.6
+
+    # Resource names to look for in the info panel text, each followed by a
+    # number (e.g. "Ore 12,400"). Extend this list as new resource types
+    # appear in loot previews.
+    resource_keywords:
+      - Ore
+      - Gas
+      - Tritanium
+      - Latinum
+      - Parsteel
+      - Crystite
+    # Optional per-resource multiplier when scoring loot value. Any resource
+    # not listed here defaults to a weight of 1.0.
+    resource_value_weights: {}
+
+    # How much each factor contributes to a candidate's score (0.0-1.0, should
+    # sum to 1.0). loot = normalized cargo value, ease = normalized "easy kill"
+    # score (lower level / hull / shield relative to other candidates),
+    # intercept = normalized time-to-intercept (shorter is better). intercept
+    # is weighted highest by default since a target you can't reach quickly
+    # isn't a practical pick even if it looks good on paper. Candidates the
+    # interceptor can never reach at all (moving away faster than
+    # own_ship_speed_px_per_sec can close) are excluded entirely, not just
+    # scored low.
+    score_weights:
+      loot: 0.3
+      ease: 0.3
+      intercept: 0.4
+
+    # Seconds to wait after clicking a target before checking for the Attack button.
+    select_delay: 0.5
+    # Template filenames for the Attack button shown after selecting a target.
+    attack_button_templates:
+      - Attack Button 1.jpg
+    # Optional second confirmation dialog shown after clicking Attack
+    # (e.g. "Attack this fleet?"). Leave empty if your game doesn't show one.
+    attack_confirm_templates: []
+    confirm_wait_retries: 4
+    confirm_wait_delay: 0.3
+
   ocr:
     # Upscale factor applied to the region before OCR runs
     scale_factor: 3
