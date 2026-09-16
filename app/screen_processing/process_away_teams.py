@@ -43,10 +43,30 @@ from app.screen_processing.screen_capture import (
     wait_and_click,
     wait_and_click_any,
     wait_for_any_template,
-    wait_for_template,
 )
 
 logger = logging.getLogger(__name__)
+
+
+# ai: claude-sonnet-5 | 2026-09-16
+def _log_near_misses(filenames, img) -> None:
+    """Log each candidate template's match score vs threshold.
+
+    Used when a wait_for_*/click_* call comes back empty, to distinguish "the
+    template file is missing", "it's on screen but just under threshold"
+    (score close to but below threshold — likely a stale snippet needing a
+    fresh crop), and "nothing remotely resembling it is on screen at all"
+    (score far below threshold — likely on the wrong page/state entirely).
+    """
+    threshold = capture_cfg("button_match_threshold", default=0.85)
+    for filename in filenames:
+        try:
+            match = match_template(filename, img)
+        except FileNotFoundError:
+            logger.warning("%s snippet file is missing", filename)
+            continue
+        if match:
+            logger.info("%s score %.2f (threshold %.2f)", filename, match[1], threshold)
 
 
 class AwayTeamOrchestrator:
@@ -83,12 +103,21 @@ class AwayTeamOrchestrator:
             return None
 
         if visible_tab == tab_unselected_name:
-            if not click_button_if_visible("Away Teams Tab Unselected.jpg", img, screen_offset):
+            if not click_button_if_visible(
+                "Away Teams Tab Unselected.jpg", img, screen_offset
+            ):
                 logger.error("could not click Away Teams Tab Unselected")
                 return {"error": "Away Teams Tab Unselected not clickable"}
             logger.info("clicked Away Teams Tab Unselected")
-            time.sleep(0.5)
+            time.sleep(0.3)
             return None
+
+        # Neither tab template matched — log how close each one came before
+        # falling through to the 'T'-key path, so a near-miss (stale snippet)
+        # is distinguishable from "nowhere close" (wrong screen entirely).
+        fresh = self.sc.capture(window)
+        if fresh is not None:
+            _log_near_misses(tab_images, fresh)
 
         # Not on the missions panel at all — try pressing "c" to open it.
         # ai: claude-sonnet-5 | 2026-08-27
@@ -96,7 +125,7 @@ class AwayTeamOrchestrator:
         # blur any focused in-game text box (e.g. a chat input on system-view
         # screens) — otherwise the "c" keystroke can land in chat instead of
         # triggering the Away Teams hotkey.
-        self.sc.click_center_and_press(window, "c")
+        self.sc.click_center_and_press(window, "T")
         visible_tab, img = wait_for_any_template(
             [tab_selected_name, tab_unselected_name],
             self.sc,
@@ -104,16 +133,22 @@ class AwayTeamOrchestrator:
         )
 
         if visible_tab == tab_selected_name:
-            logger.info("Away Teams page opened via 'c' key")
+            logger.info("Away Teams page opened via 'T' key")
             return None
 
         if visible_tab == tab_unselected_name:
-            if not click_button_if_visible("Away Teams Tab Unselected.jpg", img, screen_offset):
+            if not click_button_if_visible(
+                "Away Teams Tab Unselected.jpg", img, screen_offset
+            ):
                 logger.error("could not click Away Teams Tab Unselected")
                 return {"error": "Away Teams Tab Unselected not clickable"}
             logger.info("clicked Away Teams Tab Unselected (after 'c' key)")
-            time.sleep(0.5)
+            time.sleep(0.3)
             return None
+
+        fresh = self.sc.capture(window)
+        if fresh is not None:
+            _log_near_misses(tab_images, fresh)
 
         # Last resort: navigate via home screen → Mission Button → Away Teams tab.
         try:
@@ -127,14 +162,19 @@ class AwayTeamOrchestrator:
             ["Mission Button.jpg", "Mission Button 2.jpg"], img, screen_offset
         ):
             logger.error("Mission Button not found")
-            return {"error": "Mission Button not found — add Mission Button.jpg to app/screen_snippets/"}
+            return {
+                "error": "Mission Button not found — add Mission Button.jpg to app/screen_snippets/"
+            }
         logger.info("clicked Mission Button")
         time.sleep(0.5)
 
         img = self.sc.capture(window)
         if not click_button_if_visible(tab_images, img, screen_offset):
             logger.error("Away Teams Tab (Un)selected not found")
-            return {"error": "Away Teams Tab (Un)selected not found — add Away Teams Tab Unselected.jpg to app/screen_snippets/"}
+            _log_near_misses(tab_images, img)
+            return {
+                "error": "Away Teams Tab (Un)selected not found — add Away Teams Tab Unselected.jpg to app/screen_snippets/"
+            }
         logger.info("clicked Away Teams Tab")
         time.sleep(0.5)
 
@@ -153,47 +193,56 @@ class AwayTeamOrchestrator:
             # Wait for the list to be fully rendered before looking for a REPORT button.
             # "Away Teams Tab Selected.jpg" appears as soon as the nav bar is visible,
             # which is before the list items have loaded — use the list indicator instead.
-            matched, _ = wait_for_any_template(self._LIST_READY_TEMPLATES, self.sc, window, max_retries=20)
+            matched, _ = wait_for_any_template(
+                self._LIST_READY_TEMPLATES, self.sc, window, max_retries=20
+            )
             if matched is None:
-                logger.warning("Away Teams list not detected, stopping collect cycle")
+                logger.warning(
+                    "Away Teams list not detected after all retries, stopping collect cycle"
+                )
+                fresh = self.sc.capture(window)
+                if fresh is not None:
+                    _log_near_misses(self._LIST_READY_TEMPLATES, fresh)
                 break
             logger.debug("Away Teams list ready (matched: %s)", matched)
 
             img = self.sc.capture(window)
             if img is None:
-                logger.warning("could not capture screenshot in collect loop — stopping")
+                logger.warning(
+                    "could not capture screenshot in collect loop — stopping"
+                )
                 break
             # ai: claude-sonnet-4-6 | 2026-06-26
-            if not click_template_match_at("Away Teams Report.jpg", img, screen_offset, index=0):
-                try:
-                    m = match_template("Away Teams Report.jpg", img)
-                    if m:
-                        threshold = capture_cfg("button_match_threshold", default=0.85)
-                        logger.info(
-                            "Away Teams Report.jpg score %.2f (threshold %.2f) — "
-                            "no match; template may need updating",
-                            m[1], threshold,
-                        )
-                except FileNotFoundError:
-                    logger.warning("Away Teams Report.jpg snippet file is missing")
+            if not click_template_match_at(
+                "Away Teams Report.jpg", img, screen_offset, index=0
+            ):
+                _log_near_misses(["Away Teams Report.jpg"], img)
                 logger.info("no REPORT button visible — collect cycle complete")
                 break
             reports_clicked += 1
             logger.info(f"clicked REPORT ({reports_clicked})")
 
-            collect_first_delay = capture_cfg("away_teams", "collect_first_delay", default=0.5)
+            collect_first_delay = capture_cfg(
+                "away_teams", "collect_first_delay", default=0.5
+            )
             collect_retries = capture_cfg("away_teams", "collect_retries", default=16)
             collect_delay = capture_cfg("away_teams", "collect_delay", default=0.25)
             time.sleep(collect_first_delay)
             if not wait_and_click(
-                "collect.jpg", self.sc, window, screen_offset,
-                max_retries=collect_retries, delay=collect_delay,
+                "collect.jpg",
+                self.sc,
+                window,
+                screen_offset,
+                max_retries=collect_retries,
+                delay=collect_delay,
             ):
                 logger.warning("COLLECT button not found after REPORT click — stopping")
                 break
             collected += 1
             logger.info(f"clicked COLLECT ({collected})")
-            post_collect_delay = capture_cfg("away_teams", "post_collect_delay", default=2.0)
+            post_collect_delay = capture_cfg(
+                "away_teams", "post_collect_delay", default=2.0
+            )
             time.sleep(post_collect_delay)
             # Loop back — list indicator wait at the top handles the remaining transition
 
@@ -204,32 +253,45 @@ class AwayTeamOrchestrator:
         """Start new expeditions via START → AUTO → START. Returns expeditions_started count."""
         expeditions_started = 0
         while True:
-            matched, _ = wait_for_any_template(self._LIST_READY_TEMPLATES, self.sc, window, max_retries=20)
+            matched, _ = wait_for_any_template(
+                self._LIST_READY_TEMPLATES, self.sc, window, max_retries=20
+            )
             if matched is None:
-                logger.warning("Away Teams list not detected, stopping")
+                logger.warning("Away Teams list not detected after all retries, stopping")
+                fresh = self.sc.capture(window)
+                if fresh is not None:
+                    _log_near_misses(self._LIST_READY_TEMPLATES, fresh)
                 break
             logger.debug("Away Teams list ready (matched: %s)", matched)
 
             time.sleep(0.5)
             img = self.sc.capture(window)
             if img is None:
-                logger.warning("could not capture screenshot in expedition loop — stopping")
+                logger.warning(
+                    "could not capture screenshot in expedition loop — stopping"
+                )
                 break
 
             # ai: claude-sonnet-4-6 | 2026-06-26
-            if not click_template_match_at("Away Teams Start Blue.jpg", img, screen_offset, index=-1):
+            if not click_template_match_at(
+                "Away Teams Start Blue.jpg", img, screen_offset, index=-1
+            ):
                 logger.info("no blue START button found — all expeditions started")
                 break
             logger.info("clicked START (opening expedition setup)")
 
-            if not wait_and_click("Away Teams Auto.jpg", self.sc, window, screen_offset):
+            if not wait_and_click(
+                "Away Teams Auto.jpg", self.sc, window, screen_offset
+            ):
                 logger.warning("AUTO button not detected, stopping")
                 break
             logger.info("clicked AUTO")
 
             if not wait_and_click_any(
                 ["Away Teams Start Green.jpg", "Away Teams Start Charts.jpg"],
-                self.sc, window, screen_offset,
+                self.sc,
+                window,
+                screen_offset,
             ):
                 logger.warning("Green START button not detected, stopping")
                 break
@@ -256,7 +318,9 @@ class AwayTeamOrchestrator:
 
         reports_clicked, collected = self._collect_reports(window, screen_offset)
 
-        logger.info(f"done (collect only) — reports={reports_clicked}, collected={collected}")
+        logger.info(
+            f"done (collect only) — reports={reports_clicked}, collected={collected}"
+        )
         return {
             "reports_clicked": reports_clicked,
             "collected": collected,

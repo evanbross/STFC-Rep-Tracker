@@ -25,9 +25,15 @@ STFC Rep Tracker is a Star Trek Fleet Command reputation tracking tool. It consi
 
 ```bash
 python main.py
-# Runs on http://localhost:7000
+# Runs on http://localhost:7300 by default (override with the PORT env var)
 # Note: requires admin privileges on Windows (main.py auto-relaunches elevated if needed)
 ```
+
+Normally the backend is started via `launcher.py` instead of `main.py` directly. The launcher picks
+a free port starting at 7300 and registers it with the shared `../infra` Caddy instance as
+`http://stfc.localhost` (app name `"stfc"`, overridable via `CADDY_APP_NAME`) — see `launcher.py`
+and `../infra/caddy_registry.py`. If Caddy isn't running, the launcher falls back to opening
+`http://localhost:<port>` directly.
 
 **Frontend dev server** (proxies `/api` to Flask):
 
