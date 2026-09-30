@@ -18,6 +18,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
 import HostileTemplateCapture from '../components/HostileTemplateCapture';
+import TargetFlags from '../utils/targetFlags';
 
 // How often to poll refresh_targets() while combat mode is running. This is
 // a frontend pacing knob, not a screen-scraping parameter, so it lives here
@@ -247,7 +248,7 @@ const Combat = () => {
           <tbody>
             {candidates.map((c, idx) => (
               <tr key={idx} style={idx === 0 ? { fontWeight: 'bold' } : {}}>
-                <td>{idx === 0 ? '★ ' : ''}{c.name || 'Unknown'}</td>
+                <td>{idx === 0 ? '★ ' : ''}{c.name || 'Unknown'}<TargetFlags hazard={c.hazard} bounty={c.bounty} /></td>
                 <td className="text-right">{c.level ?? '—'}</td>
                 <td className="text-right">{c.hull_pct != null ? `${c.hull_pct}%` : '—'}</td>
                 <td className="text-right">{c.shield_pct != null ? `${c.shield_pct}%` : '—'}</td>

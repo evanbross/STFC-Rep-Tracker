@@ -77,19 +77,19 @@ def capture_cfg(*keys, default=None):
     return node
 
 
-# ai: claude-sonnet-5 | 2026-09-17
-def add_hostile_ship_template(filename: str) -> list[str]:
-    """Append filename to combat.hostile_ship_templates in settings.yaml and
-    return the updated list. No-op (returns the existing list) if filename is
-    already present.
+# ai: claude-sonnet-5 | 2026-09-18
+def _add_combat_template(key: str, filename: str) -> list[str]:
+    """Append filename to combat.<key> (a template-filename list) in
+    settings.yaml and return the updated list. No-op (returns the existing
+    list) if filename is already present.
 
-    Rewrites only the hostile_ship_templates block in place, line-by-line,
-    rather than round-tripping the whole file through yaml.safe_dump — that
-    would strip every comment in settings.yaml, which is documentation the
-    user relies on. Also updates the in-memory _cfg so capture_cfg() reflects
-    the change immediately, without a backend restart.
+    Rewrites only that one block in place, line-by-line, rather than
+    round-tripping the whole file through yaml.safe_dump — that would strip
+    every comment in settings.yaml, which is documentation the user relies
+    on. Also updates the in-memory _cfg so capture_cfg() reflects the change
+    immediately, without a backend restart.
     """
-    current: list[str] = capture_cfg("combat", "hostile_ship_templates", default=[]) or []
+    current: list[str] = capture_cfg("combat", key, default=[]) or []
     if filename in current:
         return current
     updated = [*current, filename]
@@ -100,26 +100,41 @@ def add_hostile_ship_template(filename: str) -> list[str]:
     key_idx = None
     indent = ""
     for i, line in enumerate(lines):
-        match = re.match(r"^( *)hostile_ship_templates:", line)
+        match = re.match(rf"^( *){re.escape(key)}:", line)
         if match:
             key_idx = i
             indent = match.group(1)
             break
     if key_idx is None:
-        raise RuntimeError("combat.hostile_ship_templates key not found in settings.yaml")
+        raise RuntimeError(f"combat.{key} key not found in settings.yaml")
 
     item_prefix = f"{indent}  - "
     end_idx = key_idx + 1
     while end_idx < len(lines) and lines[end_idx].startswith(item_prefix):
         end_idx += 1
 
-    new_block = [f"{indent}hostile_ship_templates:\n"]
+    new_block = [f"{indent}{key}:\n"]
     new_block += [f"{item_prefix}{name}\n" for name in updated]
     lines[key_idx:end_idx] = new_block
 
     with open(_SETTINGS_PATH, "w") as f:
         f.writelines(lines)
 
-    _cfg.setdefault("combat", {})["hostile_ship_templates"] = updated
-    logger.info(f"Added hostile ship template to settings.yaml: {filename}")
+    _cfg.setdefault("combat", {})[key] = updated
+    logger.info(f"Added combat.{key} entry to settings.yaml: {filename}")
     return updated
+
+
+def add_hostile_ship_template(filename: str) -> list[str]:
+    """Append filename to combat.hostile_ship_templates in settings.yaml."""
+    return _add_combat_template("hostile_ship_templates", filename)
+
+
+def add_skull_glyph_template(filename: str) -> list[str]:
+    """Append filename to combat.skull_glyph_templates in settings.yaml."""
+    return _add_combat_template("skull_glyph_templates", filename)
+
+
+def add_diamond_glyph_template(filename: str) -> list[str]:
+    """Append filename to combat.diamond_glyph_templates in settings.yaml."""
+    return _add_combat_template("diamond_glyph_templates", filename)

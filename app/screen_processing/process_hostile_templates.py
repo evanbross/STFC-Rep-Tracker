@@ -25,7 +25,11 @@ import cv2
 import numpy as np
 from werkzeug.utils import secure_filename
 
-from app.app_config import add_hostile_ship_template
+from app.app_config import (
+    add_diamond_glyph_template,
+    add_hostile_ship_template,
+    add_skull_glyph_template,
+)
 from app.screen_processing.process_system_targets import detect_system_name
 from app.screen_processing.screen_capture import ScreenCapture, get_snippets_dir
 
@@ -41,17 +45,29 @@ logger = logging.getLogger(__name__)
 # strictly sequentially.
 _last_capture: dict = {"img": None, "system_name": None}
 
+# What each template "kind" is named on disk and which settings.yaml list it
+# registers itself into. Skull/diamond glyphs are a fixed UI element (not
+# tied to any one system's art), so unlike hostile ship icons their filename
+# doesn't include a system label.
+_KIND_CONFIG = {
+    "hostile_ship": {"prefix": "Hostile", "per_system": True, "add_fn": add_hostile_ship_template},
+    "skull_glyph": {"prefix": "Skull", "per_system": False, "add_fn": add_skull_glyph_template},
+    "diamond_glyph": {"prefix": "Diamond", "per_system": False, "add_fn": add_diamond_glyph_template},
+}
+
 
 class HostileTemplateOrchestrator:
-    """Lets the user bootstrap/extend combat.hostile_ship_templates from the
-    running app instead of hand-editing settings.yaml and snippet files.
+    """Lets the user bootstrap/extend the combat template lists — hostile ship
+    icons, and the skull/diamond label glyphs — from the running app instead
+    of hand-editing settings.yaml and snippet files.
 
-    _find_ship_icons() (process_system_targets.py) can only detect hostile
-    ships once at least one template already exists, so there's no way to
-    auto-crop a new one from scratch. Instead: capture_screen() grabs a fresh
-    screenshot for the user to draw a box on in the browser (over a ship
-    they've just selected in-game), and save_template() crops that box out
-    and registers it as a new template.
+    Detection for all three only works once at least one template of that
+    kind already exists (_find_ship_icons()/_detect_label_glyph() in
+    process_system_targets.py), so there's no way to auto-crop the first one
+    from scratch. Instead: capture_screen() grabs a fresh screenshot for the
+    user to draw a box on in the browser (over a ship they've just selected
+    in-game, or over a glyph visible in its label), and save_template() crops
+    that box out and registers it under the requested kind.
     """
 
     def __init__(self, db: "Database") -> None:
@@ -93,13 +109,19 @@ class HostileTemplateOrchestrator:
             "height": img_h,
         }
 
-    # ai: claude-sonnet-5 | 2026-09-17
-    def save_template(self, x: int, y: int, w: int, h: int) -> dict:
+    # ai: claude-sonnet-5 | 2026-09-18
+    def save_template(self, x: int, y: int, w: int, h: int, kind: str = "hostile_ship") -> dict:
         """Crop (x, y, w, h) — image-local pixel coords into the last
-        capture_screen() frame — and register it as a new hostile ship
-        template. Can be called multiple times against the same capture to
-        save several ship types seen in one screenshot.
+        capture_screen() frame — and register it as a new template of the
+        given kind ("hostile_ship", "skull_glyph", or "diamond_glyph"). Can
+        be called multiple times against the same capture to save several
+        templates (e.g. a couple of ship types, or a ship type plus the
+        skull/diamond glyph on its label) seen in one screenshot.
         """
+        kind_config = _KIND_CONFIG.get(kind)
+        if kind_config is None:
+            return {"error": f"Unknown template kind: {kind!r}"}
+
         img: np.ndarray | None = _last_capture["img"]
         if img is None:
             return {"error": "No screenshot captured yet — capture the screen first"}
@@ -112,15 +134,20 @@ class HostileTemplateOrchestrator:
         crop = img[y1:y2, x1:x2]
 
         snippets_dir = get_snippets_dir()
-        system_label = secure_filename(_last_capture["system_name"] or "Unknown") or "Unknown"
+        if kind_config["per_system"]:
+            system_label = secure_filename(_last_capture["system_name"] or "Unknown") or "Unknown"
+            stem = f"{kind_config['prefix']}-{system_label}"
+        else:
+            stem = kind_config["prefix"]
+
         n = 1
         while True:
-            filename = f"Hostile-{system_label}-{n}.png"
+            filename = f"{stem}-{n}.png"
             if not os.path.exists(os.path.join(snippets_dir, filename)):
                 break
             n += 1
 
         cv2.imwrite(os.path.join(snippets_dir, filename), crop)
-        updated = add_hostile_ship_template(filename)
-        logger.info(f"Saved new hostile ship template: {filename}")
-        return {"success": True, "filename": filename, "hostile_ship_templates": updated}
+        updated = kind_config["add_fn"](filename)
+        logger.info(f"Saved new {kind} template: {filename}")
+        return {"success": True, "filename": filename, "kind": kind, "templates": updated}

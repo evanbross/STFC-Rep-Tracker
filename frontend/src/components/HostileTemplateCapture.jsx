@@ -13,7 +13,7 @@
  *
  * Licensing inquiries: license@zombietech.biz
  */
-// ai: claude-sonnet-5 | 2026-09-17
+// ai: claude-sonnet-5 | 2026-09-18
 import React, { useRef, useState } from 'react';
 import axios from 'axios';
 
@@ -21,12 +21,21 @@ import axios from 'axios';
 // as a real box rather than an accidental click.
 const MIN_DRAG_PX = 6;
 
-// Select a hostile ship in-game first, then use this panel to bootstrap/extend
-// combat.hostile_ship_templates: it grabs a fresh screenshot of the game
-// window, lets you draw a box around the ship icon you just selected, and
-// saves that crop as a new template (updating settings.yaml automatically).
+const KIND_OPTIONS = [
+  { value: 'hostile_ship', label: 'Hostile Ship Icon' },
+  { value: 'skull_glyph', label: 'Skull Glyph (danger)' },
+  { value: 'diamond_glyph', label: 'Diamond Glyph (bounty)' },
+];
+
+// Bootstraps/extends the combat template lists (hostile ship icons, and the
+// skull/diamond label glyphs) from the running app instead of hand-editing
+// settings.yaml and snippet files: grabs a fresh screenshot of the game
+// window, lets you draw a box around the thing you want (a ship you just
+// selected in-game, or a glyph visible in its label), and saves that crop as
+// a new template of the chosen kind (updating settings.yaml automatically).
 const HostileTemplateCapture = () => {
   const [open, setOpen] = useState(false);
+  const [kind, setKind] = useState('hostile_ship');
   const [capturing, setCapturing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [screenshot, setScreenshot] = useState(null); // { imageBase64, width, height, systemName }
@@ -120,14 +129,14 @@ const HostileTemplateCapture = () => {
     setError(null);
     setMessage(null);
     try {
-      const response = await axios.post('/api/capture-screen/hostile-template/save', naturalBox);
+      const response = await axios.post('/api/capture-screen/hostile-template/save', { ...naturalBox, kind });
       const data = response.data;
       if (data.error) {
         setError(data.error);
         return;
       }
       setMessage(`Added ${data.filename}.`);
-      setTemplateCount(data.hostile_ship_templates.length);
+      setTemplateCount(data.templates.length);
       setDisplayBox(null);
       setNaturalBox(null);
     } catch (e) {
@@ -142,26 +151,50 @@ const HostileTemplateCapture = () => {
     setNaturalBox(null);
   };
 
+  const handleKindChange = (nextKind) => {
+    setKind(nextKind);
+    setTemplateCount(null); // stale count belonged to the previous kind's list
+    setMessage(null);
+  };
+
   if (!open) {
     return (
       <button className="btn-outline" onClick={() => setOpen(true)} style={{ marginBottom: '1rem' }}>
-        + Add Hostile Ship Template
+        + Add Combat Template
       </button>
     );
   }
 
+  const kindLabel = KIND_OPTIONS.find((o) => o.value === kind)?.label || kind;
+
   return (
     <div className="container">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-        <h2 style={{ margin: 0 }}>Add Hostile Ship Template</h2>
+        <h2 style={{ margin: 0 }}>Add Combat Template</h2>
         <button className="btn-outline" onClick={() => setOpen(false)}>Close</button>
       </div>
       <p style={{ fontSize: '0.85rem', color: 'var(--c-muted)', marginBottom: '1rem' }}>
         In-game, select a hostile ship on the starmap first. Then capture the screen here, draw a
-        box around that ship's icon, and add it — this updates{' '}
-        <code>combat.hostile_ship_templates</code> in settings.yaml automatically. You can draw
-        multiple boxes from the same capture if several ship types are visible.
+        box around the ship's icon (or, once a ship's label is visible, around the skull/diamond
+        glyph after its name), pick what kind of template it is, and add it — this updates
+        settings.yaml automatically. You can draw multiple boxes from the same capture.
       </p>
+
+      <div style={{ display: 'flex', gap: '1.25rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+        {KIND_OPTIONS.map((opt) => (
+          <label key={opt.value} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', margin: 0, cursor: 'pointer' }}>
+            <input
+              type="radio"
+              name="template-kind"
+              value={opt.value}
+              checked={kind === opt.value}
+              onChange={() => handleKindChange(opt.value)}
+              style={{ width: 'auto' }}
+            />
+            <span style={{ fontSize: '0.85rem', color: 'var(--c-text)' }}>{opt.label}</span>
+          </label>
+        ))}
+      </div>
 
       <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem', alignItems: 'center' }}>
         <button className="btn-capture" onClick={handleCapture} disabled={capturing}>
@@ -172,7 +205,7 @@ const HostileTemplateCapture = () => {
         )}
         {templateCount != null && (
           <span style={{ fontSize: '0.85rem', color: 'var(--c-muted)' }}>
-            {templateCount} template{templateCount === 1 ? '' : 's'} configured
+            {templateCount} {kindLabel} template{templateCount === 1 ? '' : 's'} configured
           </span>
         )}
       </div>
@@ -216,7 +249,11 @@ const HostileTemplateCapture = () => {
 
           <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem', alignItems: 'center' }}>
             <button className="btn-capture" onClick={handleSave} disabled={!naturalBox || saving}>
-              {saving ? 'Saving…' : `Add This for ${screenshot.systemName || 'this system'}`}
+              {saving
+                ? 'Saving…'
+                : kind === 'hostile_ship'
+                  ? `Add This for ${screenshot.systemName || 'this system'}`
+                  : `Add This as ${kindLabel}`}
             </button>
             <button className="btn-outline" onClick={handleClearBox} disabled={!displayBox}>
               Clear Box

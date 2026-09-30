@@ -35,6 +35,7 @@ from app.screen_processing.screen_capture import (
     find_all_template_matches,
     get_reader,
     get_snippets_dir,
+    match_template,
     wait_and_click_any,
 )
 
@@ -137,47 +138,82 @@ def _label_crop(img: np.ndarray, icon: dict) -> np.ndarray | None:
     return crop if crop.size > 0 else None
 
 
-# ai: claude-sonnet-5 | 2026-09-14
+# ai: claude-sonnet-5 | 2026-09-18
 def _parse_name_level(tokens: list[str]) -> tuple[str | None, int | None]:
     """Split OCR tokens from a label crop into (name, level).
 
-    The level token is matched via combat.level_pattern; the first remaining
-    non-empty token is treated as the name.
+    Label layout, left to right: a bare level number, a ship-class glyph
+    (icon, not OCR'd), a 2-4 letter class abbreviation, the ship type name,
+    and an optional skull/diamond glyph (also icons, not OCR'd — see
+    _detect_label_glyph). So only three kinds of text token ever show up:
+    the level number, the short all-caps abbreviation, and the name itself.
+    The abbreviation is dropped rather than kept — classification already
+    keys off the icon template filename, not this text.
     """
-    pattern = capture_cfg(
-        "combat", "level_pattern", default=r"\bL(?:v|vl|evel)?\.?\s*(\d{1,3})\b"
-    )
     level: int | None = None
     name_tokens: list[str] = []
     for token in tokens:
-        match = re.search(pattern, token, re.IGNORECASE)
-        if match and level is None:
-            level = int(match.group(1))
+        if level is None and re.fullmatch(r"\d{1,3}", token):
+            level = int(token)
+            continue
+        if re.fullmatch(r"[A-Z]{2,4}", token):
             continue
         name_tokens.append(token)
     name = " ".join(name_tokens).strip() or None
     return name, level
 
 
+# ai: claude-sonnet-5 | 2026-09-18
+def _detect_label_glyph(crop: np.ndarray, templates: list[str]) -> bool:
+    """Return True if any of the given glyph templates matches within crop.
+
+    Used for the optional skull (dangerous) / diamond (bounty) glyph that
+    can appear at the end of a ship's label — these are icons, not text, so
+    OCR can't read them; template matching against the same label crop used
+    for OCR is the only way to detect them.
+    """
+    if crop is None or not templates:
+        return False
+    threshold = capture_cfg("combat", "glyph_match_threshold", default=0.75)
+    for filename in templates:
+        try:
+            result = match_template(filename, crop)
+        except FileNotFoundError:
+            logger.error("Glyph template not found on disk: %s", filename)
+            continue
+        if result is not None and result[1] >= threshold:
+            return True
+    return False
+
+
 # ai: claude-sonnet-5 | 2026-09-14
 def _label_icons(img: np.ndarray, icons: list[dict]) -> list[dict]:
     """OCR the label above each icon and return candidate dicts.
 
-    Each candidate dict: {"x","y","w","h","type","click_x","click_y","name","level"}.
-    Coordinates are image-local pixels (icon center) — callers add the
-    window's screen offset only when actually issuing a click.
+    Each candidate dict: {"x","y","w","h","type","click_x","click_y","name",
+    "level","hazard","bounty"}. Coordinates are image-local pixels (icon
+    center) — callers add the window's screen offset only when actually
+    issuing a click. hazard/bounty come from template-matching the
+    skull/diamond glyph within the same label crop used for OCR (see
+    _detect_label_glyph) — they default to False if no glyph templates are
+    configured yet.
     """
     reader = get_reader()
     min_conf = capture_cfg("combat", "ocr_min_confidence", default=0.2)
+    skull_templates = capture_cfg("combat", "skull_glyph_templates", default=[]) or []
+    diamond_templates = capture_cfg("combat", "diamond_glyph_templates", default=[]) or []
     candidates: list[dict] = []
 
     for icon in icons:
         crop = _label_crop(img, icon)
         name = level = None
+        hazard = bounty = False
         if crop is not None:
             raw = reader.readtext(crop, detail=1)
             tokens = [t.strip() for _, t, c in raw if c >= min_conf and t.strip()]
             name, level = _parse_name_level(tokens)
+            hazard = _detect_label_glyph(crop, skull_templates)
+            bounty = _detect_label_glyph(crop, diamond_templates)
         candidates.append(
             {
                 "x": icon["x"],
@@ -189,11 +225,13 @@ def _label_icons(img: np.ndarray, icons: list[dict]) -> list[dict]:
                 "click_y": icon["y"] + icon["h"] // 2,
                 "name": name,
                 "level": level,
+                "hazard": hazard,
+                "bounty": bounty,
             }
         )
         logger.debug(
-            "Detected candidate at (%d, %d): type=%r name=%r level=%r",
-            icon["x"], icon["y"], icon["type"], name, level,
+            "Detected candidate at (%d, %d): type=%r name=%r level=%r hazard=%r bounty=%r",
+            icon["x"], icon["y"], icon["type"], name, level, hazard, bounty,
         )
 
     return candidates
@@ -645,15 +683,19 @@ def _loot_value(cargo: dict, weights: dict) -> float:
     return sum(amount * weights.get(resource, 1.0) for resource, amount in cargo.items())
 
 
-# ai: claude-sonnet-5 | 2026-09-14
+# ai: claude-sonnet-5 | 2026-09-18
 def _score_candidates(candidates: list[dict]) -> list[dict]:
     """Attach a normalized "score" (0.0-1.0) to each candidate.
 
     score = loot_weight * normalized_loot_value
           + ease_weight * normalized_ease (favors lower level / hull / shield)
           + intercept_weight * normalized_speed (favors a shorter time_to_intercept_sec)
+          - skull_score_penalty if the label's skull (dangerous) glyph matched
+          + diamond_score_bonus if the label's diamond (bounty) glyph matched
     Candidates with an unknown intercept time (own ship not detected) get a
     neutral 0.5 for that component rather than being penalized or favored.
+    The skull/diamond adjustment is applied after the weighted sum and the
+    result is clamped back to [0.0, 1.0].
     """
     if not candidates:
         return candidates
@@ -665,6 +707,8 @@ def _score_candidates(candidates: list[dict]) -> list[dict]:
     loot_weight = score_weights.get("loot", 0.3)
     ease_weight = score_weights.get("ease", 0.3)
     intercept_weight = score_weights.get("intercept", 0.4)
+    skull_penalty = capture_cfg("combat", "skull_score_penalty", default=0.5)
+    diamond_bonus = capture_cfg("combat", "diamond_score_bonus", default=0.3)
 
     loot_values = [_loot_value(c.get("cargo", {}), resource_weights) for c in candidates]
     max_loot = max(loot_values) or 1.0
@@ -699,11 +743,14 @@ def _score_candidates(candidates: list[dict]) -> list[dict]:
         else:
             intercept_norm = 0.5
 
+        score = loot_weight * loot_norm + ease_weight * ease_norm + intercept_weight * intercept_norm
+        if candidate.get("hazard"):
+            score -= skull_penalty
+        if candidate.get("bounty"):
+            score += diamond_bonus
+
         candidate["loot_value"] = loot_value
-        candidate["score"] = round(
-            loot_weight * loot_norm + ease_weight * ease_norm + intercept_weight * intercept_norm,
-            4,
-        )
+        candidate["score"] = round(max(0.0, min(1.0, score)), 4)
 
     return sorted(candidates, key=lambda c: c["score"], reverse=True)
 

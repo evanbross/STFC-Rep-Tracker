@@ -376,7 +376,7 @@ def attack_system_target():
 @capture_bp.route("/hostile-template/capture", methods=["POST"])
 def capture_hostile_template_screen():
     """
-    Activate the game window and capture a fresh screenshot for drawing a hostile ship template crop box
+    Activate the game window and capture a fresh screenshot for drawing a combat template crop box
     ---
     tags:
       - Capture
@@ -396,11 +396,14 @@ def capture_hostile_template_screen():
     )
 
 
-# ai: claude-sonnet-5 | 2026-09-17
+_ALLOWED_TEMPLATE_KINDS = {"hostile_ship", "skull_glyph", "diamond_glyph"}
+
+
+# ai: claude-sonnet-5 | 2026-09-18
 @capture_bp.route("/hostile-template/save", methods=["POST"])
 def save_hostile_template():
     """
-    Crop the last captured screenshot and register it as a new combat.hostile_ship_templates entry
+    Crop the last captured screenshot and register it as a new combat template (hostile ship icon, or skull/diamond label glyph)
     ---
     tags:
       - Capture
@@ -420,11 +423,15 @@ def save_hostile_template():
               type: integer
             h:
               type: integer
+            kind:
+              type: string
+              enum: [hostile_ship, skull_glyph, diamond_glyph]
+              default: hostile_ship
     responses:
       200:
         description: Template saved and settings.yaml updated
       400:
-        description: Missing/invalid crop coordinates, or no screenshot captured yet
+        description: Missing/invalid crop coordinates, invalid kind, or no screenshot captured yet
       500:
         description: Unexpected error during save
     """
@@ -437,9 +444,13 @@ def save_hostile_template():
     except (KeyError, TypeError, ValueError):
         return jsonify({"error": "x, y, w, and h are required integers"}), 400
 
+    kind = data.get("kind", "hostile_ship")
+    if kind not in _ALLOWED_TEMPLATE_KINDS:
+        return jsonify({"error": f"kind must be one of {sorted(_ALLOWED_TEMPLATE_KINDS)}"}), 400
+
     return _run_capture(
         lambda: HostileTemplateOrchestrator(_get_db()),
-        lambda o: o.save_template(x, y, w, h),
-        "Error saving hostile ship template",
+        lambda o: o.save_template(x, y, w, h, kind=kind),
+        "Error saving combat template",
         "Save failed",
     )

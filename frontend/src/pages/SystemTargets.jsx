@@ -17,6 +17,7 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 import HostileTemplateCapture from '../components/HostileTemplateCapture';
+import TargetFlags from '../utils/targetFlags';
 
 const formatCargo = (cargo) => {
   const entries = Object.entries(cargo || {});
@@ -250,7 +251,7 @@ const SystemTargets = () => {
           <tbody>
             {candidates.map((c, idx) => (
               <tr key={idx} style={idx === 0 ? { fontWeight: 'bold' } : {}}>
-                <td>{idx === 0 ? '★ ' : ''}{c.name || 'Unknown'}</td>
+                <td>{idx === 0 ? '★ ' : ''}{c.name || 'Unknown'}<TargetFlags hazard={c.hazard} bounty={c.bounty} /></td>
                 <td className="text-right">{c.level ?? '—'}</td>
                 <td className="text-right">{c.hull_pct != null ? `${c.hull_pct}%` : '—'}</td>
                 <td className="text-right">{c.shield_pct != null ? `${c.shield_pct}%` : '—'}</td>
