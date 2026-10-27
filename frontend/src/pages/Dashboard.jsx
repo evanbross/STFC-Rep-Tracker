@@ -22,6 +22,7 @@ import {
 import annotationPlugin from 'chartjs-plugin-annotation';
 import {Line} from 'react-chartjs-2';
 import 'chartjs-adapter-date-fns';
+import ContextMenu, {useContextMenu} from '../components/ContextMenu';
 
 ChartJS.register(
     CategoryScale,
@@ -98,6 +99,7 @@ const Dashboard = () => {
     const [calPickerSelectedId, setCalPickerSelectedId] = useState('primary');
     const [scheduleStatus, setScheduleStatus] = useState(null); // null = idle, string = current step label
     const [cardsCollapsed, setCardsCollapsed] = useState(false);
+    const awayTeamMenu = useContextMenu(); // ai: claude-opus-5-5 | 2026-10-17
     const chartRef = useRef(null);
 
     useEffect(() => {
@@ -248,10 +250,12 @@ const Dashboard = () => {
                 }
             } else if (data.reports_clicked !== undefined) {
                 // Away team result
-                alert(
-                    `Away Team complete.\n` +
-                    `Reports collected: ${data.collected}\n` +
-                    `Expeditions started: ${data.expeditions_started}`
+                // ai: claude-opus-5-5 | 2026-10-17
+                alert(screen === 'away_team_collect'
+                    ? `Away Team collect complete.\nReports collected: ${data.collected}`
+                    : `Away Team complete.\n` +
+                      `Reports collected: ${data.collected}\n` +
+                      `Expeditions started: ${data.expeditions_started}`
                 );
             } else if (data.success && data.claims !== undefined) {
                 // Gifts result
@@ -628,9 +632,24 @@ const Dashboard = () => {
                     <button className="btn-capture" onClick={() => handleCaptureScreen('reputations')} disabled={isCapturing}>
                         Reputations
                     </button>
-                    <button className="btn-capture" onClick={() => handleCaptureScreen('away_team')} disabled={isCapturing}>
+                    {/* ai: claude-opus-5-5 | 2026-10-17 — right-click opens collect-only option */}
+                    <button
+                        className="btn-capture"
+                        onClick={() => handleCaptureScreen('away_team')}
+                        {...awayTeamMenu.bind(!isCapturing)}
+                        disabled={isCapturing}
+                        title="Click: collect + start new missions. Right-click for more options."
+                    >
                         Away Team
                     </button>
+                    <ContextMenu
+                        position={awayTeamMenu.position}
+                        onClose={awayTeamMenu.close}
+                        items={[
+                            {label: 'Collect + start new missions', onSelect: () => handleCaptureScreen('away_team')},
+                            {label: 'Collect only', onSelect: () => handleCaptureScreen('away_team_collect')},
+                        ]}
+                    />
                     <button className="btn-capture" onClick={() => handleCaptureScreen('gifts')} disabled={isCapturing}>
                         Gifts
                     </button>
