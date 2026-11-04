@@ -3,7 +3,7 @@ disable_existing_loggers: false
 
 formatters:
   standard:
-    format: "%(asctime)s - %(levelname)s - [%(name)s.%(funcName)s:%(lineno)d] %(message)s"
+    format: "%(asctime)s [%(levelname)s] %(name)s (%(filename)s:%(lineno)d): %(message)s"
 
 handlers:
   console:
@@ -12,18 +12,22 @@ handlers:
     stream: ext://sys.stdout
 
 loggers:
-  # Application modules — set to DEBUG to see verbose OCR/capture output
-  app.reputation_sucker.process_factions:
-    level: DEBUG
-    handlers: [ console ]
-    propagate: false
-
-  app.reputation_sucker.screen_capture:
+  # Application modules — set to DEBUG to see verbose OCR/capture output.
+  # app.screen_processing covers every capture module (child loggers inherit
+  # its level); the per-module entries below override it individually.
+  app.screen_processing:
     level: INFO
     handlers: [ console ]
     propagate: false
 
-  app.reputation_sucker.rep_tracker:
+  # Per-faction template scores and OCR reads during reputation capture.
+  app.screen_processing.process_reputations:
+    level: INFO
+    handlers: [ console ]
+    propagate: false
+
+  # Window activation, template matching, and screenshot capture.
+  app.screen_processing.screen_capture:
     level: INFO
     handlers: [ console ]
     propagate: false

@@ -5,6 +5,8 @@
 @../Dev-Standards/REACT_STANDARDS.md
 @../Dev-Standards/INFRASTRUCTURE_STANDARDS.md
 @../Dev-Standards/WINDOWS_STANDARDS.md
+@../Dev-Standards/FLASK_STANDARDS.md
+@../Dev-Standards/GOOGLE_CODING_STANDARDS.md
 
 # CLAUDE.md
 
@@ -139,7 +141,7 @@ API docs (Flasgger/Swagger UI) available at `/apidocs`.
 - `/factions` → `Factions.jsx` — faction CRUD with snippet image management modal
 - `/reputations` → `Reputations.jsx` — reputation tier viewer
 
-During development, Vite proxies `/api/*` to `http://127.0.0.1:7000`. In production, Flask serves
+During development, Vite proxies `/api/*` to `http://127.0.0.1:7300`. In production, Flask serves
 `frontend/dist/index.html` for all non-API routes.
 
 ### Key Faction Data Model

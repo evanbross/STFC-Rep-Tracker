@@ -10,6 +10,9 @@ At session start, read this file and every standards file listed below before ma
 - `../Dev-Standards/COMMON_CODING_STANDARDS.md`
 - `../Dev-Standards/PYTHON_STANDARDS.md`
 - `../Dev-Standards/DATABASE_STANDARDS.md`
+- `../Dev-Standards/FLASK_STANDARDS.md`
+- `../Dev-Standards/GOOGLE_CODING_STANDARDS.md`
+- `../Dev-Standards/JAVASCRIPT_TYPESCRIPT_STANDARDS.md`
 - `../Dev-Standards/REACT_STANDARDS.md`
 - `../Dev-Standards/INFRASTRUCTURE_STANDARDS.md`
 - `../Dev-Standards/WINDOWS_STANDARDS.md`
@@ -22,14 +25,13 @@ At session start, read this file and every standards file listed below before ma
 **Not applicable to this project:**
 - `FASTAPI_STANDARDS.md` — backend is Flask, not FastAPI
 - `TESTING_STANDARDS.md` — no automated test suite
-- `GOOGLE_CODING_STANDARDS.md` — no Google Workspace APIs in project code
 
 ## Project Overview
 
 STFC Rep Tracker reads Star Trek Fleet Command faction reputation values from the game window
 via OCR (OpenCV + EasyOCR) and stores them in PostgreSQL. It consists of:
 
-- **Flask REST API** (`main.py`, `app/`) — runs on port 7000, requires Windows admin
+- **Flask REST API** (`main.py`, `app/`) — runs on port 7300 (override with `PORT`; `launcher.py` picks the next free port from 7300), requires Windows admin
 - **React SPA** (`frontend/`) — Vite dev server on port 5173, proxies `/api` to Flask
 - **Screen capture** (`app/screen_processing/`) — Windows-only; uses PyAutoGUI, PyGetWindow, win32api
 
