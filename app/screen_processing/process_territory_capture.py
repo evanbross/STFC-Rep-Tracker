@@ -7,13 +7,13 @@
 # Licensing inquiries: license@zombietech.biz
 # =============================================================================
 import logging
-import re
-from datetime import datetime, timedelta, UTC
+from datetime import datetime, UTC
 
 import cv2
 import numpy as np
 
 from app.app_config import capture_cfg
+from app.screen_processing.ocr_text import is_time_string, parse_time_remaining
 from app.screen_processing.screen_capture import (
     ScreenCapture,
     click_button_if_visible,
@@ -47,88 +47,6 @@ _GREEN_FLAG_TEMPLATES = ["Territory Green Flag 1.jpg"]
 
 # Templates that signal the territory page is fully loaded with live data.
 _LOAD_READY_TEMPLATES = _NEXT_TAKEOVER_TEMPLATES + _GREEN_FLAG_TEMPLATES
-
-
-# ---------------------------------------------------------------------------
-# Time string parsing helpers
-# ---------------------------------------------------------------------------
-
-
-# Maps single OCR-garbled characters to their most likely digit equivalents.
-# Only applied within digit-like sequences immediately preceding a time unit (d/h/m)
-# — see _normalize_ocr_digits below.
-_OCR_DIGIT_MAP: dict[str, str] = {
-    "O": "0",
-    "o": "0",
-    "A": "0",
-    "a": "0",
-    "I": "1",
-    "l": "1",
-    "i": "1",
-    "T": "1",
-    "Z": "2",
-    "z": "2",
-    "S": "5",
-}
-
-
-def _normalize_ocr_digits(text: str) -> str:
-    """Replace OCR lookalike characters with digits in numeric sequences.
-
-    Scans the string for runs of digits and known OCR lookalikes that are
-    immediately followed by a time unit (d, h, m) and substitutes the whole
-    run at once.  This handles multi-character garbles like 'ISh' → '15h'
-    (where the old per-character regex approach failed because neither I nor S
-    was adjacent to a digit when checked individually).
-
-    Characters not in _OCR_DIGIT_MAP (e.g. 'F') are left as-is — they produce
-    no digit match and the time component will be treated as absent.
-    """
-    result: list[str] = []
-    i = 0
-    while i < len(text):
-        ch = text[i]
-        if ch in _OCR_DIGIT_MAP or ch.isdigit():
-            j = i
-            while j < len(text) and (text[j] in _OCR_DIGIT_MAP or text[j].isdigit()):
-                j += 1
-            if j < len(text) and text[j].lower() in "dhm":
-                result.extend(_OCR_DIGIT_MAP.get(c, c) for c in text[i:j])
-                i = j
-                continue
-        result.append(ch)
-        i += 1
-    return "".join(result)
-
-
-def _parse_time_remaining(text: str) -> timedelta | None:
-    """Parse a countdown string like '2d 4h 30m', '4h 6m', or '45m' into a timedelta.
-
-    Returns None if no time components are found.  OCR lookalike characters
-    are normalised via _normalize_ocr_digits before parsing.
-    """
-    normalised = _normalize_ocr_digits(text)
-    if normalised != text:
-        logger.debug("OCR time normalised: %r → %r", text, normalised)
-
-    days = hours = minutes = 0
-    d = re.search(r"(\d+)\s*d", normalised, re.IGNORECASE)
-    h = re.search(r"(\d+)\s*h", normalised, re.IGNORECASE)
-    m = re.search(r"(\d+)\s*m(?!s)", normalised, re.IGNORECASE)  # exclude 'ms'
-    if d:
-        days = int(d.group(1))
-    if h:
-        hours = int(h.group(1))
-    if m:
-        minutes = int(m.group(1))
-    if days == 0 and hours == 0 and minutes == 0:
-        return None
-    return timedelta(days=days, hours=hours, minutes=minutes)
-
-
-def _is_time_string(text: str) -> bool:
-    """Return True if text looks like a countdown timer (digits + d/h/m unit)."""
-    return bool(re.search(r"\d+\s*[dhm]", text, re.IGNORECASE))
 
 
 # ---------------------------------------------------------------------------
@@ -326,11 +244,11 @@ def _ocr_strips(strips: list[tuple[np.ndarray, int]]) -> list[dict]:
         )
 
         tokens = [t.strip() for _, t, c in raw if c >= min_conf and t.strip()]
-        name = next((t for t in tokens if not _is_time_string(t)), None)
-        time_str = next((t for t in tokens if _is_time_string(t)), None)
+        name = next((t for t in tokens if not is_time_string(t)), None)
+        time_str = next((t for t in tokens if is_time_string(t)), None)
 
         if name and time_str:
-            delta = _parse_time_remaining(time_str)
+            delta = parse_time_remaining(time_str)
             event_time = (now + delta).strftime("%Y-%m-%d %H:%M") if delta else None
             systems.append(
                 {"name": name, "time_remaining": time_str, "event_time": event_time}
@@ -398,13 +316,13 @@ def _ocr_full_image(img: np.ndarray, img_height: int) -> list[dict]:
     for i, (bbox, text, conf) in enumerate(results):
         if i in consumed:
             continue
-        if _is_time_string(text):
+        if is_time_string(text):
             continue
 
         name_y = _bbox_top_y(bbox)
         # Skip badge/emblem labels — they sit closely below their row's timer.
         if any(
-            _is_time_string(results[k][1])
+            is_time_string(results[k][1])
             and 0 < (name_y - _bbox_top_y(results[k][0])) <= emblem_skip_px
             for k in range(i)
         ):
@@ -423,9 +341,9 @@ def _ocr_full_image(img: np.ndarray, img_height: int) -> list[dict]:
             j_y = _bbox_top_y(j_bbox)
             if j_y - name_y > pair_max_gap_px:
                 break
-            if not _is_time_string(j_text):
+            if not is_time_string(j_text):
                 continue
-            delta = _parse_time_remaining(j_text)
+            delta = parse_time_remaining(j_text)
             event_time = (now + delta).strftime("%Y-%m-%d %H:%M") if delta else None
             systems.append(
                 {"name": text, "time_remaining": j_text, "event_time": event_time}
@@ -529,10 +447,10 @@ def _extract_by_name_templates(img: np.ndarray) -> list[dict]:
                 )
 
                 tokens = [t.strip() for _, t, c in raw if c >= min_conf and t.strip()]
-                time_str = next((t for t in tokens if _is_time_string(t)), None)
+                time_str = next((t for t in tokens if is_time_string(t)), None)
 
                 if time_str:
-                    delta = _parse_time_remaining(time_str)
+                    delta = parse_time_remaining(time_str)
                     event_time = (
                         (now + delta).strftime("%Y-%m-%d %H:%M") if delta else None
                     )
