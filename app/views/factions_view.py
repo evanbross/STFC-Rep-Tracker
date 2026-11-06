@@ -10,11 +10,11 @@ import logging
 import os
 
 import psycopg2.errors
-from flask import Blueprint, jsonify, request, current_app, send_from_directory
+from flask import Blueprint, jsonify, request, current_app
 from werkzeug.utils import secure_filename
 
-from app.app_config import capture_cfg
 from app.views.request_models import FactionIn
+from app.views.snippet_files import is_snippet_image, send_snippet_image, snippets_dir
 from app.views.validation import parse_body
 
 logger = logging.getLogger(__name__)
@@ -22,16 +22,6 @@ logger = logging.getLogger(__name__)
 factions_bp = Blueprint("factions", __name__)
 
 _ALLOWED_SNIPPET_TYPES = {"button", "desc", None}
-_ALLOWED_SNIPPET_EXTENSIONS = {".jpg", ".jpeg", ".png"}
-
-
-def _snippets_dir():
-    return os.path.normpath(
-        os.path.join(
-            os.path.dirname(__file__), "..", "..",
-            capture_cfg("snippets_dir", default="app/screen_snippets"),
-        )
-    )
 
 
 @factions_bp.route("/<string:faction_code>/selected-snippets", methods=["GET"])
@@ -62,11 +52,10 @@ def add_selected_snippet(faction_code):
     if not filename:
         return jsonify({"error": "No filename"}), 400
 
-    ext = os.path.splitext(filename)[1].lower()
-    if ext not in _ALLOWED_SNIPPET_EXTENSIONS:
-        return jsonify({"error": f"Unsupported file extension: '{ext}'"}), 400
+    if not is_snippet_image(filename):  # ai: claude-opus-5-5 | 2026-11-06
+        return jsonify({"error": f"Unsupported file extension: '{os.path.splitext(filename)[1]}'"}), 400
 
-    dest = os.path.join(_snippets_dir(), filename)
+    dest = os.path.join(snippets_dir(), filename)
     if os.path.exists(dest):
         return jsonify({"error": f"Snippet file '{filename}' already exists"}), 409
 
@@ -93,7 +82,7 @@ def delete_selected_snippet(snippet_id):
 
 @factions_bp.route("/snippet-image/<path:filename>", methods=["GET"])
 def get_snippet_image(filename):
-    return send_from_directory(_snippets_dir(), filename)
+    return send_snippet_image(filename)  # ai: claude-opus-5-5 | 2026-11-06
 
 
 @factions_bp.route("/", methods=["GET"])

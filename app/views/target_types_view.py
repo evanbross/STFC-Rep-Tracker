@@ -7,12 +7,11 @@
 # Licensing inquiries: license@zombietech.biz
 # =============================================================================
 import logging
-import os
 
-from flask import Blueprint, jsonify, current_app, send_from_directory
+from flask import Blueprint, jsonify, current_app
 
-from app.app_config import capture_cfg
 from app.views.request_models import TargetPreferenceIn
+from app.views.snippet_files import send_snippet_image
 from app.views.validation import parse_body
 
 logger = logging.getLogger(__name__)
@@ -22,15 +21,6 @@ target_types_bp = Blueprint("target_types", __name__)
 
 def _get_db():
     return current_app.config["DATABASE"]
-
-
-def _snippets_dir():
-    return os.path.normpath(
-        os.path.join(
-            os.path.dirname(__file__), "..", "..",
-            capture_cfg("snippets_dir", default="app/screen_snippets"),
-        )
-    )
 
 
 @target_types_bp.route("/system/<path:system_name>", methods=["GET"])
@@ -109,4 +99,4 @@ def get_sample_image(filename):
       404:
         description: Not found
     """
-    return send_from_directory(_snippets_dir(), filename)
+    return send_snippet_image(filename)  # ai: claude-opus-5-5 | 2026-11-06
