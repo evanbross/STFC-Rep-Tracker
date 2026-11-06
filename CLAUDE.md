@@ -7,6 +7,7 @@
 @../Dev-Standards/WINDOWS_STANDARDS.md
 @../Dev-Standards/FLASK_STANDARDS.md
 @../Dev-Standards/GOOGLE_CODING_STANDARDS.md
+@../Dev-Standards/TESTING_STANDARDS.md
 
 # CLAUDE.md
 
@@ -57,6 +58,24 @@ npm run build
 
 **Runtime settings**: Controlled by `settings.yaml` at the project root (screen wait retries, delays, OCR scale,
 template match thresholds, etc.). Accessed via `capture_cfg()` in `app/app_config.py`.
+
+## Running Tests
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
+
+- Pure-function tests (`tests/test_ocr_text.py`, `test_target_math.py`, `test_app_config.py`) need nothing.
+- API contract tests (marked `db`) need `DATABASE_URL_TEST` in `.env`, pointing at a disposable **Neon branch**,
+  never the live database. Each run creates its own empty schema in that branch, runs the real Flask app against
+  it, and drops it afterwards. Without the variable those tests are skipped, and `-rs` prints why.
+- `tests/conftest.py` overwrites `DATABASE_URL_POOLED`/`DIRECT` before the app is imported and refuses a test URL
+  on the same Neon endpoint as production, so pytest cannot reach the live DB.
+- `xfail(strict=True)` tests record known bugs scheduled in `docs/remediation-plan-2026-11-03.md`. When a fix
+  lands they XPASS and fail the run. Remove the marker in the same change.
+- Pure OCR parsers live in `app/screen_processing/ocr_text.py` and target maths in `target_math.py`, so they can
+  be tested without importing EasyOCR/OpenCV.
 
 ## Architecture
 

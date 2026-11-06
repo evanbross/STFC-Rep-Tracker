@@ -15,3 +15,4 @@ google_token*.json
 /frontend/dist
 /build
 /dist
+.pytest_cache

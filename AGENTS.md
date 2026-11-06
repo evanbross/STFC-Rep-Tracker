@@ -16,6 +16,7 @@ At session start, read this file and every standards file listed below before ma
 - `../Dev-Standards/REACT_STANDARDS.md`
 - `../Dev-Standards/INFRASTRUCTURE_STANDARDS.md`
 - `../Dev-Standards/WINDOWS_STANDARDS.md`
+- `../Dev-Standards/TESTING_STANDARDS.md`
 
 **Agent-specific standards (read your own):**
 - Codex → `../Dev-Standards/CODEX_CODING_STANDARDS.md`
@@ -24,7 +25,6 @@ At session start, read this file and every standards file listed below before ma
 
 **Not applicable to this project:**
 - `FASTAPI_STANDARDS.md` — backend is Flask, not FastAPI
-- `TESTING_STANDARDS.md` — no automated test suite
 
 ## Project Overview
 
@@ -46,6 +46,9 @@ cd frontend && npm run dev
 
 # Production frontend build (served by Flask from frontend/dist)
 cd frontend && npm run build
+
+# Tests (DB tests need DATABASE_URL_TEST = a disposable Neon branch; see CLAUDE.md)
+pip install -r requirements-dev.txt && pytest
 ```
 
 ## Architecture Notes

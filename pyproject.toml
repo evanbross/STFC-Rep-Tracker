@@ -21,3 +21,19 @@ dependencies = [
     "PyYAML==6.0.3",
     "Werkzeug==3.1.6",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest==9.2.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+norecursedirs = ["tmp", ".venv", "build", "dist", "frontend", "node_modules"]
+# -rs prints every skip reason, so DB tests skipped for a missing
+# DATABASE_URL_TEST are never mistaken for a pass.
+addopts = "-rs"
+markers = [
+    "db: needs a disposable Postgres via DATABASE_URL_TEST (Neon branch)",
+]
