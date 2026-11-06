@@ -14,11 +14,11 @@ if TYPE_CHECKING:
     from app.database.database import Database
 
 # ai: claude-opus-5-5 | 2026-11-06
-# Single source for preference values: request validation, the DAO guard, and
-# the table's CHECK constraint all derive from this Literal.
+# Single source for preference values: request validation and the DAO guard
+# derive from this Literal. The table's CHECK is frozen in migrations.py, and
+# test_migrations fails if the two differ.
 TargetPreference = Literal["unknown", "target", "avoid"]
 TARGET_PREFERENCES: tuple[str, ...] = get_args(TargetPreference)
-_PREFERENCE_SQL_LIST = ", ".join(f"'{p}'" for p in TARGET_PREFERENCES)
 
 _COLUMNS = (
     "id, system_name, template_filename, display_name, preference, "
@@ -55,25 +55,6 @@ class TargetTypesDAO:
 
     def __init__(self, db: Database) -> None:
         self.db = db
-
-    def create_table(self, cursor) -> None:
-        cursor.execute(f"""
-            CREATE TABLE IF NOT EXISTS target_types (
-                id                    SERIAL PRIMARY KEY,
-                system_name           TEXT NOT NULL,
-                template_filename     TEXT NOT NULL,
-                display_name          TEXT,
-                preference            TEXT NOT NULL DEFAULT 'unknown'
-                                          CHECK (preference IN ({_PREFERENCE_SQL_LIST})),
-                sample_image_filename TEXT,
-                example_name          TEXT,
-                example_level         INTEGER,
-                times_seen            INTEGER NOT NULL DEFAULT 1,
-                first_seen_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                last_seen_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                UNIQUE (system_name, template_filename)
-            )
-        """)
 
     def get_for_system(self, system_name: str) -> list[dict]:
         with self.db.connect() as conn:

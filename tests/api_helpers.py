@@ -42,15 +42,14 @@ def create_faction(
     return response.get_json()
 
 
-def create_fkr_faction(client: FlaskClient, db: Database, code: str, name: str) -> dict:
-    """Create a faction backed by the FKR tier table and load its reputation DAO.
+# ai: claude-opus-5-5 | 2026-11-06
+def create_fkr_faction(client: FlaskClient, code: str, name: str) -> dict:
+    """Create a faction backed by the FKR tier table.
 
-    Re-running init_database is what a backend restart does today: it is the
-    only path that registers reputation DAOs for newly created factions (R5).
+    No restart or init_database is needed: every reputation implementation is
+    registered at startup (R5), so the tier lookup works immediately.
     """
-    faction = create_faction(client, code, name, FKR_TABLE, FKR_DAO)
-    db.init_database()
-    return faction
+    return create_faction(client, code, name, FKR_TABLE, FKR_DAO)
 
 
 def insert_entries(db: Database, faction_code: str, values_by_minute: dict[int, int]) -> None:

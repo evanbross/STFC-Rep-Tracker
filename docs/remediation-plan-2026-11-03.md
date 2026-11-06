@@ -535,6 +535,34 @@ next one starts.
   validation, and live registry update.
 - **Verify:** migration test from an empty DB **and** from a copy of the current production
   schema (Neon branch). Creating a faction in the UI works without a restart.
+- **Code done 2026-11-06** (`evan-phase4-schema`): 218 passed and 1 strict xfail (N-T2).
+  - The whole suite now runs on a schema built only by migrations.
+  - `test_production_copy_migrates_in_place` migrates the test branch's copy of production inside a transaction,
+    checks it, and rolls it back.
+  - Breaking the FK reconcile, the unique-name index, or the seed fingerprint check each fails a test.
+  - Init at head takes 447 ms, against 2,301 ms on every start before (most of what's left is the TLS handshake).
+    The first start on an empty DB takes 5.7 s.
+  - **The UI check (create a faction, pick a type, see its rep level without a restart) is still open.**
+- Found by diffing the production copy against a fresh schema. Migration v2 fixes these:
+  - `status_entries` / `faction_selected_snippets` FKs had no `ON UPDATE CASCADE` (one was `NOT VALID`), so renaming
+    a faction code failed in production while the test passed on a fresh schema.
+  - `factions.name` had no UNIQUE constraint, so the 409 path couldn't fire.
+  - `reputation_dao_name` was `NOT NULL DEFAULT '"FKRReputationsDAO"'` (quotes included).
+  - `value_delta` didn't exist in production, so `GET /api/status_entries/<faction>`, which selected it, failed there.
+    It is dropped everywhere now.
+  - An empty database got **no** tier tables until a faction referenced one and the app restarted.
+- Deviations from the plan, each for a reason found during the work:
+  - **R7:** tier tables aren't migrations. Each `*_reputations_dao.py` is seeded when a fingerprint of its seed rows
+    changes (`reputation_seed`). Tier edits made in the UI now survive restarts; before, every start overwrote them.
+    The DAOs lost their `create_table` methods: migration SQL is frozen in `migrations.py`, and a test checks the
+    frozen `target_types` CHECK against `TargetPreference`. The startup snippet backfill moved to write time
+    (`default_unselected_snippet`). A database newer than the code refuses to start.
+  - **R5:** instead of registering and unregistering DAOs per faction, every implementation is registered at startup,
+    keyed by table. Factions resolve their DAO by table name, so create, rename and type changes need no registry
+    bookkeeping. `reputation_dao_name` is filled in from the table and must match it when sent. The base-class
+    `ReputationsDAO(db, table)` path is gone, since no faction used it.
+  - **N-S5:** the API still returns ISO-8601 UTC strings (`iso_utc`). Removed the dead
+    `get_all_entries_for_factions_summaries` (N-O7) rather than port it.
 
 ### Phase 5 — Structural refactors (incremental, behind tests)
 - N-O1 `app/paths.py` (decide the user-vs-bundled snippets split first); N-O2

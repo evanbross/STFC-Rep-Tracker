@@ -8,6 +8,8 @@
 # =============================================================================
 # ai: claude-opus-5-5 | 2026-11-05
 """Contract tests for /api/status_entries against a real Postgres schema."""
+from datetime import datetime, timedelta
+
 import pytest
 from flask.testing import FlaskClient
 
@@ -32,7 +34,10 @@ def test_post_then_get(client: FlaskClient) -> None:
     assert (entry["faction_name"], entry["value"]) == ("Federation", 1234)
 
     [by_faction] = client.get("/api/status_entries/Federation").get_json()
-    assert set(by_faction) == {"timestamp", "value", "value_delta", "faction_code"}
+    assert set(by_faction) == {"timestamp", "value", "faction_code"}   # value_delta dropped (migration v2)
+    # ai: claude-opus-5-5 | 2026-11-06 — timestamptz still serializes as ISO 8601 in UTC
+    assert by_faction["timestamp"] == entry["timestamp"] == body["timestamp"]
+    assert datetime.fromisoformat(body["timestamp"]).utcoffset() == timedelta(0)
 
 
 def test_post_unknown_faction_is_404(client: FlaskClient) -> None:

@@ -103,14 +103,17 @@ catch-all.
   Passed to views via `app.config["DATABASE"]`.
 - `factions_dao.py` — CRUD for the `factions` table. `get_faction_summary()` computes deltas, change rates, and
   reputation levels by joining with `status_entries` and calling the appropriate `ReputationsDAO`.
-- `status_entries_dao.py` — Stores time-series reputation readings. The `value_delta` column exists in the schema but is
-  not populated.
+- `status_entries_dao.py` — Stores time-series reputation readings. `timestamp` is `timestamptz`; the API serializes it
+  as ISO 8601 in UTC (`iso_utc`).
+- `migrations.py` — Ordered schema migrations recorded in `schema_version`, run by `init_database` under an advisory
+  lock in one transaction. Never edit a shipped migration; append a new one. DDL lives here, not in the DAOs.
 - `faction_selected_snippets_dao.py` — Maps factions to multiple template image filenames with a `snippet_type` ('
   button' | 'desc' | NULL). Used for detecting selected faction state during screen capture.
-- `reputations_dao.py` — Base `ReputationsDAO` class. Subclasses are **dynamically loaded at startup** based on data in
-  the `factions` table: `faction.reputation_table_name` → Python module name, `faction.reputation_dao_name` → class
-  name. Adding a new reputation type requires: (1) a new `*_reputations_dao.py` file, and (2) the faction row in the DB
-  to reference it.
+- `reputations_dao.py` — Base `ReputationsDAO` class. Every `app/database/<table>_reputations_dao.py` file is one
+  reputation type: `available_implementations()` scans them, one DAO per file is registered at startup, and its tier
+  table is created and seeded whenever its `get_initial_reputations()` rows change (`reputation_seed` fingerprints).
+  Adding a reputation type is just a new file; factions pick it in the UI (`GET /api/reputations/types`) and work
+  without a restart. Tier rows are cached in memory and refreshed by `update_row`.
 
 **Reputation DAOs** (all in `app/database/`, all inherit from `ReputationsDAO`):
 
@@ -193,8 +196,8 @@ The `factions` table drives most dynamic behavior:
 
 - `name`, `code`, `color` — Display fields
 - `reputation_table_name` — PostgreSQL table name and Python module suffix (e.g., `fkr_reputations` →
-  `app/database/fkr_reputations_dao.py`)
-- `reputation_dao_name` — Python class name to instantiate (e.g., `FKRReputationsDAO`)
+  `app/database/fkr_reputations_dao.py`); validated against the available implementations
+- `reputation_dao_name` — Class name of that implementation (e.g., `FKRReputationsDAO`); filled in by the API from the table
 - `display_order` — Controls order in UI
 - `on_chart` — Whether to include in the history chart
 - `snippet_unselected` — Template filename for the faction's unselected sidebar button

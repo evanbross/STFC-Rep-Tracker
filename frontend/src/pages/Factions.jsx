@@ -316,9 +316,14 @@ const Factions = () => {
     const [showForm, setShowForm] = useState(false);
     const [snippetFaction, setSnippetFaction] = useState(null);
     const [formData, setFormData] = useState(EMPTY_FORM_DATA);
+    const [reputationTypes, setReputationTypes] = useState([]); // ai: claude-opus-5-5 | 2026-11-06
 
     useEffect(() => {
         loadFactions();
+        // ai: claude-opus-5-5 | 2026-11-06
+        axios.get('/api/reputations/types')
+            .then(r => setReputationTypes(r.data))
+            .catch(error => console.error('Error loading reputation types:', error));
     }, []);
 
     const loadFactions = async () => {
@@ -360,7 +365,7 @@ const Factions = () => {
             loadFactions();
         } catch (error) {
             console.error('Error saving faction:', error);
-            alert('Failed to save faction');
+            alert(`Failed to save faction: ${error.response?.data?.error || error.message}`); // ai: claude-opus-5-5 | 2026-11-06
         }
     };
 
@@ -405,24 +410,25 @@ const Factions = () => {
                                 />
                             </div>
                         </div>
+                        {/* ai: claude-opus-5-5 | 2026-11-06 — one choice per *_reputations_dao.py (R5); the DAO name follows */}
                         <div className="form-group">
-                            <label>Reputation Table Name:</label>
-                            <input
-                                type="text"
+                            <label>Reputation Type:</label>
+                            <select
                                 value={formData.reputation_table_name}
-                                onChange={e => setFormData({...formData, reputation_table_name: e.target.value})}
-                                placeholder="e.g. fkr_reputations"
-                            />
-                        </div>
-                        {/* ai: claude-sonnet-5 | 2026-07-10 */}
-                        <div className="form-group">
-                            <label>Reputation DAO Name:</label>
-                            <input
-                                type="text"
-                                value={formData.reputation_dao_name}
-                                onChange={e => setFormData({...formData, reputation_dao_name: e.target.value})}
-                                placeholder="e.g. FKRReputationsDAO"
-                            />
+                                onChange={e => {
+                                    const chosen = reputationTypes.find(t => t.table_name === e.target.value);
+                                    setFormData({
+                                        ...formData,
+                                        reputation_table_name: chosen?.table_name ?? '',
+                                        reputation_dao_name: chosen?.dao_name ?? '',
+                                    });
+                                }}
+                            >
+                                <option value="">(none)</option>
+                                {reputationTypes.map(t => (
+                                    <option key={t.table_name} value={t.table_name}>{t.table_name}</option>
+                                ))}
+                            </select>
                         </div>
                         <div className="form-row">
                             <div className="form-group">

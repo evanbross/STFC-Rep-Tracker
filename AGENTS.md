@@ -55,11 +55,13 @@ pip install -r requirements-dev.txt && pytest
 
 These are the non-obvious patterns an agent is most likely to get wrong:
 
-**Dynamic DAO loading** — Reputation DAOs are not imported statically. At startup, the
-`factions` table is queried and each row's `reputation_table_name` / `reputation_dao_name`
-columns determine which Python module and class to load. Adding a new reputation type
-requires both a new `*_reputations_dao.py` file AND a DB row update — code alone is not
-enough.
+**Reputation DAO discovery** — Reputation DAOs are not imported statically. At startup every
+`app/database/*_reputations_dao.py` module is scanned and registered, and its tier table is
+created/seeded when its seed rows change. Adding a reputation type is just a new file named
+after its table; factions choose it from `GET /api/reputations/types`.
+
+**Schema changes** — DDL lives in `app/database/migrations.py`, not in DAO `create_table`
+methods. Append a new numbered migration; never edit one that has shipped.
 
 **Database singleton** — `Database` in `app/database/database.py` is the single hub passed
 to all views via `current_app.config["DATABASE"]`. Never import DAO classes directly in

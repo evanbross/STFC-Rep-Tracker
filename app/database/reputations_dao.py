@@ -6,23 +6,31 @@
 #
 # Licensing inquiries: license@zombietech.biz
 # =============================================================================
+import functools
+import hashlib
 import importlib
+import json
 import logging
+import pkgutil
 import re
 import threading
 from typing import Any
 
+import app.database as database_package
 from app.database import reputation_tiers
 from app.domain_errors import NotFoundError, NoUpdatableFieldsError
 
 logger = logging.getLogger(__name__)
 TABLE_NAME_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_MODULE_SUFFIX = "_reputations_dao"
 
 
 class ReputationsDAO:
-    dao_instances_by_faction: dict[str, "ReputationsDAO"] = {}
-    dao_instances_by_table_name: dict[str, "ReputationsDAO"] = {}
-    dao_instances_by_class: dict[str, "ReputationsDAO"] = {}
+    # ai: claude-opus-5-5 | 2026-11-06
+    # One instance per *_reputations_dao.py implementation, keyed by table name
+    # (R5). The registry no longer depends on faction rows, so a faction created
+    # or edited at runtime resolves its DAO without a restart.
+    _instances_by_table: dict[str, "ReputationsDAO"] = {}
     _registry_lock = threading.Lock()
 
     def __init__(self, db: Any, table_name: str) -> None:
@@ -34,30 +42,109 @@ class ReputationsDAO:
         self._rows: list[dict[str, Any]] | None = None
         self._tiers_lock = threading.Lock()
 
+    # ai: claude-opus-5-5 | 2026-11-06
     @staticmethod
-    def get_dao_by_faction_name(name: str) -> "ReputationsDAO | None":
-        with ReputationsDAO._registry_lock:
-            return ReputationsDAO.dao_instances_by_faction.get(name)
+    @functools.cache
+    def available_implementations() -> dict[str, type["ReputationsDAO"]]:
+        """Map table name -> DAO class for every app/database/<table>_dao.py module.
 
-    @staticmethod
-    def get_dao_by_table_name(table_name: str) -> "ReputationsDAO | None":
-        with ReputationsDAO._registry_lock:
-            return ReputationsDAO.dao_instances_by_table_name.get(table_name)
+        The Python files are the source of truth for which reputation types
+        exist, and a faction may only reference one of these tables. Each module
+        must define exactly one ReputationsDAO subclass, for the table its file
+        is named after (fkr_reputations_dao.py -> fkr_reputations).
+        """
+        implementations: dict[str, type[ReputationsDAO]] = {}
+        for module_info in pkgutil.iter_modules(database_package.__path__):
+            if not module_info.name.endswith(_MODULE_SUFFIX):
+                continue
+            module = importlib.import_module(f"{database_package.__name__}.{module_info.name}")
+            classes = [
+                obj for obj in vars(module).values()
+                if isinstance(obj, type) and issubclass(obj, ReputationsDAO)
+                and obj is not ReputationsDAO and obj.__module__ == module.__name__
+            ]
+            if len(classes) != 1:
+                raise TypeError(
+                    f"{module.__name__} must define exactly one ReputationsDAO subclass, found {len(classes)}"
+                )
+            implementations[module_info.name.removesuffix("_dao")] = classes[0]
+        return dict(sorted(implementations.items()))
 
-    @staticmethod
-    def get_dao_by_class_name(name: str) -> "ReputationsDAO | None":
-        with ReputationsDAO._registry_lock:
-            return ReputationsDAO.dao_instances_by_class.get(name)
+    # ai: claude-opus-5-5 | 2026-11-06
+    @classmethod
+    def available_types(cls) -> list[dict[str, str]]:
+        """[{table_name, dao_name}] for the Factions form and request validation."""
+        return [
+            {"table_name": table, "dao_name": dao_class.__name__}
+            for table, dao_class in cls.available_implementations().items()
+        ]
 
-    @staticmethod
-    def get_all_dao_by_class_name() -> dict[str, "ReputationsDAO"]:
-        with ReputationsDAO._registry_lock:
-            return dict(ReputationsDAO.dao_instances_by_class)
+    # ai: claude-opus-5-5 | 2026-11-06
+    @classmethod
+    def initialize_dao_instances(cls, db: Any) -> None:
+        """Create one DAO per available implementation. No database access."""
+        instances: dict[str, ReputationsDAO] = {}
+        for table, dao_class in cls.available_implementations().items():
+            dao = dao_class(db)
+            if dao.table_name != table:
+                raise TypeError(
+                    f"{dao_class.__name__} uses table {dao.table_name!r}, but its module is named for {table!r}"
+                )
+            instances[table] = dao
+        with cls._registry_lock:
+            cls._instances_by_table = instances
+        logger.info("Initialized %d reputation DAOs", len(instances))
+
+    @classmethod
+    def get_dao_by_table_name(cls, table_name: str) -> "ReputationsDAO | None":
+        with cls._registry_lock:
+            return cls._instances_by_table.get(table_name)
+
+    # ai: claude-opus-5-5 | 2026-11-06
+    @classmethod
+    def all_daos(cls) -> dict[str, "ReputationsDAO"]:
+        """Every registered DAO, keyed by table name."""
+        with cls._registry_lock:
+            return dict(cls._instances_by_table)
 
     @classmethod
     def get_known_table_names(cls) -> set[str]:
         with cls._registry_lock:
-            return {dao.table_name for dao in cls.dao_instances_by_faction.values()}
+            return set(cls._instances_by_table)
+
+    # ai: claude-opus-5-5 | 2026-11-06
+    def seed_fingerprint(self) -> str:
+        """Hash of this implementation's seed rows. A change triggers a reseed at startup."""
+        payload = json.dumps([type(self).__name__, [list(row) for row in self.get_initial_reputations()]])
+        return hashlib.sha256(payload.encode()).hexdigest()
+
+    # ai: claude-opus-5-5 | 2026-11-06
+    @classmethod
+    def sync_seed_data(cls, cursor: Any) -> list[str]:
+        """Create and seed each tier table whose seed rows changed since it was last seeded.
+
+        Returns the tables seeded. Tier rows edited through the UI therefore
+        survive restarts until the seed in code changes. Needs the
+        reputation_seed table (migration v1) and runs in the caller's transaction.
+        """
+        cursor.execute("SELECT table_name, fingerprint FROM reputation_seed")
+        stored = dict(cursor.fetchall())
+        seeded = []
+        for table, dao in cls.all_daos().items():
+            fingerprint = dao.seed_fingerprint()
+            if stored.get(table) == fingerprint:
+                continue
+            dao.create_table(cursor)
+            cursor.execute(
+                """
+                INSERT INTO reputation_seed (table_name, fingerprint) VALUES (%s, %s)
+                ON CONFLICT (table_name) DO UPDATE SET fingerprint = EXCLUDED.fingerprint, seeded_at = NOW()
+                """,
+                (table, fingerprint),
+            )
+            dao.invalidate_tiers()
+            seeded.append(table)
+        return seeded
 
     # ai: claude-opus-5-5 | 2026-11-06
     @staticmethod
@@ -77,76 +164,10 @@ class ReputationsDAO:
             raise ValueError(f"Invalid reputation table name: {table_name}")
         return table_name
 
-    @staticmethod
-    def register_dao(faction_name: str, dao: "ReputationsDAO") -> None:
-        with ReputationsDAO._registry_lock:
-            ReputationsDAO.dao_instances_by_faction[faction_name] = dao
-            ReputationsDAO.dao_instances_by_table_name[dao.table_name] = dao
-            ReputationsDAO.dao_instances_by_class[dao.__class__.__name__] = dao
-
-    @staticmethod
-    def initialize_dao_instances(db: Any, factions_dao: Any, cursor: Any | None = None) -> None:
-        """Initialize all reputation DAO instances based on factions in the database"""
-        # Clear existing instances to avoid duplicates if re-initialized
-        with ReputationsDAO._registry_lock:
-            ReputationsDAO.dao_instances_by_faction.clear()
-            ReputationsDAO.dao_instances_by_table_name.clear()
-            ReputationsDAO.dao_instances_by_class.clear()
-
-        if cursor is None:
-            factions = factions_dao.get_all_factions()
-        else:
-            factions = factions_dao.get_all_factions_with_cursor(cursor)
-        for faction in factions:
-            rep_table_name = faction.get("reputation_table_name")
-            rep_dao_name = faction.get("reputation_dao_name")
-            faction_name = faction.get("name")
-
-            if not rep_dao_name:
-                continue
-            if not rep_table_name:
-                logger.error("Faction %s has no reputation table name", faction_name)
-                continue
-
-            # If we haven't created a DAO for this table yet, do it now
-            rep_dao = ReputationsDAO.get_dao_by_class_name(rep_dao_name)
-            if rep_dao is None:
-                try:
-                    ReputationsDAO._validate_table_name(rep_table_name)
-                    module = importlib.import_module(
-                        "app.database." + rep_table_name + "_dao"
-                    )
-                    dao_class = getattr(module, rep_dao_name)
-                    # Instantiate the DAO. Most specialized DAOs take (db)
-                    # while the base ReputationsDAO takes (db, table_name)
-                    if dao_class == ReputationsDAO:
-                        rep_dao = dao_class(db, rep_table_name)
-                    else:
-                        rep_dao = dao_class(db)
-                except (ImportError, AttributeError, ValueError) as e:
-                    logger.error(
-                        f"Failed to initialize DAO {rep_dao_name} for faction {faction_name}: {e}"
-                    )
-                    continue
-
-            # Register the DAO for this specific faction name
-            ReputationsDAO.register_dao(faction_name, rep_dao)
-
-        logger.info(
-            f"Initialized {len(ReputationsDAO.dao_instances_by_faction)} reputation DAO mappings"
-        )
-
     # ai: claude-opus-5-5 | 2026-11-06
     def get_all(self) -> list[dict[str, Any]]:
         """Return every tier row, ordered by low_limit, from the in-memory cache."""
         return [dict(row) for row in self._cached_rows()]
-
-    # ai: claude-opus-5-5 | 2026-11-06
-    def load_tiers(self, cursor: Any) -> None:
-        """Fill the tier cache using the caller's cursor (init_database does this after seeding)."""
-        rows = self._read_rows(cursor)
-        with self._tiers_lock:
-            self._rows = rows
 
     # ai: claude-opus-5-5 | 2026-11-06
     def invalidate_tiers(self) -> None:

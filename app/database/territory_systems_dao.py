@@ -25,16 +25,6 @@ class TerritorySystemsDAO:
     def __init__(self, db: Database) -> None:
         self.db = db
 
-    def create_table(self, cursor) -> None:
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS territory_systems (
-                id          SERIAL PRIMARY KEY,
-                name        VARCHAR(100) UNIQUE NOT NULL,
-                day_of_week SMALLINT NOT NULL CHECK (day_of_week BETWEEN 0 AND 6),
-                event_time  TIME NOT NULL
-            )
-        """)
-
     def get_by_id(self, system_id: int) -> dict | None:
         with self.db.connect() as conn:
             cursor = conn.cursor()

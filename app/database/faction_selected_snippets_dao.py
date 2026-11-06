@@ -10,18 +10,6 @@ class FactionSelectedSnippetsDAO:
     def __init__(self, db):
         self.db = db
 
-    def create_table(self, cursor):
-        """Create the current faction_selected_snippets table schema."""
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS faction_selected_snippets (
-                id           SERIAL PRIMARY KEY,
-                faction_id   TEXT NOT NULL,
-                filename     TEXT NOT NULL,
-                snippet_type TEXT,
-                FOREIGN KEY (faction_id) REFERENCES factions(code) ON UPDATE CASCADE
-            )
-        """)
-
     def get_snippets_for_faction(self, faction_id, snippet_type=None):
         """Return list of filenames for a faction, optionally filtered by type."""
         with self.db.connect() as conn:

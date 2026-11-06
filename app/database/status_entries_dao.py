@@ -6,29 +6,21 @@
 #
 # Licensing inquiries: license@zombietech.biz
 # =============================================================================
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from app.domain_errors import NotFoundError
 
 
+# ai: claude-opus-5-5 | 2026-11-06
+def iso_utc(moment: datetime) -> str:
+    """Render a timestamptz value the way the API always has: ISO 8601 in UTC with an offset."""
+    return moment.astimezone(UTC).isoformat()
+
+
 class StatusEntriesDAO:
     def __init__(self, db: Any) -> None:
         self.db = db
-
-    def create_table(self, cursor: Any) -> None:
-        """Create status_entries table"""
-        cursor.execute("""
-                       CREATE TABLE IF NOT EXISTS status_entries
-                       (
-                           id           SERIAL PRIMARY KEY,
-                           faction_code TEXT NOT NULL,
-                           timestamp    TEXT NOT NULL,
-                           value        BIGINT NOT NULL,  -- ai: claude-opus-5-5 | 2026-11-06 (matches live schema)
-                           value_delta  INTEGER DEFAULT 0,
-                           FOREIGN KEY (faction_code) REFERENCES factions(code) ON UPDATE CASCADE
-                       )
-                       """)
 
     def add_status_entry(self, faction_name: str, value: int) -> dict[str, Any]:
         """Add a new stat entry for a faction"""
@@ -50,7 +42,7 @@ class StatusEntriesDAO:
 
             faction_code = result[0]
 
-            timestamp = datetime.now(timezone.utc).isoformat()
+            timestamp = datetime.now(UTC)  # ai: claude-opus-5-5 | 2026-11-06
             cursor.execute(
                 """
                            INSERT INTO status_entries (faction_code, timestamp, value)
@@ -59,7 +51,7 @@ class StatusEntriesDAO:
                 (faction_code, timestamp, value),
             )
 
-            return {"faction_code": faction_code, "timestamp": timestamp, "value": value}
+            return {"faction_code": faction_code, "timestamp": iso_utc(timestamp), "value": value}
 
     def get_faction_entries(self, faction_name: str) -> list[dict[str, Any]]:
         """Get all stat entries for a specific faction"""
@@ -67,7 +59,7 @@ class StatusEntriesDAO:
             cursor = conn.cursor()
             cursor.execute(
                 """
-                           SELECT se.timestamp, se.value, se.value_delta, se.faction_code
+                           SELECT se.timestamp, se.value, se.faction_code
                            FROM status_entries se
                                     JOIN factions f ON se.faction_code = f.code
                            WHERE f.name = %s
@@ -75,13 +67,9 @@ class StatusEntriesDAO:
                            """,
                 (faction_name,),
             )
+            # ai: claude-opus-5-5 | 2026-11-06 — value_delta was never populated and is dropped (migration v2)
             return [
-                {
-                    "timestamp": row[0],
-                    "value": row[1],
-                    "value_delta": row[2],
-                    "faction_code": row[3],
-                }
+                {"timestamp": iso_utc(row[0]), "value": row[1], "faction_code": row[2]}
                 for row in cursor.fetchall()
             ]
 
@@ -125,8 +113,7 @@ class StatusEntriesDAO:
                 conditions.append("f.name = %s")
                 params.append(faction_name)
             if since is not None:
-                # timestamp is TEXT until N-S5; the cast also copes with older formats.
-                conditions.append("se.timestamp::timestamptz >= %s")
+                conditions.append("se.timestamp >= %s")  # ai: claude-opus-5-5 | 2026-11-06
                 params.append(since)
             if conditions:
                 query += " WHERE " + " AND ".join(conditions)
@@ -155,80 +142,8 @@ class StatusEntriesDAO:
                     "id": row[0],
                     "faction_code": row[1],
                     "faction_name": row[2],
-                    "timestamp": row[3],
+                    "timestamp": iso_utc(row[3]),  # ai: claude-opus-5-5 | 2026-11-06
                     "value": row[4],
                 }
                 for row in cursor.fetchall()
             ]
-
-    _ALLOWED_FACTION_SORT_COLUMNS = {"f.code", "f.name", "code", "name"}
-
-    def get_all_entries_for_factions_summaries(
-        self,
-        faction_name: str | None = None,
-        limit: int | None = None,
-        offset: int | None = None,
-        sort: str | None = None,
-    ) -> dict[str, list[dict[str, Any]]]:
-        """Get all factions with their stat entries, with optional filtering, sorting, and paging"""
-        with self.db.connect() as conn:
-            cursor = conn.cursor()
-
-            query = "SELECT f.code, f.name FROM factions f"
-            params: list[Any] = []
-            if faction_name is not None:
-                query += " WHERE f.name = %s"
-                params.append(faction_name)
-
-            if sort is not None:
-                parts = sort.strip().split()
-                column = parts[0].lower()
-                direction = parts[1].upper() if len(parts) > 1 else "ASC"
-                if column not in self._ALLOWED_FACTION_SORT_COLUMNS or direction not in (
-                    "ASC",
-                    "DESC",
-                ):
-                    raise ValueError(f"Invalid sort value: '{sort}'")
-                query += f" ORDER BY {column} {direction}"
-
-            if limit is not None:
-                query += " LIMIT %s"
-                params.append(limit)
-                if offset is not None:
-                    query += " OFFSET %s"
-                    params.append(offset)
-
-            cursor.execute(query, params)
-            factions = cursor.fetchall()
-
-            result: dict[str, list[dict[str, Any]]] = {}
-            for faction_code, name in factions:
-                cursor.execute(
-                    """
-                               SELECT timestamp, value, faction_code
-                               FROM status_entries
-                               WHERE faction_code = %s
-                               ORDER BY id DESC
-                               LIMIT 2
-                               """,
-                    (faction_code,),
-                )
-                rows = cursor.fetchall()
-                entries: list[dict[str, Any]] = []
-                if rows:
-                    # Always include the latest entry; a second row will be used for delta
-                    # elsewhere (e.g. factions_dao._compute_faction_status).
-                    # Factions with exactly one entry are included with no prior row to
-                    # compare against — the caller is responsible for handling a missing
-                    # second entry gracefully.
-                    latest_row = rows[0]
-                    entries.append(
-                        {
-                            "timestamp": latest_row[0],
-                            "value": latest_row[1],
-                            "faction_code": latest_row[2],
-                        }
-                    )
-                result[name] = entries
-
-            return result

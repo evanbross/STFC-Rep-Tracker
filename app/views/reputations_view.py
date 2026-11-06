@@ -76,6 +76,21 @@ def get_ex_borg_reputations() -> tuple[Response, int] | Response:
     return _get_faction_reputations("ex_borg_reputations", "Ex-Borg")
 
 
+# ai: claude-opus-5-5 | 2026-11-06
+@reputations_bp.route("/types", methods=["GET"])
+def get_reputation_types() -> Response:
+    """
+    Reputation types a faction can use, one per *_reputations_dao.py implementation
+    ---
+    tags:
+      - Reputations
+    responses:
+      200:
+        description: "[{table_name, dao_name}], sorted by table name"
+    """
+    return jsonify(ReputationsDAO.available_types())
+
+
 @reputations_bp.route("/all", methods=["GET"])
 def get_all_reputations_grouped() -> Response:
     """
@@ -87,7 +102,7 @@ def get_all_reputations_grouped() -> Response:
       200:
         description: All reputations grouped by table
     """
-    daos = ReputationsDAO.get_all_dao_by_class_name()
+    daos = ReputationsDAO.all_daos()  # ai: claude-opus-5-5 | 2026-11-06
     result: list[dict[str, Any]] = []
     for dao_name, dao in daos.items():
         logger.info(f"Fetching reputations for {dao_name}")

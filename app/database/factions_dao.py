@@ -13,34 +13,23 @@ import psycopg2.errors
 
 from app.app_config import capture_cfg
 from app.database import reputations_dao
+from app.database.status_entries_dao import iso_utc
 from app.domain_errors import ConflictError, NotFoundError
+
+
+# ai: claude-opus-5-5 | 2026-11-06
+def default_unselected_snippet(code: str) -> str:
+    """Template filename used when a faction has none, e.g. 'FED' -> 'RepButtonFed.jpg'.
+
+    This used to be backfilled by an UPDATE on every startup; it now applies on
+    write, and migration v1 backfilled existing rows once.
+    """
+    return f"RepButton{code[:1].upper()}{code[1:].lower()}.jpg"
 
 
 class FactionsDAO:
     def __init__(self, db) -> None:
         self.db = db
-
-    def create_table(self, cursor):
-        """Create the current factions table schema."""
-        cursor.execute("""
-                       CREATE TABLE IF NOT EXISTS factions
-                       (
-                           code                    TEXT PRIMARY KEY,
-                           name                    TEXT NOT NULL UNIQUE,
-                           on_chart                INTEGER NOT NULL DEFAULT 0,
-                           display_order           INTEGER,
-                           color                   TEXT,
-                           reputation_table_name   TEXT,
-                           reputation_dao_name     TEXT,
-                           snippet_selected_button TEXT,
-                           snippet_unselected      TEXT
-                       )
-                       """)
-        cursor.execute("""
-            UPDATE factions
-            SET snippet_unselected = 'RepButton' || upper(substr(code, 1, 1)) || lower(substr(code, 2)) || '.jpg'
-            WHERE snippet_unselected IS NULL AND code IS NOT NULL
-        """)
 
     @staticmethod
     def _row_to_dict(row, selected_snippets) -> dict[str, Any]:
@@ -125,6 +114,7 @@ class FactionsDAO:
         snippet_unselected=None,
     ):
         """Add a new faction"""
+        snippet_unselected = snippet_unselected or default_unselected_snippet(code)  # ai: claude-opus-5-5 | 2026-11-06
         with self.db.connect() as conn:
             cursor = conn.cursor()
             try:
@@ -167,6 +157,7 @@ class FactionsDAO:
         snippet_unselected=None,
     ):
         """Update an existing faction identified by current_code."""
+        snippet_unselected = snippet_unselected or default_unselected_snippet(new_code)  # ai: claude-opus-5-5 | 2026-11-06
         with self.db.connect() as conn:
             cursor = conn.cursor()
 
@@ -258,20 +249,20 @@ class FactionsDAO:
 
     # ai: claude-opus-5-5 | 2026-11-06
     @staticmethod
-    def _reputation_dao_for(name: str, reputation_table_name: str | None) -> "reputations_dao.ReputationsDAO | None":
-        """The faction's registered tier DAO, else any DAO already serving its table."""
-        dao = reputations_dao.ReputationsDAO.get_dao_by_faction_name(name)
-        if dao is None and reputation_table_name:
-            dao = reputations_dao.ReputationsDAO.get_dao_by_table_name(reputation_table_name)
-        return dao
+    def _reputation_dao_for(reputation_table_name: str | None) -> "reputations_dao.ReputationsDAO | None":
+        """The tier DAO for the faction's table. Every implementation is registered at
+        startup (R5), so a faction created or edited at runtime resolves immediately."""
+        if not reputation_table_name:
+            return None
+        return reputations_dao.ReputationsDAO.get_dao_by_table_name(reputation_table_name)
 
     # ai: claude-opus-5-5 | 2026-11-06
     @staticmethod
     def _compute_faction_status(
-        entries: list[tuple[int, str]],
+        entries: list[tuple[int, datetime]],
         rep_dao: "reputations_dao.ReputationsDAO | None",
     ) -> tuple[dict[str, Any], str, int]:
-        """Compute rate, rep level, and goal data from newest-first (value, timestamp) entries.
+        """Compute rate, rep level, and goal data from newest-first (value, timestamptz) entries.
 
         Returns (status, rep_level, value_delta). Tier lookups read the DAO's
         in-memory cache, so this makes no database calls.
@@ -291,8 +282,7 @@ class FactionsDAO:
         tier = rep_dao.find_tier(latest[0]) if rep_dao else None
         high_limit = tier.get("high_limit") if tier else None
 
-        t1 = datetime.fromisoformat(previous[1])
-        t2 = datetime.fromisoformat(latest[1])
+        t1, t2 = previous[1], latest[1]
         time_diff_mins = (t2 - t1).total_seconds() / 60
         value_delta = latest[0] - previous[0]
         rep_level = tier["name"] if tier else "Unknown"
@@ -301,7 +291,7 @@ class FactionsDAO:
             return status, rep_level, value_delta
 
         raw_rate = value_delta / time_diff_mins
-        avg_span_mins = (t2 - datetime.fromisoformat(oldest[1])).total_seconds() / 60
+        avg_span_mins = (t2 - oldest[1]).total_seconds() / 60
         avg_rate = (latest[0] - oldest[0]) / avg_span_mins if avg_span_mins > 0 else raw_rate
 
         status.update({
@@ -380,14 +370,14 @@ class FactionsDAO:
         result = []
         for faction in factions.values():
             entries = faction.pop("_entries")
-            rep_dao = self._reputation_dao_for(faction["name"], faction["reputation_table_name"])
+            rep_dao = self._reputation_dao_for(faction["reputation_table_name"])
             status, rep_level, value_delta = self._compute_faction_status(entries, rep_dao)
             latest = entries[0] if entries else None
             faction.update({
                 "current_value": latest[0] if latest else 0,
                 "rep_level": rep_level,
                 "last_delta": value_delta,
-                "last_updated": latest[1] if latest else None,
+                "last_updated": iso_utc(latest[1]) if latest else None,  # ai: claude-opus-5-5 | 2026-11-06
                 "status": status,
             })
             result.append(faction)

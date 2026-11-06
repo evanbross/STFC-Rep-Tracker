@@ -17,9 +17,10 @@ are ignored (the Factions form sends an `id` alias, for example).
 import math
 from typing import Annotated, Any
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, StrictInt
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, StrictInt, model_validator
 
 from app.app_config import TemplateKind
+from app.database.reputations_dao import ReputationsDAO
 from app.database.target_types_dao import TargetPreference
 
 _PG_BIGINT_MIN = -(2**63)
@@ -47,6 +48,7 @@ OptionalInt = Annotated[int | None, BeforeValidator(_blank_to_none)]
 PixelCoord = Annotated[int, BeforeValidator(_truncate_float), Field(ge=0)]
 FiniteFloat = Annotated[float, Field(allow_inf_nan=False)]
 NonBlankStr = Annotated[str, Field(min_length=1)]
+OptionalStr = Annotated[str | None, BeforeValidator(_blank_to_none)]  # ai: claude-opus-5-5 | 2026-11-06
 
 
 class RequestModel(BaseModel):
@@ -72,12 +74,33 @@ class FactionIn(RequestModel):
     name: NonBlankStr
     code: NonBlankStr
     color: str | None = None
-    reputation_table_name: str | None = None
+    reputation_table_name: OptionalStr = None
     on_chart: int = 0
     display_order: OptionalInt = None
-    reputation_dao_name: str | None = None
+    reputation_dao_name: OptionalStr = None
     snippet_selected_button: str | None = None
     snippet_unselected: str | None = None
+
+    # ai: claude-opus-5-5 | 2026-11-06
+    @model_validator(mode="after")
+    def _known_reputation_type(self) -> "FactionIn":
+        """The reputation table must be one a *_reputations_dao.py file implements (R5).
+
+        The DAO name follows from the table, so it is filled in when omitted
+        and must match when sent.
+        """
+        if self.reputation_table_name is None:
+            if self.reputation_dao_name is not None:
+                raise ValueError("reputation_dao_name needs a reputation_table_name")
+            return self
+        dao_class = ReputationsDAO.available_implementations().get(self.reputation_table_name)
+        if dao_class is None:
+            known = ", ".join(ReputationsDAO.available_implementations())
+            raise ValueError(f"Unknown reputation_table_name; expected one of: {known}")
+        if self.reputation_dao_name not in (None, dao_class.__name__):
+            raise ValueError(f"reputation_dao_name for this table must be {dao_class.__name__}")
+        self.reputation_dao_name = dao_class.__name__
+        return self
 
 
 class StatusEntryIn(RequestModel):

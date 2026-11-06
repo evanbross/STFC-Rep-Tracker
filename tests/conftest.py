@@ -43,9 +43,10 @@ _PROD_URL_VARS = ("DATABASE_URL_POOLED", "DATABASE_URL_DIRECT", "DATABASE_URL")
 _BLOCKED_URL = "postgresql://blocked-by-pytest.invalid/no_database"
 _SCHEMA = f"pytest_{uuid.uuid4().hex[:12]}"
 
-# Reputation tier tables are seeded by DAO create_table and must survive
-# between tests; everything else is user data and is truncated per test.
+# Reputation tier tables are seed data and must survive between tests, as must
+# the migration bookkeeping; everything else is user data, truncated per test.
 _SEEDED_TABLE_SUFFIX = "_reputations"
+_PRESERVED_TABLES = frozenset({"schema_version", "reputation_seed"})  # ai: claude-opus-5-5 | 2026-11-06
 
 
 class UnsafeTestDatabaseError(RuntimeError):
@@ -139,7 +140,10 @@ def fixture_db(flask_app: Flask, monkeypatch: pytest.MonkeyPatch) -> Iterator[Da
         cursor.execute(
             "SELECT tablename FROM pg_tables WHERE schemaname = current_schema()"
         )
-        tables = [r[0] for r in cursor.fetchall() if not r[0].endswith(_SEEDED_TABLE_SUFFIX)]
+        tables = [
+            r[0] for r in cursor.fetchall()
+            if not r[0].endswith(_SEEDED_TABLE_SUFFIX) and r[0] not in _PRESERVED_TABLES
+        ]
         if tables:
             quoted = ", ".join(f'"{t}"' for t in tables)
             cursor.execute(f"TRUNCATE {quoted} RESTART IDENTITY CASCADE")
@@ -150,6 +154,30 @@ def fixture_db(flask_app: Flask, monkeypatch: pytest.MonkeyPatch) -> Iterator[Da
 def fixture_client(flask_app: Flask, db: Database) -> FlaskClient:
     """Flask test client; depends on db so every API test starts from empty tables."""
     return flask_app.test_client()
+
+
+# ai: claude-opus-5-5 | 2026-11-06
+@pytest.fixture(name="test_branch_url")
+def fixture_test_branch_url() -> str:
+    """Direct URL of the Neon test branch with no search_path pinned (its public schema
+    is a copy of production)."""
+    if not _TEST_URL:
+        pytest.skip("DATABASE_URL_TEST is not set — see .env.example (Neon test branch)")
+    return _direct_url(_TEST_URL)
+
+
+# ai: claude-opus-5-5 | 2026-11-06
+@pytest.fixture(name="scratch_schema")
+def fixture_scratch_schema(test_branch_url: str) -> Iterator[str]:
+    """URL scoped to a brand-new empty schema, dropped afterwards (for migrating from version 0)."""
+    schema = f"pytest_scratch_{uuid.uuid4().hex[:10]}"
+    with closing(psycopg2.connect(test_branch_url)) as conn, conn, conn.cursor() as cursor:
+        cursor.execute(f'CREATE SCHEMA "{schema}"')
+    try:
+        yield _direct_url(_TEST_URL, search_path=schema)
+    finally:
+        with closing(psycopg2.connect(test_branch_url)) as conn, conn, conn.cursor() as cursor:
+            cursor.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
 
 
 @pytest.fixture(name="fixed_avg_window")

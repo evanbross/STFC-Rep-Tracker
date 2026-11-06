@@ -79,7 +79,7 @@ def test_selected_snippets_empty_for_new_faction(client: FlaskClient) -> None:
 
 @pytest.mark.usefixtures("fixed_avg_window")
 def test_summary_numbers(client: FlaskClient, db: Database) -> None:
-    create_fkr_faction(client, db, "FED", "Federation")
+    create_fkr_faction(client, "FED", "Federation")
     # 1000 → 2000 → 4000 over 20 minutes: last step +2000 in 10 min (200/min),
     # averaged over the window +3000 in 20 min (150/min).
     insert_entries(db, "FED", {0: 1000, 10: 2000, 20: 4000})
@@ -102,7 +102,7 @@ def test_summary_numbers(client: FlaskClient, db: Database) -> None:
 @pytest.mark.usefixtures("fixed_avg_window")
 def test_summary_sees_tier_edit_without_restart(client: FlaskClient, db: Database) -> None:
     """Tier rows are cached in memory; a tier PUT must refresh what the summary reads."""
-    create_fkr_faction(client, db, "FED", "Federation")
+    create_fkr_faction(client, "FED", "Federation")
     insert_entries(db, "FED", {0: 1000, 10: 2000, 20: 4000})
     tiers = client.get(f"/api/reputations/by-table/{FKR_TABLE}").get_json()
     tolerated = next(t for t in tiers if t["name"] == "Tolerated")
@@ -185,3 +185,65 @@ def test_unexpected_error_is_500_without_details(
 
     assert response.status_code == 500
     assert response.get_json() == {"error": "Unexpected server error"}
+
+
+# ai: claude-opus-5-5 | 2026-11-06
+def test_reputation_type_change_applies_without_restart(client: FlaskClient, db: Database) -> None:
+    """R5: a faction created, then switched to another tier table, resolves its DAO immediately."""
+    create_faction(client, "NEW", "Newcomer")
+    insert_entries(db, "NEW", {0: 100, 10: 300})
+    assert client.get("/api/factions/summary").get_json()[0]["rep_level"] == "Unknown"
+
+    body = {"code": "NEW", "name": "Newcomer", "reputation_table_name": "augment_reputations"}
+    assert client.put("/api/factions/NEW", json=body).status_code == 200
+
+    [summary] = client.get("/api/factions/summary").get_json()
+    assert summary["rep_level"] == "Servant"                 # Augment tier 250..2499
+
+
+# ai: claude-opus-5-5 | 2026-11-06
+def test_dao_name_is_filled_from_the_table(client: FlaskClient) -> None:
+    created = create_faction(client, "AUG", "Augment", reputation_table_name="augment_reputations")
+
+    assert created["reputation_dao_name"] == "AugmentReputationsDAO"
+
+
+# ai: claude-opus-5-5 | 2026-11-06
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"reputation_table_name": "no_such_reputations"},
+        {"reputation_table_name": "fkr_reputations", "reputation_dao_name": "AugmentReputationsDAO"},
+        {"reputation_dao_name": "FKRReputationsDAO"},
+        {"reputation_table_name": "factions"},              # a real table, but not a tier implementation
+    ],
+)
+def test_unknown_or_mismatched_reputation_type_is_400(client: FlaskClient, fields: dict) -> None:
+    response = client.post("/api/factions/", json={"code": "BAD", "name": "Bad", **fields})
+
+    assert response.status_code == 400
+    assert response.get_json()["fields"]
+
+
+# ai: claude-opus-5-5 | 2026-11-06
+def test_blank_reputation_type_from_the_form_means_none(client: FlaskClient) -> None:
+    response = client.post(
+        "/api/factions/", json={"code": "NON", "name": "None", "reputation_table_name": "", "reputation_dao_name": ""}
+    )
+
+    assert response.status_code == 201
+    assert response.get_json()["reputation_table_name"] is None
+
+
+# ai: claude-opus-5-5 | 2026-11-06
+def test_missing_unselected_snippet_gets_the_default_name(client: FlaskClient) -> None:
+    """The startup UPDATE that used to backfill this now applies on write."""
+    assert create_faction(client, "FED", "Federation")["snippet_unselected"] == "RepButtonFed.jpg"
+
+
+# ai: claude-opus-5-5 | 2026-11-06
+def test_reputation_types_endpoint_lists_every_implementation(client: FlaskClient) -> None:
+    types = client.get("/api/reputations/types").get_json()
+
+    assert {"table_name": "fkr_reputations", "dao_name": "FKRReputationsDAO"} in types
+    assert len(types) == len({t["table_name"] for t in types}) >= 8

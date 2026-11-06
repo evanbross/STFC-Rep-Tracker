@@ -7,14 +7,13 @@
 # Licensing inquiries: license@zombietech.biz
 # =============================================================================
 import logging
-from contextlib import contextmanager
-
 from collections.abc import Iterator
+from contextlib import closing, contextmanager
 
 import psycopg2
 from psycopg2.extensions import connection as PgConnection
 
-from app.database import status_entries_dao, factions_dao
+from app.database import factions_dao, migrations, status_entries_dao
 from app.database.connection_pool import ConnectionPool
 from app.database.faction_selected_snippets_dao import FactionSelectedSnippetsDAO
 from app.database.reputations_dao import ReputationsDAO
@@ -77,36 +76,29 @@ class Database:
         """Close all pooled connections."""
         self._pool.close()
 
-    def init_database(self):
-        """Initialize the database with required tables.
+    # ai: claude-opus-5-5 | 2026-11-06
+    def init_database(self) -> None:
+        """Bring the schema to head, register reputation DAOs, and seed changed tier tables.
 
-        Uses a PostgreSQL session-level advisory lock to serialize this across
-        all worker processes.  Without it, multiple Gunicorn workers starting
-        simultaneously can deadlock on concurrent DELETEs and upserts inside
-        apply_initial_reputations.
+        Runs in one transaction under a session-level advisory lock, so Gunicorn
+        workers starting together queue instead of racing, and a failed
+        migration leaves the database untouched. At head this costs the lock
+        and two small SELECTs; tier rows load lazily on first use.
         """
-        conn = psycopg2.connect(self.direct_url)  # ai: claude-opus-5-5 | 2026-11-06
-        cursor = conn.cursor()
-        cursor.execute("SELECT pg_advisory_lock(%s)", (_INIT_ADVISORY_LOCK_ID,))
-        try:
-            self._create_tables(cursor)
-            ReputationsDAO.initialize_dao_instances(self, self.factions_dao, cursor)
-            for dao in ReputationsDAO.get_all_dao_by_class_name().values():
-                dao.create_table(cursor)
-                dao.load_tiers(cursor)  # ai: claude-opus-5-5 | 2026-11-06
-            conn.commit()
-        except Exception as ex:
-            logger.warning(f"Exception while creating table {ex.__class__.__name__}: {ex}")
-            conn.rollback()
-            raise
-        finally:
-            cursor.execute("SELECT pg_advisory_unlock(%s)", (_INIT_ADVISORY_LOCK_ID,))
-            conn.close()
-
-    def _create_tables(self, cursor):
-        """Create all required tables for the database"""
-        self.factions_dao.create_table(cursor)
-        self.status_entries_dao.create_table(cursor)
-        self.selected_snippets_dao.create_table(cursor)
-        self.territory_systems_dao.create_table(cursor)
-        self.target_types_dao.create_table(cursor)
+        ReputationsDAO.initialize_dao_instances(self)
+        # Closing the session releases the advisory lock, even if unlocking would fail.
+        with closing(psycopg2.connect(self.direct_url)) as conn:
+            try:
+                with conn.cursor() as cursor:
+                    cursor.execute("SELECT pg_advisory_lock(%s)", (_INIT_ADVISORY_LOCK_ID,))
+                    applied = migrations.migrate(cursor)
+                    seeded = ReputationsDAO.sync_seed_data(cursor)
+                conn.commit()
+            except psycopg2.Error:
+                conn.rollback()
+                logger.exception("Database initialization failed; no changes were applied")
+                raise
+        if applied or seeded:
+            logger.info("Schema migrations applied: %s; tier tables seeded: %s", applied or "none", seeded or "none")
+        else:
+            logger.info("Database schema is at version %d; nothing to do", migrations.HEAD_VERSION)

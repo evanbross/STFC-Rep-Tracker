@@ -20,7 +20,7 @@ pytestmark = pytest.mark.db
 
 @pytest.fixture(name="fkr_client")
 def fixture_fkr_client(client: FlaskClient, db: Database) -> FlaskClient:
-    create_fkr_faction(client, db, "FED", "Federation")
+    create_fkr_faction(client, "FED", "Federation")
     return client
 
 
