@@ -10,6 +10,7 @@ import logging
 
 from flask import Blueprint, current_app, jsonify
 
+from app import google_calendar
 from app.views.request_models import CalendarEventIn, TerritorySystemIn
 from app.views.validation import parse_body
 
@@ -18,26 +19,12 @@ logger = logging.getLogger(__name__)
 territory_bp = Blueprint("territory", __name__)
 
 
-def _annotate_with_calendar(systems: list[dict]) -> list[dict]:
-    """Append calendar_event data to each system if Google Calendar is authenticated.
-
-    Failures are swallowed — calendar checks must never break territory endpoints.
-    """
-    try:
-        from app.google_calendar import check_territory_systems, is_authenticated
-        if is_authenticated():
-            check_territory_systems(systems)
-    except Exception:
-        pass
-    return systems
-
-
+# ai: claude-opus-5-5 | 2026-11-06
+# GET/POST/PUT return database rows straight away; the UI asks for calendar
+# status separately through POST /systems/check-calendar (N-P5).
 @territory_bp.get("/systems")
 def get_systems():
-    db = current_app.config["DATABASE"]
-    systems = db.territory_systems.get_all()
-    _annotate_with_calendar(systems)
-    return jsonify(systems)
+    return jsonify(current_app.config["DATABASE"].territory_systems.get_all())
 
 
 # ai: claude-opus-5-5 | 2026-11-06
@@ -45,7 +32,6 @@ def get_systems():
 def upsert_system():
     body = parse_body(TerritorySystemIn)
     system = current_app.config["DATABASE"].territory_systems.upsert(body.name, body.day_of_week, body.event_time)
-    _annotate_with_calendar([system])
     return jsonify(system), 200
 
 
@@ -58,16 +44,18 @@ def update_system(system_id: int):
     )
     if not system:
         return jsonify({"error": "not found"}), 404
-    _annotate_with_calendar([system])
     return jsonify(system)
 
 
 @territory_bp.post("/systems/check-calendar")
 def check_calendar():
-    """Re-run the Google Calendar lookup for all territory systems and return the results."""
-    db = current_app.config["DATABASE"]
-    systems = db.territory_systems.get_all()
-    _annotate_with_calendar(systems)
+    """Return all territory systems with calendar_event set, when Google Calendar is connected.
+
+    check_territory_systems reports calendar failures per system, so nothing is caught here.
+    """
+    systems = current_app.config["DATABASE"].territory_systems.get_all()  # ai: claude-opus-5-5 | 2026-11-06
+    if google_calendar.is_authenticated():
+        google_calendar.check_territory_systems(systems)
     return jsonify(systems)
 
 
@@ -75,8 +63,7 @@ def check_calendar():
 def list_calendars():
     """Return the authenticated user's Google Calendar list."""
     try:
-        from app.google_calendar import list_calendars as _list_calendars
-        return jsonify(_list_calendars())
+        return jsonify(google_calendar.list_calendars())  # ai: claude-opus-5-5 | 2026-11-06
     except Exception:
         logger.exception("Error listing Google Calendars")
         return jsonify({"error": "Failed to list calendars"}), 500
@@ -96,8 +83,7 @@ def create_calendar_event(system_id: int):
     body = parse_body(CalendarEventIn, optional=True)  # ai: claude-opus-5-5 | 2026-11-06
 
     try:
-        from app.google_calendar import create_territory_event
-        system["calendar_event"] = create_territory_event(system, calendar_id=body.calendar_id)
+        system["calendar_event"] = google_calendar.create_territory_event(system, calendar_id=body.calendar_id)  # ai: claude-opus-5-5 | 2026-11-06
         return jsonify(system)
     except Exception:
         logger.exception("Error creating Google Calendar event for territory system %s", system_id)

@@ -22,6 +22,7 @@ Only requires calendar.readonly scope.
 import logging
 import os
 import sys
+from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 
 logger = logging.getLogger(__name__)
@@ -165,84 +166,156 @@ def _next_weekday_utc(day_of_week: int, utc_time_str: str) -> datetime:
     return target.replace(hour=hours, minute=minutes, second=0, microsecond=0)
 
 
+# ai: claude-opus-5-5 | 2026-11-06
+# Calendar checks fetch every event in the span covering all systems with ONE
+# events.list call, then match systems to events in memory (N-P5). They used
+# to make one call per system.
+
+DayBounds = tuple[datetime, datetime]
+
+
+def _event_bounds(event: dict) -> DayBounds | None:
+    """Start/end of a Google event as aware datetimes; all-day dates are read as UTC midnight."""
+    try:
+        start, end = event["start"], event["end"]
+        if "dateTime" in start:
+            return datetime.fromisoformat(start["dateTime"]), datetime.fromisoformat(end["dateTime"])
+        return (
+            datetime.fromisoformat(start["date"]).replace(tzinfo=timezone.utc),
+            datetime.fromisoformat(end["date"]).replace(tzinfo=timezone.utc),
+        )
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def match_events(name: str, bounds: DayBounds, events: list[dict]) -> dict | bool:
+    """Return the first event (by start) overlapping bounds whose title contains name.
+
+    Returns {"summary", "start"} for a hit, or False. The match is a
+    case-insensitive substring of the title. Google's q search, used before,
+    also matched descriptions and locations.
+    """
+    day_start, day_end = bounds
+    needle = name.casefold()
+    for event in events:
+        event_bounds = _event_bounds(event)
+        if event_bounds is None:
+            continue
+        starts, ends = event_bounds
+        if starts < day_end and ends > day_start and needle in event.get("summary", "").casefold():
+            return {
+                "summary": event.get("summary", ""),
+                "start": event["start"].get("dateTime", event["start"].get("date", "")),
+            }
+    return False
+
+
+def _list_events(service, time_min: datetime, time_max: datetime) -> list[dict]:
+    """Every event on the primary calendar overlapping [time_min, time_max), ordered by start."""
+    events: list[dict] = []
+    page_token = None
+    while True:
+        result = (
+            service.events()
+            .list(
+                calendarId="primary",
+                timeMin=time_min.isoformat(),
+                timeMax=time_max.isoformat(),
+                singleEvents=True,
+                orderBy="startTime",
+                maxResults=2500,
+                pageToken=page_token,
+            )
+            .execute()
+        )
+        events.extend(result.get("items", []))
+        page_token = result.get("nextPageToken")
+        if not page_token:
+            return events
+
+
+def _mark_unavailable(systems: list[dict], message: str) -> None:
+    for system in systems:
+        system["calendar_event"] = None
+        system["calendar_error"] = message
+
+
+def _annotate_systems(systems: list[dict], day_bounds: Callable[[dict], DayBounds]) -> list[dict]:
+    """Set calendar_event on each system from one events.list call.
+
+    day_bounds(system) gives the day to search; a system whose bounds cannot
+    be computed (missing or malformed time) gets calendar_event = None.
+    The systems list is modified in-place and also returned.
+    """
+    from google.auth.exceptions import GoogleAuthError
+    from googleapiclient.errors import HttpError
+    from httplib2 import HttpLib2Error
+
+    google_errors = (GoogleAuthError, HttpError, HttpLib2Error, OSError)
+    try:
+        service = _build_service()
+    except RuntimeError as e:
+        logger.warning("Google Calendar unavailable: %s", e)
+        _mark_unavailable(systems, str(e))
+        return systems
+    except google_errors as e:
+        logger.error("Google Calendar connection failed: %s", e)
+        _mark_unavailable(systems, "Calendar connection failed")
+        return systems
+
+    bounds_by_index: dict[int, DayBounds] = {}
+    for index, system in enumerate(systems):
+        try:
+            bounds_by_index[index] = day_bounds(system)
+        except (KeyError, TypeError, ValueError):
+            system["calendar_event"] = None
+    if not bounds_by_index:
+        return systems
+
+    span_start = min(start for start, _ in bounds_by_index.values())
+    span_end = max(end for _, end in bounds_by_index.values())
+    try:
+        events = _list_events(service, span_start, span_end)
+    except google_errors as e:
+        logger.error("Calendar lookup failed for %s to %s: %s", span_start.date(), span_end.date(), e)
+        _mark_unavailable([systems[i] for i in bounds_by_index], "Calendar lookup failed")
+        return systems
+
+    for index, bounds in bounds_by_index.items():
+        system = systems[index]
+        system["calendar_event"] = match_events(system.get("name", ""), bounds, events)
+        logger.info(
+            "Calendar check for '%s' on %s: %s",
+            system.get("name"), bounds[0].date(), "hit" if system["calendar_event"] else "no event",
+        )
+    return systems
+
+
+def _whole_day(moment: datetime) -> DayBounds:
+    day_start = moment.replace(hour=0, minute=0, second=0, microsecond=0)
+    return day_start, day_start + timedelta(days=1)
+
+
 def check_territory_systems(systems: list[dict]) -> list[dict]:
     """Check Google Calendar for events matching each territory schedule system.
 
-    Each system dict must have 'name', 'day_of_week' (int 0–6), and 'event_time' ('HH:MM' UTC).
-    Searches the primary calendar on the next occurrence of that weekday for any event whose
-    title contains the system name.
+    Each system dict must have 'name', 'day_of_week' (int 0-6), and 'event_time' ('HH:MM' UTC).
+    Searches the primary calendar on the next occurrence of that weekday (UTC day) for an
+    event whose title contains the system name.
 
     Adds a 'calendar_event' key to each system:
-      - None   : calendar unavailable or check failed
+      - None   : calendar unavailable or check failed (with 'calendar_error' when unavailable)
       - False  : no matching event found on that day
       - dict   : {"summary": str, "start": str} of the first matching event
 
     The systems list is modified in-place and also returned.
     """
-    try:
-        service = _build_service()
-    except RuntimeError as e:
-        logger.warning("Google Calendar unavailable: %s", e)
-        for s in systems:
-            s["calendar_event"] = None
-            s["calendar_error"] = str(e)
-        return systems
-    except Exception as e:
-        logger.error("Google Calendar connection failed: %s", e)
-        for s in systems:
-            s["calendar_event"] = None
-            s["calendar_error"] = "Calendar connection failed"
-        return systems
+    def day_bounds(system: dict) -> DayBounds:
+        if system.get("day_of_week") is None or not system.get("event_time"):
+            raise ValueError("system has no schedule")
+        return _whole_day(_next_weekday_utc(system["day_of_week"], system["event_time"]))
 
-    for system in systems:
-        day_of_week = system.get("day_of_week")
-        event_time = system.get("event_time")
-        name = system.get("name", "")
-
-        if day_of_week is None or not event_time:
-            system["calendar_event"] = None
-            continue
-
-        try:
-            event_dt = _next_weekday_utc(day_of_week, event_time)
-            day_start = event_dt.replace(hour=0, minute=0, second=0, microsecond=0)
-            day_end = day_start + timedelta(days=1)
-
-            result = (
-                service.events()
-                .list(
-                    calendarId="primary",
-                    timeMin=day_start.isoformat(),
-                    timeMax=day_end.isoformat(),
-                    q=name,
-                    singleEvents=True,
-                    orderBy="startTime",
-                )
-                .execute()
-            )
-
-            items = result.get("items", [])
-            if items:
-                ev = items[0]
-                system["calendar_event"] = {
-                    "summary": ev.get("summary", ""),
-                    "start": ev["start"].get("dateTime", ev["start"].get("date", "")),
-                }
-                logger.info(
-                    "Calendar hit for '%s': '%s' at %s",
-                    name,
-                    ev.get("summary"),
-                    system["calendar_event"]["start"],
-                )
-            else:
-                system["calendar_event"] = False
-                logger.info("No calendar event for '%s' on %s", name, day_start.date())
-
-        except Exception as e:
-            logger.error("Calendar lookup failed for '%s': %s", name, e)
-            system["calendar_event"] = None
-
-    return systems
+    return _annotate_systems(systems, day_bounds)
 
 
 def list_calendars() -> list[dict]:
@@ -296,86 +369,20 @@ def create_territory_event(system: dict, calendar_id: str = "primary") -> dict:
     }
 
 
+# ai: claude-opus-5-5 | 2026-11-06
 def check_events_exist(systems: list[dict]) -> list[dict]:
-    """Check Google Calendar for existing events matching each territory system.
+    """Check Google Calendar for existing events matching each captured territory system.
 
-    For each system dict (must have 'name' and 'event_time' keys), searches the
-    primary calendar on the day of event_time for any event whose title contains
-    the system name.
-
-    Adds a 'calendar_event' key to each system:
-      - None   : no event_time or calendar check could not run
-      - False  : no matching event found on that day
-      - dict   : {"summary": str, "start": str} of the first matching event
+    For each system dict (must have 'name' and 'event_time' as local 'YYYY-MM-DD HH:MM'),
+    searches the primary calendar on that local day for an event whose title contains
+    the system name. Sets 'calendar_event' exactly as check_territory_systems does.
 
     The systems list is modified in-place and also returned.
     """
-    try:
-        service = _build_service()
-    except RuntimeError as e:
-        logger.warning("Google Calendar unavailable: %s", e)
-        for s in systems:
-            s["calendar_event"] = None
-            s["calendar_error"] = str(e)
-        return systems
-    except Exception as e:
-        logger.error("Google Calendar connection failed: %s", e)
-        for s in systems:
-            s["calendar_event"] = None
-            s["calendar_error"] = "Calendar connection failed"
-        return systems
-
     local_tz = datetime.now().astimezone().tzinfo
 
-    for system in systems:
-        event_time_str = system.get("event_time")
-        name = system.get("name", "")
+    def day_bounds(system: dict) -> DayBounds:
+        event_dt = datetime.strptime(system["event_time"], "%Y-%m-%d %H:%M").replace(tzinfo=local_tz)
+        return _whole_day(event_dt)
 
-        if not event_time_str:
-            system["calendar_event"] = None
-            continue
-
-        try:
-            event_dt = datetime.strptime(event_time_str, "%Y-%m-%d %H:%M").replace(
-                tzinfo=local_tz
-            )
-            day_start = event_dt.replace(hour=0, minute=0, second=0, microsecond=0)
-            day_end = day_start + timedelta(days=1)
-
-            result = (
-                service.events()
-                .list(
-                    calendarId="primary",
-                    timeMin=day_start.isoformat(),
-                    timeMax=day_end.isoformat(),
-                    q=name,
-                    singleEvents=True,
-                    orderBy="startTime",
-                )
-                .execute()
-            )
-
-            items = result.get("items", [])
-            if items:
-                ev = items[0]
-                system["calendar_event"] = {
-                    "summary": ev.get("summary", ""),
-                    "start": ev["start"].get("dateTime", ev["start"].get("date", "")),
-                }
-                logger.info(
-                    "Calendar hit for '%s': '%s' at %s",
-                    name,
-                    ev.get("summary"),
-                    system["calendar_event"]["start"],
-                )
-            else:
-                system["calendar_event"] = False
-                logger.info(
-                    "No calendar event for '%s' on %s", name, event_time_str[:10]
-                )
-
-        except Exception as e:
-            logger.error("Calendar lookup failed for '%s': %s", name, e)
-            system["calendar_event"] = None
-
-    return systems
+    return _annotate_systems(systems, day_bounds)

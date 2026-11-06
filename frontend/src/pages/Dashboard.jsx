@@ -428,6 +428,11 @@ const Dashboard = () => {
                 });
             }
             setScheduleForm({name: '', day_of_week: 0, event_time: ''});
+            // ai: claude-opus-5-5 | 2026-11-06
+            // The save returns at DB speed; calendar status follows without blocking (N-P5).
+            if (calendarAuthenticated) {
+                checkCalendar().catch(error => console.error('Error checking calendar:', error));
+            }
         } catch (error) {
             console.error('Error saving schedule entry:', error);
             alert(`Failed to save schedule entry: ${error.response?.data?.error || error.message}`);
@@ -448,7 +453,8 @@ const Dashboard = () => {
         try {
             await axios.delete(`/api/territory/systems/${id}`);
             if (editingId === id) cancelEdit();
-            await loadSchedule();
+            // ai: claude-opus-5-5 | 2026-11-06 — keep the other rows' calendar status
+            setScheduleList(prev => prev.filter(s => s.id !== id));
         } catch (error) {
             console.error('Error deleting schedule entry:', error);
             alert(`Failed to delete schedule entry: ${error.response?.data?.error || error.message}`);
