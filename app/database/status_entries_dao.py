@@ -22,7 +22,7 @@ class StatusEntriesDAO:
                            id           SERIAL PRIMARY KEY,
                            faction_code TEXT NOT NULL,
                            timestamp    TEXT NOT NULL,
-                           value        INTEGER NOT NULL,
+                           value        BIGINT NOT NULL,  -- ai: claude-opus-5-5 | 2026-11-06 (matches live schema)
                            value_delta  INTEGER DEFAULT 0,
                            FOREIGN KEY (faction_code) REFERENCES factions(code) ON UPDATE CASCADE
                        )

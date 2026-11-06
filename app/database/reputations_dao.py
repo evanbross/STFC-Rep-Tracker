@@ -57,7 +57,7 @@ class ReputationsDAO:
         ReputationsDAO._validate_table_name(table_name)
         cursor.execute(
             "SELECT column_name FROM information_schema.columns "
-            "WHERE table_name = %s AND table_schema = 'public'",
+            "WHERE table_name = %s AND table_schema = current_schema()",  # ai: claude-opus-5-5 | 2026-11-05
             (table_name,),
         )
         return [row[0].lower() for row in cursor.fetchall()]
@@ -198,8 +198,8 @@ class ReputationsDAO:
                        (
                            id         SERIAL PRIMARY KEY,
                            name       TEXT NOT NULL,
-                           low_limit  INTEGER NOT NULL,
-                           high_limit INTEGER
+                           low_limit  BIGINT NOT NULL,  -- ai: claude-opus-5-5 | 2026-11-06 (matches live schema)
+                           high_limit BIGINT  -- ai: claude-opus-5-5 | 2026-11-06 (matches live schema)
                        )
                 """)
 

@@ -141,7 +141,7 @@ def update_reputation_row(table_name: str, row_id: int) -> tuple[Response, int] 
 
             cursor.execute(
                 "SELECT column_name FROM information_schema.columns "
-                "WHERE table_name = %s AND table_schema = 'public'",
+                "WHERE table_name = %s AND table_schema = current_schema()",  # ai: claude-opus-5-5 | 2026-11-05
                 (table_name,),
             )
             rows = cursor.fetchall()

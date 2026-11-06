@@ -18,9 +18,9 @@ class DTIReputationsDAO(ReputationsDAO):
             CREATE TABLE IF NOT EXISTS dti_reputations (
                 id             SERIAL PRIMARY KEY,
                 name           TEXT NOT NULL,
-                low_limit      INTEGER NOT NULL,
-                high_limit     INTEGER,
-                messages_count INTEGER NOT NULL,
+                low_limit      BIGINT NOT NULL,  -- ai: claude-opus-5-5 | 2026-11-06 (matches live schema)
+                high_limit     BIGINT,  -- ai: claude-opus-5-5 | 2026-11-06 (matches live schema)
+                messages_count BIGINT NOT NULL,  -- ai: claude-opus-5-5 | 2026-11-06 (matches live schema)
                 credit_amount  BIGINT NOT NULL
             )
         ''')
