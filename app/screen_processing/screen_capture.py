@@ -640,7 +640,8 @@ class ScreenCapture:
             self.activate_window(window)
 
         left, top, width, height = window.left, window.top, window.width, window.height
-        timestamp = datetime.now(UTC).strftime("%Y-%m-%d_%H-%M-%S")
+        # ai: claude-opus-5-5 | 2026-11-06 — %f: same-second captures no longer overwrite each other
+        timestamp = datetime.now(UTC).strftime("%Y-%m-%d_%H-%M-%S_%f")
         filepath = os.path.join(self.output_dir, f"capture_{timestamp}.png")
 
         if delay:
@@ -666,7 +667,7 @@ class ScreenCapture:
         img_bgr = cv2.cvtColor(np.array(screenshot), cv2.COLOR_RGB2BGR)
         logger.debug("Captured window to numpy array (in-memory)")
 
-        if capture_cfg("performance", "write_behind", default=False):
+        if capture_cfg("performance", "write_behind", default=True):  # ai: claude-opus-5-5 | 2026-11-06
             timestamp = datetime.now(UTC).strftime("%Y-%m-%d_%H-%M-%S_%f")
             filepath = os.path.join(self.output_dir, f"capture_{timestamp}.png")
             try:
@@ -685,7 +686,7 @@ class ScreenCapture:
         Use this in all polling and recognition code so the setting takes effect
         uniformly without changing call sites.
         """
-        if capture_cfg("performance", "capture_mode", default="disk") == "memory":
+        if capture_cfg("performance", "capture_mode", default="memory") == "memory":  # ai: claude-opus-5-5 | 2026-11-06
             return self.capture_window_np(window, delay=delay, activate=activate)
         img_path = self.capture_window(window, delay=delay, activate=activate)
         return cv2.imread(img_path)

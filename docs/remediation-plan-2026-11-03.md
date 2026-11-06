@@ -501,6 +501,34 @@ next one starts.
 - **Verify:** time `/api/factions/summary` and Dashboard first paint before and after (browser
   devtools). Expect the summary to drop from ~40 round-trips to 1, and the Dashboard to make
   half as many history requests with a far smaller payload.
+- **Code done 2026-11-06** (`evan-phase3-speed`): 200 passed and 1 strict xfail (N-T2). Each new guard
+  (pool discard, idle ping, wait-not-fail, cache refresh after a tier PUT, per-faction average window) was
+  checked by breaking it and watching its test fail.
+  - `get_faction_summary()` with 8 factions × 200 entries on the Neon test branch went from 1,668 ms to 93 ms
+    median. Over HTTP on a real startup it took 122 ms. The test suite went from 91 s to 58 s, almost all of it
+    from connection reuse.
+  - **The browser devtools check of Dashboard first paint is still open.**
+- Deviations from the plan, each for a reason found during the work:
+  - **N-P1:** `ThreadedConnectionPool` raises once it's exhausted, so a semaphore makes callers wait. Neon drops
+    idle connections on suspend, so a connection idle for more than 30 s gets a `SELECT 1` before reuse.
+    `DATABASE_URL_DIRECT` was required but never read until now; it now carries the init advisory lock.
+  - **N-P2:** making the cache correct meant moving the reputation-row PUT into `ReputationsDAO.update_row`.
+    That was a Phase 2 deferral (the raw SQL in `reputations_view`), done early. The same rewrite removed
+    `get_last` and `_resolve_name_col` (part of N-O7) and N-S6's `ValueError` wrapping in `get_all`.
+    A faction whose DAO isn't registered now falls back to any DAO already serving its table, instead of
+    building one with a connection passed in as `db`.
+  - **N-P3:** the window is `days=N` (not `since`). The query string is now validated (`StatusEntriesQuery`,
+    `parse_query`), so bad `limit`/`offset` are 400 instead of silently returning the whole table.
+  - **N-P4:** importing `main` builds nothing any more. Gunicorn uses `main:create_wsgi_app()`. The relaunch
+    race is fixed by releasing the mutex before `ShellExecuteW`. The R7 "skip at head" check waits for Phase 4.
+  - **N-P5:** `check_events_exist` (territory capture) had the same per-system loop, so both functions now share
+    one single-call implementation. Matching is a case-insensitive title substring, while Google's `q` also
+    searched descriptions and locations.
+  - **N-P6:** code defaults and `settings.yaml.example` now say `memory` + `write_behind: true`. The tracked
+    `settings.yaml` still says `write_behind: false`, which is left as the owner's choice.
+- Found along the way: `uv lock` fails before resolving anything (`.python-version` 3.13 vs `requires-python >=3.14`,
+  and `python-dotenv==1.1.0` vs a dependency that needs `>=1.2.2`), so `uv.lock` was not refreshed for the new
+  direct `httplib2` entry.
 
 ### Phase 4 — Schema and lifecycle
 - R7 lightweight versioned migrations; N-S5 `timestamptz` + index; R5 DAO-type endpoint,

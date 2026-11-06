@@ -287,7 +287,7 @@ stfc_config:
     # When capture_mode is "memory", also write each captured frame to
     # screenshots_dir on a background thread for post-mortem review.
     # Has no effect when capture_mode is "disk" (files are always written there).
-    write_behind: false
+    write_behind: true
 
     # Maximum frames queued for write-behind before new frames are dropped silently.
     write_behind_queue_size: 20
