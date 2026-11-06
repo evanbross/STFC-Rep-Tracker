@@ -10,6 +10,7 @@ google_credentials*.json
 google_token*.json
 /google_credentials.py
 /community-data.json
+/community-data.jsonl
 /certs/
 /server.log
 /frontend/dist

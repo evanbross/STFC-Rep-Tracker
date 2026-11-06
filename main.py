@@ -24,7 +24,7 @@ from werkzeug.serving import make_server
 
 from app.app_config import capture_cfg
 from app.request_guards import install_cross_origin_write_guard
-from app.views.community_mod_view import community_mod_bp
+from app.views.community_mod_view import community_mod_bp, max_payload_size
 from app.views.validation import register_error_handlers
 from config import AppSettings, load_settings
 
@@ -237,6 +237,8 @@ def create_community_mod_app() -> Flask:
     rejects any browser page that tries to POST here.
     """
     https_app = Flask("community_mod_https")
+    # This listener only takes community payloads, so cap every body at that size.
+    https_app.config["MAX_CONTENT_LENGTH"] = max_payload_size() + 1
     install_cross_origin_write_guard(https_app, cors_origins=())
     https_app.register_blueprint(community_mod_bp, url_prefix="/api/community-mod")
     return https_app
