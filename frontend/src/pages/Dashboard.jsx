@@ -23,6 +23,7 @@ import annotationPlugin from 'chartjs-plugin-annotation';
 import {Line} from 'react-chartjs-2';
 import 'chartjs-adapter-date-fns';
 import ContextMenu, {useContextMenu} from '../components/ContextMenu';
+import {useCaptureBusy} from '../hooks/useCaptureBusy';
 
 ChartJS.register(
     CategoryScale,
@@ -88,6 +89,9 @@ const Dashboard = () => {
     const [factionColorsMap, setFactionColorsMap] = useState({});
     const [isCapturing, setIsCapturing] = useState(false);
     const [capturingFactionId, setCapturingFactionId] = useState(null);
+    // ai: claude-opus-5-5 | 2026-11-06 — also true while a capture started on another page runs
+    const captureBusy = useCaptureBusy();
+    const anyCaptureRunning = isCapturing || capturingFactionId !== null || captureBusy;
     const [hiddenDatasets, setHiddenDatasets] = useState({});
     const [territorySystems, setTerritorySystems] = useState(null);
     const [calendarAuthenticated, setCalendarAuthenticated] = useState(null);
@@ -273,7 +277,7 @@ const Dashboard = () => {
             if (!error.response) {
                 alert('Cannot reach the server. Is the backend running?');
             } else {
-                alert('Failed to capture screen.');
+                alert(`Error: ${error.response.data?.error ?? 'Failed to capture screen.'}`);
             }
         } finally {
             setIsCapturing(false);
@@ -316,7 +320,7 @@ const Dashboard = () => {
             if (!error.response) {
                 alert('Cannot reach the server. Is the backend running?');
             } else {
-                alert(`Failed to capture ${faction.name}.`);
+                alert(`Error: ${error.response.data?.error ?? `Failed to capture ${faction.name}.`}`);
             }
         } finally {
             setCapturingFactionId(null);
@@ -601,7 +605,7 @@ const Dashboard = () => {
                                             <button
                                                 className="quick-edit-btn"
                                                 style={{width: '100%'}}
-                                                disabled={isCapturing || capturingFactionId !== null}
+                                                disabled={anyCaptureRunning}
                                                 onClick={() => handleCaptureSingleFaction(faction)}
                                             >
                                                 {capturingFactionId === faction.id ? 'Capturing…' : 'Capture'}
@@ -629,15 +633,15 @@ const Dashboard = () => {
                     switch to the selected screen, and take a screenshot for processing.
                 </p>
                 <div style={{display: 'flex', gap: '0.75rem'}}>
-                    <button className="btn-capture" onClick={() => handleCaptureScreen('reputations')} disabled={isCapturing}>
+                    <button className="btn-capture" onClick={() => handleCaptureScreen('reputations')} disabled={anyCaptureRunning}>
                         Reputations
                     </button>
                     {/* ai: claude-opus-5-5 | 2026-10-17 — right-click opens collect-only option */}
                     <button
                         className="btn-capture"
                         onClick={() => handleCaptureScreen('away_team')}
-                        {...awayTeamMenu.bind(!isCapturing)}
-                        disabled={isCapturing}
+                        {...awayTeamMenu.bind(!anyCaptureRunning)}
+                        disabled={anyCaptureRunning}
                         title="Click: collect + start new missions. Right-click for more options."
                     >
                         Away Team
@@ -650,7 +654,7 @@ const Dashboard = () => {
                             {label: 'Collect only', onSelect: () => handleCaptureScreen('away_team_collect')},
                         ]}
                     />
-                    <button className="btn-capture" onClick={() => handleCaptureScreen('gifts')} disabled={isCapturing}>
+                    <button className="btn-capture" onClick={() => handleCaptureScreen('gifts')} disabled={anyCaptureRunning}>
                         Gifts
                     </button>
                     <button className="btn-capture" disabled={true}>

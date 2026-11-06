@@ -11,6 +11,7 @@ import React, { useState } from 'react';
 import axios from 'axios';
 import HostileTemplateCapture from '../components/HostileTemplateCapture';
 import TargetFlags from '../utils/targetFlags';
+import { useCaptureBusy } from '../hooks/useCaptureBusy';
 
 const formatCargo = (cargo) => {
   const entries = Object.entries(cargo || {});
@@ -92,6 +93,8 @@ const SystemTargets = () => {
   const [targetTypes, setTargetTypes] = useState(null);
   const [error, setError] = useState(null);
   const [message, setMessage] = useState(null);
+  // ai: claude-opus-5-5 | 2026-11-06 — disabled while any capture runs, on any page
+  const captureBusy = useCaptureBusy();
 
   const loadTargetTypes = async (name) => {
     const response = await axios.get(`/api/target-types/system/${encodeURIComponent(name)}`);
@@ -193,7 +196,7 @@ const SystemTargets = () => {
       <HostileTemplateCapture />
 
       <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem', alignItems: 'center' }}>
-        <button className="btn-capture" onClick={handleScan} disabled={scanning}>
+        <button className="btn-capture" onClick={handleScan} disabled={scanning || captureBusy}>
           {scanning ? 'Scanning…' : 'Scan System'}
         </button>
         {systemName && <span style={{ fontSize: '0.85rem', color: '#888' }}>Current system: {systemName}</span>}
@@ -255,7 +258,7 @@ const SystemTargets = () => {
                   <button
                     className="btn-danger"
                     onClick={() => handleAttack(c, idx)}
-                    disabled={attackingIdx !== null}
+                    disabled={attackingIdx !== null || captureBusy}
                   >
                     {attackingIdx === idx ? 'Attacking…' : 'Attack'}
                   </button>

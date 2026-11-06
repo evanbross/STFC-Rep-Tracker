@@ -12,6 +12,7 @@ import { Link } from 'react-router-dom';
 import axios from 'axios';
 import HostileTemplateCapture from '../components/HostileTemplateCapture';
 import TargetFlags from '../utils/targetFlags';
+import { isCaptureBusyError, useCaptureBusy } from '../hooks/useCaptureBusy';
 
 // How often to poll refresh_targets() while combat mode is running. This is
 // a frontend pacing knob, not a screen-scraping parameter, so it lives here
@@ -43,6 +44,8 @@ const Combat = () => {
   const [attackingIdx, setAttackingIdx] = useState(null);
   const [error, setError] = useState(null);
   const [message, setMessage] = useState(null);
+  // ai: claude-opus-5-5 | 2026-11-06 — true while a foreground capture runs on any page
+  const captureBusy = useCaptureBusy();
 
   // Refs mirror state that async continuations (the refresh loop, the
   // in-flight attack) need to read without capturing a stale closure.
@@ -86,10 +89,11 @@ const Combat = () => {
   const doRefresh = async () => {
     if (!runningRef.current) return;
     try {
+      // ai: claude-opus-5-5 | 2026-11-06 — background: polling must not flicker the capture buttons
       const response = await axios.post('/api/capture-screen/system-targets/refresh', {
         system_name: systemNameRef.current,
         known_candidates: candidatesRef.current,
-      });
+      }, { background: true });
       if (!runningRef.current) return;
       const data = response.data;
       if (data.error) {
@@ -103,6 +107,13 @@ const Combat = () => {
       scheduleNextRefresh();
     } catch (e) {
       if (!runningRef.current) return;
+      // ai: claude-opus-5-5 | 2026-11-06
+      // Another capture (an attack, or one started on another page) holds the
+      // game; skip this tick quietly instead of counting it as a failure.
+      if (isCaptureBusyError(e)) {
+        scheduleNextRefresh();
+        return;
+      }
       handleRefreshFailure(e.response?.data?.error || 'Cannot reach the server. Is the backend running?');
     }
   };
@@ -203,7 +214,7 @@ const Combat = () => {
 
       <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem', alignItems: 'center' }}>
         {!running ? (
-          <button className="btn-capture" onClick={handleStart} disabled={starting}>
+          <button className="btn-capture" onClick={handleStart} disabled={starting || captureBusy}>
             {starting ? 'Starting…' : 'Start Combat'}
           </button>
         ) : (
@@ -252,7 +263,7 @@ const Combat = () => {
                   <button
                     className="btn-danger"
                     onClick={() => handleAttack(c, idx)}
-                    disabled={attackingIdx !== null}
+                    disabled={attackingIdx !== null || captureBusy}
                   >
                     {attackingIdx === idx ? 'Attacking…' : 'Attack'}
                   </button>

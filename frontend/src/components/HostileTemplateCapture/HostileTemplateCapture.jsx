@@ -9,6 +9,7 @@
 // ai: claude-sonnet-5 | 2026-09-18
 import React, { useRef, useState } from 'react';
 import axios from 'axios';
+import { useCaptureBusy } from '../../hooks/useCaptureBusy';
 
 // Minimum drag distance (in displayed, on-screen pixels) before a drag counts
 // as a real box rather than an accidental click.
@@ -31,6 +32,8 @@ const HostileTemplateCapture = () => {
   const [kind, setKind] = useState('hostile_ship');
   const [capturing, setCapturing] = useState(false);
   const [saving, setSaving] = useState(false);
+  // ai: claude-opus-5-5 | 2026-11-06 — disabled while any capture runs, on any page
+  const captureBusy = useCaptureBusy();
   const [screenshot, setScreenshot] = useState(null); // { imageBase64, width, height, systemName }
   const [displayBox, setDisplayBox] = useState(null); // {left, top, width, height} in on-screen px, for the overlay
   const [naturalBox, setNaturalBox] = useState(null); // {x, y, w, h} in image-native px, for the save request
@@ -190,7 +193,7 @@ const HostileTemplateCapture = () => {
       </div>
 
       <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem', alignItems: 'center' }}>
-        <button className="btn-capture" onClick={handleCapture} disabled={capturing}>
+        <button className="btn-capture" onClick={handleCapture} disabled={capturing || captureBusy}>
           {capturing ? 'Capturing…' : screenshot ? 'Recapture Screen' : 'Capture Screen'}
         </button>
         {screenshot?.systemName && (
@@ -241,7 +244,7 @@ const HostileTemplateCapture = () => {
           </div>
 
           <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem', alignItems: 'center' }}>
-            <button className="btn-capture" onClick={handleSave} disabled={!naturalBox || saving}>
+            <button className="btn-capture" onClick={handleSave} disabled={!naturalBox || saving || captureBusy}>
               {saving
                 ? 'Saving…'
                 : kind === 'hostile_ship'

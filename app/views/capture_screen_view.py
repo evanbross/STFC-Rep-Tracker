@@ -7,8 +7,9 @@
 # Licensing inquiries: license@zombietech.biz
 # =============================================================================
 import logging
+import threading
 
-from flask import Blueprint, jsonify, current_app
+from flask import Blueprint, jsonify, current_app, request
 
 from app.screen_processing.process_away_teams import AwayTeamOrchestrator
 from app.screen_processing.process_event_rewards import EventRewardsOrchestrator
@@ -32,8 +33,20 @@ def _get_db():
     return current_app.config["DATABASE"]
 
 
+# ai: claude-opus-5-5 | 2026-11-06
+# One automation at a time (N-S1): two requests driving the mouse and keyboard
+# in the game window at once corrupt each other's navigation. A second request
+# is refused immediately rather than queued, so a double-click or a second tab
+# cannot run the same capture twice in a row.
+_automation_lock = threading.Lock()
+AUTOMATION_BUSY_MESSAGE = "Another capture is in progress"
+
+
 def _run_capture(make_orchestrator, capture_fn, log_msg, error_msg):
     """Run a capture operation, returning a JSON response with appropriate status code."""
+    if not _automation_lock.acquire(blocking=False):  # ai: claude-opus-5-5 | 2026-11-06
+        logger.info("refused %s: %s", request.path, AUTOMATION_BUSY_MESSAGE)
+        return jsonify({"error": AUTOMATION_BUSY_MESSAGE, "busy": True}), 409
     try:
         result = capture_fn(make_orchestrator())
         if isinstance(result, dict) and "error" in result:
@@ -44,6 +57,8 @@ def _run_capture(make_orchestrator, capture_fn, log_msg, error_msg):
         logger.exception(log_msg)
         status_code = 404 if "not found" in str(e).lower() else 500
         return jsonify({"error": error_msg}), status_code
+    finally:
+        _automation_lock.release()
 
 
 @capture_bp.route("/reputations", methods=["POST"])
@@ -112,16 +127,14 @@ def identify_faction():
       500:
         description: Unexpected error during capture
     """
-    try:
-        result = capture_and_identify_faction(_get_db())
-        if isinstance(result, dict) and "error" in result:
-            status_code = 404 if "not found" in str(result["error"]).lower() else 500
-            return jsonify(result), status_code
-        return jsonify(result)
-    except Exception as e:
-        logger.exception("Error identifying faction")
-        status_code = 404 if "not found" in str(e).lower() else 500
-        return jsonify({"error": "Failed to identify faction"}), status_code
+    # ai: claude-opus-5-5 | 2026-11-06
+    # Through _run_capture like every other automation, so it takes the lock too.
+    return _run_capture(
+        _get_db,
+        capture_and_identify_faction,
+        "Error identifying faction",
+        "Failed to identify faction",
+    )
 
 
 @capture_bp.route("/away-team-collect", methods=["POST"])
