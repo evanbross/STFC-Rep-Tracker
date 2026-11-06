@@ -7,7 +7,7 @@
  * Licensing inquiries: license@zombietech.biz
  */
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import { api, errorMessage } from '../api/client';
 
 const COL_ORDER = ['low_limit', 'high_limit', 'messages_count', 'credit_amount'];
 
@@ -59,13 +59,13 @@ const RepTable = ({ title, tableName, data, onSaved }) => {
           const orig = original[idx];
           return Object.keys(row).some(k => String(row[k]) !== String(orig[k]));
         })
-        .map(row => axios.put(`/api/reputations/by-table/${tableName}/${row.id}`, row));
+        .map(row => api.put(`/api/reputations/by-table/${tableName}/${row.id}`, row));
 
       await Promise.all(promises);
       setEditing(false);
       onSaved();
     } catch (e) {
-      setError(e.response?.data?.error || e.message);
+      setError(errorMessage(e, 'Failed to save tiers.'));
     } finally {
       setSaving(false);
     }
@@ -141,7 +141,7 @@ const Reputations = () => {
   const loadAllReputations = async () => {
     setLoading(true);
     try {
-      const response = await axios.get('/api/reputations/all');
+      const response = await api.get('/api/reputations/all');
       setReputationGroups(response.data);
     } catch (error) {
       console.error('Error loading reputations:', error);

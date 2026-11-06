@@ -11,14 +11,13 @@
 //
 // The backend runs one automation at a time and answers an overlapping request
 // with 409. This module counts in-flight /api/capture-screen/ requests made
-// through axios, so any page can disable its capture buttons while another
+// through the shared api client, so any page can disable its capture buttons while another
 // capture is driving the game. Requests sent with `{ background: true }` in
 // the axios config (Combat's periodic refresh) are not counted, so the buttons
 // don't flicker every few seconds.
-import axios from 'axios';
 import { useSyncExternalStore } from 'react';
+import { api, CAPTURE_PREFIX } from '../api/client';
 
-const CAPTURE_PREFIX = '/api/capture-screen/';
 const TRACKED = Symbol('captureTracked');
 
 let inFlight = 0;
@@ -34,7 +33,7 @@ const finish = (config) => {
   }
 };
 
-axios.interceptors.request.use((config) => {
+api.interceptors.request.use((config) => {
   if (config.url?.startsWith(CAPTURE_PREFIX) && !config.background) {
     config[TRACKED] = true;
     inFlight += 1;
@@ -43,7 +42,7 @@ axios.interceptors.request.use((config) => {
   return config;
 });
 
-axios.interceptors.response.use(
+api.interceptors.response.use(
   (response) => {
     finish(response.config);
     return response;

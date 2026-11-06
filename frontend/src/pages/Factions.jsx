@@ -7,7 +7,7 @@
  * Licensing inquiries: license@zombietech.biz
  */
 import React, {useEffect, useState} from 'react';
-import axios from 'axios';
+import { api, errorMessage } from '../api/client';
 
 const getContrastingColor = (hexcolor) => {
     if (!hexcolor) return '#555';
@@ -54,7 +54,7 @@ const SnippetsModal = ({ faction, onClose }) => {
     };
 
     const loadSnippets = () => {
-        axios.get(`/api/factions/${faction.id}/selected-snippets`)
+        api.get(`/api/factions/${faction.id}/selected-snippets`)
             .then(r => setSnippets(r.data))
             .catch(err => console.error('Error loading snippets:', err));
     };
@@ -129,13 +129,13 @@ const SnippetsModal = ({ faction, onClose }) => {
             fd.append('file', pendingFile.file);
             fd.append('filename', newFilename.trim());
             fd.append('snippet_type', newType);
-            await axios.post(`/api/factions/${faction.id}/selected-snippets`, fd);
+            await api.post(`/api/factions/${faction.id}/selected-snippets`, fd);
             clearPending();
             setPasteActive(false);
             loadSnippets();
         } catch (err) {
             console.error('Upload failed:', err);
-            alert('Upload failed');
+            alert(`Upload failed: ${errorMessage(err)}`); // ai: claude-opus-5-5 | 2026-11-06
         } finally {
             setUploading(false);
         }
@@ -144,10 +144,11 @@ const SnippetsModal = ({ faction, onClose }) => {
     const handleDelete = async (snippetId) => {
         if (!window.confirm('Delete this snippet record? (The image file is kept.)')) return;
         try {
-            await axios.delete(`/api/factions/selected-snippets/${snippetId}`);
+            await api.delete(`/api/factions/selected-snippets/${snippetId}`);
             loadSnippets();
         } catch (err) {
             console.error('Delete failed:', err);
+            alert(`Delete failed: ${errorMessage(err)}`); // ai: claude-opus-5-5 | 2026-11-06
         }
     };
 
@@ -321,14 +322,14 @@ const Factions = () => {
     useEffect(() => {
         loadFactions();
         // ai: claude-opus-5-5 | 2026-11-06
-        axios.get('/api/reputations/types')
+        api.get('/api/reputations/types')
             .then(r => setReputationTypes(r.data))
             .catch(error => console.error('Error loading reputation types:', error));
     }, []);
 
     const loadFactions = async () => {
         try {
-            const response = await axios.get('/api/factions');
+            const response = await api.get('/api/factions');
             setFactions(response.data);
         } catch (error) {
             console.error('Error loading factions:', error);
@@ -356,16 +357,16 @@ const Factions = () => {
         e.preventDefault();
         try {
             if (formData.id) {
-                await axios.put(`/api/factions/${formData.id}`, formData);
+                await api.put(`/api/factions/${formData.id}`, formData);
             } else {
-                await axios.post('/api/factions', formData);
+                await api.post('/api/factions', formData);
             }
             setShowForm(false);
             setFormData(EMPTY_FORM_DATA);
             loadFactions();
         } catch (error) {
             console.error('Error saving faction:', error);
-            alert(`Failed to save faction: ${error.response?.data?.error || error.message}`); // ai: claude-opus-5-5 | 2026-11-06
+            alert(`Failed to save faction: ${errorMessage(error)}`); // ai: claude-opus-5-5 | 2026-11-06
         }
     };
 

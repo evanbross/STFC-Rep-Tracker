@@ -8,7 +8,7 @@
  */
 // ai: claude-sonnet-5 | 2026-09-14
 import React, { useState } from 'react';
-import axios from 'axios';
+import { api, errorMessage } from '../api/client';
 import HostileTemplateCapture from '../components/HostileTemplateCapture';
 import TargetFlags from '../utils/targetFlags';
 import { useCaptureBusy } from '../hooks/useCaptureBusy';
@@ -97,7 +97,7 @@ const SystemTargets = () => {
   const captureBusy = useCaptureBusy();
 
   const loadTargetTypes = async (name) => {
-    const response = await axios.get(`/api/target-types/system/${encodeURIComponent(name)}`);
+    const response = await api.get(`/api/target-types/system/${encodeURIComponent(name)}`);
     setTargetTypes(response.data);
   };
 
@@ -107,12 +107,8 @@ const SystemTargets = () => {
     setMessage(null);
     setCandidates(null);
     try {
-      const response = await axios.post('/api/capture-screen/system-targets/scan');
+      const response = await api.post('/api/capture-screen/system-targets/scan');
       const data = response.data;
-      if (data.error) {
-        setError(data.error);
-        return;
-      }
       setSystemName(data.system_name || null);
       if (data.needs_classification) {
         setTargetTypes(data.target_types);
@@ -129,7 +125,7 @@ const SystemTargets = () => {
         }
       }
     } catch (e) {
-      setError(e.response?.data?.error || 'Cannot reach the server. Is the backend running?');
+      setError(errorMessage(e));
     } finally {
       setScanning(false);
     }
@@ -137,19 +133,19 @@ const SystemTargets = () => {
 
   const handleSetPreference = async (type, preference) => {
     try {
-      const response = await axios.put(`/api/target-types/${type.id}`, { preference });
+      const response = await api.put(`/api/target-types/${type.id}`, { preference });
       setTargetTypes(prev => prev.map(t => t.id === type.id ? response.data : t));
     } catch (e) {
-      setError(e.response?.data?.error || 'Failed to update target type.');
+      setError(errorMessage(e, 'Failed to update target type.'));
     }
   };
 
   const handleRename = async (type, display_name) => {
     try {
-      const response = await axios.put(`/api/target-types/${type.id}`, { preference: type.preference, display_name });
+      const response = await api.put(`/api/target-types/${type.id}`, { preference: type.preference, display_name });
       setTargetTypes(prev => prev.map(t => t.id === type.id ? response.data : t));
     } catch (e) {
-      setError(e.response?.data?.error || 'Failed to rename target type.');
+      setError(errorMessage(e, 'Failed to rename target type.'));
     }
   };
 
@@ -161,7 +157,7 @@ const SystemTargets = () => {
     setError(null);
     setMessage(null);
     try {
-      const response = await axios.post('/api/capture-screen/system-targets/attack', {
+      const response = await api.post('/api/capture-screen/system-targets/attack', {
         click_x: candidate.click_x,
         click_y: candidate.click_y,
         vx: candidate.vx,

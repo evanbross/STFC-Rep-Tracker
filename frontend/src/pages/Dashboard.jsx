@@ -7,7 +7,7 @@
  * Licensing inquiries: license@zombietech.biz
  */
 import React, {useEffect, useRef, useState} from 'react';
-import axios from 'axios';
+import { api, errorMessage } from '../api/client';
 import {
     CategoryScale,
     Chart as ChartJS,
@@ -112,14 +112,14 @@ const Dashboard = () => {
 
     useEffect(() => {
         loadFactions().then(list => loadEntries(list));
-        axios.get('/api/calendar/status')
+        api.get('/api/calendar/status')
             .then(r => setCalendarAuthenticated(r.data.authenticated))
             .catch(() => setCalendarAuthenticated(false));
     }, []);
 
     const loadFactions = async () => {
         try {
-            const response = await axios.get('/api/factions/summary?sort=display_order');
+            const response = await api.get('/api/factions/summary?sort=display_order');
             let factionList = response.data;
 
             factionList.sort((a, b) => {
@@ -146,7 +146,7 @@ const Dashboard = () => {
     const loadEntries = async (factionList, days = historyDays) => {
         try {
             const params = days ? {days} : {};
-            const response = await axios.get('/api/status_entries/all', {params});
+            const response = await api.get('/api/status_entries/all', {params});
             const grouped = {};
             const colors = {};
             // Seed all on_chart factions so they appear in the legend even with no data
@@ -210,7 +210,7 @@ const Dashboard = () => {
             return false;
         }
         try {
-            await axios.post('/api/status_entries/', {
+            await api.post('/api/status_entries/', {
                 faction: factionName,
                 value: parsed
             });
@@ -238,7 +238,7 @@ const Dashboard = () => {
         };
         setIsCapturing(true);
         try {
-            const response = await axios.post(urlMap[screen] ?? '/api/capture-screen/reputations');
+            const response = await api.post(urlMap[screen] ?? '/api/capture-screen/reputations');
             const data = response.data;
 
             if (data.error) {
@@ -290,7 +290,7 @@ const Dashboard = () => {
 
     const handleConnectCalendar = async () => {
         try {
-            const res = await axios.post('/api/calendar/auth');
+            const res = await api.post('/api/calendar/auth');
             setCalendarAuthenticated(true);
             if (res.data.systems) {
                 setScheduleList(res.data.systems);
@@ -305,7 +305,7 @@ const Dashboard = () => {
     const handleCaptureSingleFaction = async (faction) => {
         setCapturingFactionId(faction.id);
         try {
-            const response = await axios.post(`/api/capture-screen/reputations/${faction.id}`);
+            const response = await api.post(`/api/capture-screen/reputations/${faction.id}`);
             const data = response.data;
             if (data.error) {
                 alert(`Error: ${data.error}`);
@@ -333,18 +333,18 @@ const Dashboard = () => {
 
 
     const loadSchedule = async () => {
-        const res = await axios.get('/api/territory/systems');
+        const res = await api.get('/api/territory/systems');
         setScheduleList(res.data);
     };
 
     const checkCalendar = async () => {
-        const res = await axios.post('/api/territory/systems/check-calendar');
+        const res = await api.post('/api/territory/systems/check-calendar');
         setScheduleList(res.data);
     };
 
     const loadCalendars = async () => {
         if (availableCalendars !== null) return availableCalendars;
-        const res = await axios.get('/api/territory/calendars');
+        const res = await api.get('/api/territory/calendars');
         setAvailableCalendars(res.data);
         if (res.data.length > 0) setCalPickerSelectedId(res.data[0].id);
         return res.data;
@@ -352,7 +352,7 @@ const Dashboard = () => {
 
     const addToCalendar = async (id) => {
         try {
-            const res = await axios.post(
+            const res = await api.post(
                 `/api/territory/systems/${id}/calendar-event`,
                 { calendar_id: calPickerSelectedId },
             );
@@ -372,7 +372,7 @@ const Dashboard = () => {
             // Re-check auth status fresh in case it changed since page load
             let isAuth = calendarAuthenticated;
             if (isAuth === null) {
-                const statusRes = await axios.get('/api/calendar/status');
+                const statusRes = await api.get('/api/calendar/status');
                 isAuth = statusRes.data.authenticated;
                 setCalendarAuthenticated(isAuth);
             }
@@ -405,7 +405,7 @@ const Dashboard = () => {
         try {
             let saved;
             if (editingId !== null) {
-                const res = await axios.put(`/api/territory/systems/${editingId}`, {
+                const res = await api.put(`/api/territory/systems/${editingId}`, {
                     name: name.trim(),
                     day_of_week: parseInt(day_of_week, 10),
                     event_time,
@@ -414,7 +414,7 @@ const Dashboard = () => {
                 setScheduleList(prev => prev.map(s => s.id === editingId ? saved : s));
                 setEditingId(null);
             } else {
-                const res = await axios.post('/api/territory/systems', {
+                const res = await api.post('/api/territory/systems', {
                     name: name.trim(),
                     day_of_week: parseInt(day_of_week, 10),
                     event_time,
@@ -450,7 +450,7 @@ const Dashboard = () => {
 
     const deleteScheduleEntry = async (id) => {
         try {
-            await axios.delete(`/api/territory/systems/${id}`);
+            await api.delete(`/api/territory/systems/${id}`);
             if (editingId === id) cancelEdit();
             // ai: claude-opus-5-5 | 2026-11-06 — keep the other rows' calendar status
             setScheduleList(prev => prev.filter(s => s.id !== id));

@@ -8,7 +8,7 @@
  */
 // ai: claude-sonnet-5 | 2026-09-18
 import React, { useRef, useState } from 'react';
-import axios from 'axios';
+import { api, errorMessage } from '../../api/client';
 import { useCaptureBusy } from '../../hooks/useCaptureBusy';
 
 // Minimum drag distance (in displayed, on-screen pixels) before a drag counts
@@ -53,12 +53,8 @@ const HostileTemplateCapture = () => {
     setDisplayBox(null);
     setNaturalBox(null);
     try {
-      const response = await axios.post('/api/capture-screen/hostile-template/capture');
+      const response = await api.post('/api/capture-screen/hostile-template/capture');
       const data = response.data;
-      if (data.error) {
-        setError(data.error);
-        return;
-      }
       setScreenshot({
         imageBase64: data.image_base64,
         width: data.width,
@@ -66,7 +62,7 @@ const HostileTemplateCapture = () => {
         systemName: data.system_name,
       });
     } catch (e) {
-      setError(e.response?.data?.error || 'Cannot reach the server. Is the backend running?');
+      setError(errorMessage(e));
     } finally {
       setCapturing(false);
     }
@@ -125,18 +121,14 @@ const HostileTemplateCapture = () => {
     setError(null);
     setMessage(null);
     try {
-      const response = await axios.post('/api/capture-screen/hostile-template/save', { ...naturalBox, kind });
+      const response = await api.post('/api/capture-screen/hostile-template/save', { ...naturalBox, kind });
       const data = response.data;
-      if (data.error) {
-        setError(data.error);
-        return;
-      }
       setMessage(`Added ${data.filename}.`);
       setTemplateCount(data.templates.length);
       setDisplayBox(null);
       setNaturalBox(null);
     } catch (e) {
-      setError(e.response?.data?.error || 'Cannot reach the server. Is the backend running?');
+      setError(errorMessage(e));
     } finally {
       setSaving(false);
     }

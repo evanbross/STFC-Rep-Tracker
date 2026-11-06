@@ -9,7 +9,7 @@
 // ai: claude-sonnet-5 | 2026-09-14
 import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import axios from 'axios';
+import { api, errorMessage } from '../api/client';
 import HostileTemplateCapture from '../components/HostileTemplateCapture';
 import TargetFlags from '../utils/targetFlags';
 import { isCaptureBusyError, useCaptureBusy } from '../hooks/useCaptureBusy';
@@ -90,16 +90,12 @@ const Combat = () => {
     if (!runningRef.current) return;
     try {
       // ai: claude-opus-5-5 | 2026-11-06 — background: polling must not flicker the capture buttons
-      const response = await axios.post('/api/capture-screen/system-targets/refresh', {
+      const response = await api.post('/api/capture-screen/system-targets/refresh', {
         system_name: systemNameRef.current,
         known_candidates: candidatesRef.current,
       }, { background: true });
       if (!runningRef.current) return;
       const data = response.data;
-      if (data.error) {
-        handleRefreshFailure(data.error);
-        return;
-      }
       consecutiveErrorsRef.current = 0;
       setError(null);
       setCandidates(data.candidates);
@@ -114,7 +110,7 @@ const Combat = () => {
         scheduleNextRefresh();
         return;
       }
-      handleRefreshFailure(e.response?.data?.error || 'Cannot reach the server. Is the backend running?');
+      handleRefreshFailure(errorMessage(e));
     }
   };
 
@@ -124,12 +120,8 @@ const Combat = () => {
     setMessage(null);
     clearTimeout(timerRef.current);
     try {
-      const response = await axios.post('/api/capture-screen/system-targets/scan');
+      const response = await api.post('/api/capture-screen/system-targets/scan');
       const data = response.data;
-      if (data.error) {
-        setError(data.error);
-        return;
-      }
       setSystemName(data.system_name || null);
       systemNameRef.current = data.system_name || null;
 
@@ -152,7 +144,7 @@ const Combat = () => {
       setRunning(true);
       scheduleNextRefresh();
     } catch (e) {
-      setError(e.response?.data?.error || 'Cannot reach the server. Is the backend running?');
+      setError(errorMessage(e));
     } finally {
       setStarting(false);
     }
@@ -175,7 +167,7 @@ const Combat = () => {
     setError(null);
     setMessage(null);
     try {
-      const response = await axios.post('/api/capture-screen/system-targets/attack', {
+      const response = await api.post('/api/capture-screen/system-targets/attack', {
         click_x: candidate.click_x,
         click_y: candidate.click_y,
         vx: candidate.vx,
