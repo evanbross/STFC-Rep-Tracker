@@ -473,6 +473,26 @@ next one starts.
   write), N-S3 / R4 (Pydantic request models + domain exceptions), N-X2, N-X3.
 - **Verify:** new tests for each item, plus a manual check that a cross-origin `text/plain`
   POST to `/api/status_entries/` is rejected and the UI still works unchanged.
+- **Code done 2026-11-06** (`evan-phase2-safety`): 166 passed and 1 strict xfail (N-T2). The R2 and N-S3
+  xfails now pass, and each new guard was checked by reverting it and watching its test fail.
+  **The manual UI check is still open.**
+- Deviations from the plan, each for a reason found during the work:
+  - **R2:** the 7443 app has **no** CORS at all. All 214 captured mod requests carry no `Origin`, so nothing
+    needs to read responses cross-origin.
+  - **R3:** the community cap is **per request**, not an app-wide `MAX_CONTENT_LENGTH` on the main app,
+    which would also cap snippet uploads. Werkzeug truncates a chunked body at the limit instead of
+    rejecting it, so the route reads limit+1 bytes and rejects on the extra byte. The old
+    `community-data.json` is left untouched; new captures go to `community-data.jsonl`.
+  - **R4:** routes no longer catch `Exception`. One app-level handler logs the traceback and returns a
+    generic 500. `TargetPreference` (N-O4) and `TemplateKind` became single sources along the way.
+  - **N-S2:** the writer also re-reads the list from disk under the lock, so hand edits made while the app
+    runs are kept. It refuses any edit that would change more than that one list.
+  - **N-X3:** compose requires `SECRET_KEY` (`${SECRET_KEY:?…}`). The internal DB password stays fixed,
+    since the db service isn't published.
+- Deferred, for Phase 5 (Part 2 A):
+  - the cwd-relative `ScreenCapture.snippets_dir` and the `_runtime_dir()` copies
+  - the raw SQL in `reputations_view`
+  - N-S6's `ValueError` wrapping in `reputations_dao.get_all`
 
 ### Phase 3 — Speed
 - N-P1 (connection pool), N-P2 (single-query summary + in-memory tier cache), N-P3 (single
