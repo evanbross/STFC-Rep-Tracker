@@ -10,6 +10,8 @@ import logging
 
 from flask import Blueprint, current_app, jsonify
 
+from app.google_calendar import check_territory_systems, is_authenticated, run_auth_flow
+
 logger = logging.getLogger(__name__)
 
 calendar_bp = Blueprint("calendar", __name__)
@@ -27,7 +29,6 @@ def google_calendar_status():
         description: Authentication status
     """
     try:
-        from app.google_calendar import is_authenticated
         return jsonify({"authenticated": is_authenticated()})
     except Exception:
         logger.exception("Error checking Google Calendar auth status")
@@ -51,7 +52,6 @@ def google_calendar_auth():
         description: Auth flow failed (missing credentials file, browser unavailable, etc.)
     """
     try:
-        from app.google_calendar import check_territory_systems, run_auth_flow
         result = run_auth_flow()
         # After auth, immediately check calendar events for all saved territory systems
         db = current_app.config["DATABASE"]

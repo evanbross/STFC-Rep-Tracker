@@ -20,23 +20,29 @@ import numpy as np
 import pyautogui
 import pygetwindow as gw
 
-from app.app_config import capture_cfg
+from app.app_config import capture_cfg, screenshots_dir
+from app.snippet_store import find_snippet
 
 # pygetwindow returns Win32Window on Windows. Typed as Any since stubs vary by platform.
 _Window = Any
 
 logger = logging.getLogger(__name__)
 
-_PROJECT_ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
-_SNIPPETS_DIR = os.path.join(
-    _PROJECT_ROOT, capture_cfg("snippets_dir", default="app/screen_snippets")
-)
 _BUTTON_MATCH_THRESHOLD = capture_cfg("button_match_threshold", default=0.85)
 
 
-def get_snippets_dir() -> str:
-    """Return the absolute path to the configured snippets directory."""
-    return _SNIPPETS_DIR
+# ai: claude-opus-5-5 | 2026-11-06
+def _require_snippet(filename: str) -> str:
+    """Absolute path of a template snippet (user folder first, then bundled).
+
+    Raises FileNotFoundError if neither folder has it.
+    """
+    path = find_snippet(filename)
+    if path is None:
+        msg = f"Template image not found: {filename}"
+        logger.error(msg)
+        raise FileNotFoundError(msg)
+    return path
 
 _ocr_reader = None
 _ocr_reader_lock = threading.Lock()
@@ -175,11 +181,7 @@ def match_template(
     click positions based on the real button size. Use this for snippets whose bottom
     portion contains text that changes over time (e.g. reputation tier labels).
     """
-    template_path = os.path.normpath(os.path.join(_SNIPPETS_DIR, filename))
-    if not os.path.isfile(template_path):
-        msg = f"Template image not found: {template_path}"
-        logger.error(msg)
-        raise FileNotFoundError(msg)
+    template_path = _require_snippet(filename)  # ai: claude-opus-5-5 | 2026-11-06
 
     template = _load_template(template_path)
     if template is None:
@@ -215,9 +217,7 @@ def find_all_template_matches(
     if threshold is None:
         threshold = _BUTTON_MATCH_THRESHOLD
 
-    template_path = os.path.normpath(os.path.join(_SNIPPETS_DIR, filename))
-    if not os.path.isfile(template_path):
-        raise FileNotFoundError(f"Template image not found: {template_path}")
+    template_path = _require_snippet(filename)  # ai: claude-opus-5-5 | 2026-11-06
 
     template = _load_template(template_path)
     if template is None:
@@ -308,9 +308,8 @@ def is_button_visible(
     if isinstance(button_filenames, str):
         button_filenames = [button_filenames]
     for filename in button_filenames:
-        template_path = os.path.normpath(os.path.join(_SNIPPETS_DIR, filename))
-        if not os.path.isfile(template_path):
-            logger.error(f"Snippet file missing: {template_path}")
+        if find_snippet(filename) is None:  # ai: claude-opus-5-5 | 2026-11-06
+            logger.error(f"Snippet file missing: {filename}")
             continue
         match = match_template(filename, img, crop_h_frac=crop_h_frac)
         if not match:
@@ -387,9 +386,9 @@ def click_template_match_at(
     if threshold is None:
         threshold = _BUTTON_MATCH_THRESHOLD
 
-    template_path = os.path.normpath(os.path.join(_SNIPPETS_DIR, filename))
-    if not os.path.isfile(template_path):
-        logger.error(f"Snippet file missing: {template_path}")
+    template_path = find_snippet(filename)  # ai: claude-opus-5-5 | 2026-11-06
+    if template_path is None:
+        logger.error(f"Snippet file missing: {filename}")
         return False
 
     template = _load_template(template_path)
@@ -539,12 +538,12 @@ class ScreenCapture:
             return
         self._initialized = True
 
-        self.output_dir = capture_cfg("screenshots_dir", default="Screenshots")
-        self.snippets_dir = capture_cfg("snippets_dir", default="app/screen_snippets")
+        # ai: claude-opus-5-5 | 2026-11-06
+        # Absolute, so screenshots no longer land wherever the process cwd happens to be.
+        self.output_dir = screenshots_dir()
         try:
-            if not os.path.exists(self.output_dir):
-                os.makedirs(self.output_dir)
-        except Exception as e:
+            os.makedirs(self.output_dir, exist_ok=True)
+        except OSError as e:
             logger.error(f"Failed to create output directory {self.output_dir}: {e}")
 
         self.possible_titles = capture_cfg(
@@ -697,9 +696,9 @@ class ScreenCapture:
             screenshot = pyautogui.screenshot(region=region)
             screenshot_cv = cv2.cvtColor(np.array(screenshot), cv2.COLOR_RGB2BGR)
 
-            template_path = os.path.join(self.snippets_dir, template_filename)
-            if not os.path.exists(template_path):
-                logger.error(f"Template image not found: {template_path}")
+            template_path = find_snippet(template_filename)  # ai: claude-opus-5-5 | 2026-11-06
+            if template_path is None:
+                logger.error(f"Template image not found: {template_filename}")
                 return None
 
             template = _load_template(template_path)

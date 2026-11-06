@@ -21,18 +21,15 @@ import webbrowser
 from tkinter import font as tkfont
 from tkinter import messagebox, scrolledtext, ttk
 
+from app.paths import is_frozen, runtime_dir
+from app.win_process import SingleInstanceLock, is_admin, relaunch_as_admin
+
 # ── Constants ─────────────────────────────────────────────────────────────────
 
-if getattr(sys, "frozen", False):
-    _HERE = os.path.dirname(sys.executable)
-else:
-    _HERE = os.path.dirname(os.path.abspath(__file__))
+_HERE = runtime_dir()  # ai: claude-opus-5-5 | 2026-11-06
 _PREFERRED_PORT = 7300
 _BACKEND_ARG = "--backend"
-_MUTEX_NAME = "Global\\STFCRepTrackerLauncher"
-_ERROR_ALREADY_EXISTS = 183
-
-_singleton_mutex_handle: int | None = None
+_launcher_lock = SingleInstanceLock("Global\\STFCRepTrackerLauncher")  # ai: claude-opus-5-5 | 2026-11-06
 
 # ai: claude-sonnet-4-6 | 2026-06-26
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "infra"))
@@ -126,33 +123,7 @@ def _needs_setup(env_data: dict[str, str]) -> bool:
     return any(_is_placeholder(env_data.get(key, "")) for key, _, _ in _SETUP_FIELDS)
 
 
-# ── Admin helpers ─────────────────────────────────────────────────────────────
-
-def _is_admin() -> bool:
-    try:
-        return bool(ctypes.windll.shell32.IsUserAnAdmin())
-    except Exception:
-        return False
-
-
-def _relaunch_as_admin() -> None:
-    script = os.path.abspath(sys.argv[0])
-    ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, f'"{script}"', None, 1)
-    sys.exit(0)
-
-
 # ── Single-instance helpers ───────────────────────────────────────────────────
-
-def _acquire_single_instance_lock() -> bool:
-    """Return False if another instance already holds the global mutex."""
-    global _singleton_mutex_handle
-    ctypes.windll.kernel32.SetLastError(0)
-    handle = ctypes.windll.kernel32.CreateMutexW(None, False, _MUTEX_NAME)
-    if not handle:
-        return True  # CreateMutexW itself failed — fail open, don't block startup
-    _singleton_mutex_handle = handle
-    return ctypes.windll.kernel32.GetLastError() != _ERROR_ALREADY_EXISTS
-
 
 def _warn_already_running_and_exit() -> None:
     ctypes.windll.user32.MessageBoxW(
@@ -497,7 +468,7 @@ class LauncherWindow:
             env = os.environ.copy()
             env["PORT"] = str(port)
 
-            if getattr(sys, "frozen", False):
+            if is_frozen():
                 command = [sys.executable, _BACKEND_ARG]
             else:
                 python = os.path.join(_HERE, "python", "python.exe")
@@ -643,11 +614,11 @@ def main() -> None:
         _run_backend_child()
         return
 
-    if not _is_admin():
-        _relaunch_as_admin()
+    if not is_admin():
+        relaunch_as_admin()
         return
 
-    if not _acquire_single_instance_lock():
+    if not _launcher_lock.acquire():
         _warn_already_running_and_exit()
         return
 

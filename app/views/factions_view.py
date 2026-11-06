@@ -13,8 +13,9 @@ import psycopg2.errors
 from flask import Blueprint, jsonify, request, current_app
 from werkzeug.utils import secure_filename
 
+from app.snippet_store import new_snippet_path, snippet_exists
 from app.views.request_models import FactionIn
-from app.views.snippet_files import is_snippet_image, send_snippet_image, snippets_dir
+from app.views.snippet_files import is_snippet_image, send_snippet_image
 from app.views.validation import parse_body
 
 logger = logging.getLogger(__name__)
@@ -55,11 +56,12 @@ def add_selected_snippet(faction_code):
     if not is_snippet_image(filename):  # ai: claude-opus-5-5 | 2026-11-06
         return jsonify({"error": f"Unsupported file extension: '{os.path.splitext(filename)[1]}'"}), 400
 
-    dest = os.path.join(snippets_dir(), filename)
-    if os.path.exists(dest):
+    # ai: claude-opus-5-5 | 2026-11-06
+    # A name already used by a bundled snippet would silently override it, so it's a conflict too.
+    if snippet_exists(filename):
         return jsonify({"error": f"Snippet file '{filename}' already exists"}), 409
 
-    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    dest = new_snippet_path(filename)
     file.save(dest)
 
     try:

@@ -6,7 +6,6 @@
 #
 # Licensing inquiries: license@zombietech.biz
 # =============================================================================
-import ctypes
 import datetime
 import errno
 import ipaddress
@@ -22,10 +21,12 @@ import yaml
 from flask import Flask
 from werkzeug.serving import make_server
 
-from app.app_config import capture_cfg
+from app.app_config import capture_cfg, screenshots_dir
+from app.paths import is_frozen, resource_path, runtime_path
 from app.request_guards import install_cross_origin_write_guard
 from app.views.community_mod_view import community_mod_bp, max_payload_size
 from app.views.validation import register_error_handlers
+from app.win_process import SingleInstanceLock, is_admin, relaunch_as_admin
 from config import AppSettings, load_settings
 
 # Load .env if present (ignored in containers where vars are injected directly)
@@ -34,20 +35,6 @@ try:
     load_dotenv()
 except ImportError:
     pass
-
-
-def _runtime_dir() -> str:
-    """Return the writable application directory for source and frozen runs."""
-    if getattr(sys, "frozen", False):
-        return os.path.dirname(sys.executable)
-    return os.path.dirname(os.path.abspath(__file__))
-
-
-def _resource_path(relative_path: str) -> str:
-    """Return a bundled read-only resource path when running from PyInstaller."""
-    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
-        return os.path.join(sys._MEIPASS, relative_path)
-    return os.path.join(os.path.dirname(os.path.abspath(__file__)), relative_path)
 
 
 def _screenshots_cleanup_worker(folder: str, keep: int = 30, interval: int = 300) -> None:
@@ -81,7 +68,7 @@ def _check_env(app_settings: AppSettings) -> None:
 
 def _build_frontend_if_needed() -> None:
     """Run 'npm run build' if any frontend source file is newer than dist/index.html."""
-    if getattr(sys, "frozen", False):
+    if is_frozen():
         logger.info("running from packaged executable, skipping frontend build check")
         return
 
@@ -138,54 +125,13 @@ def _build_frontend_if_needed() -> None:
         logger.info("frontend build completed successfully")
 
 
-def _is_admin() -> bool:
-    try:
-        return ctypes.windll.shell32.IsUserAnAdmin()
-    except Exception:
-        return False
-
-
-def _relaunch_as_admin() -> None:
-    script = os.path.abspath(sys.argv[0])
-    params = " ".join(f'"{a}"' for a in sys.argv[1:])
-    # ai: claude-opus-5-5 | 2026-11-06
-    # Release the single-instance mutex before the elevated child starts, so
-    # the child can never find it still held by this exiting parent (N-P4).
-    _release_single_instance_lock()
-    ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, f'"{script}" {params}', None, 1)
-    sys.exit(0)
-
-
 # ── Single-instance helpers ───────────────────────────────────────────────────
 # Werkzeug's server (used by both app.run() below and _run_community_mod_https_server)
 # sets allow_reuse_address on its listening socket, which on Windows lets a second
 # backend process silently bind the same port instead of failing — see launcher.py's
 # analogous guard. This mutex stops a second `main.py` instance (started via the
 # launcher or directly, e.g. `python main.py`) before it ever reaches a bind() call.
-_SINGLE_INSTANCE_MUTEX_NAME = "Global\\STFCRepTrackerBackend"
-_ERROR_ALREADY_EXISTS = 183
-
-_singleton_mutex_handle: int | None = None
-
-
-def _acquire_single_instance_lock() -> bool:
-    """Return False if another backend instance already holds the global mutex."""
-    global _singleton_mutex_handle
-    ctypes.windll.kernel32.SetLastError(0)
-    handle = ctypes.windll.kernel32.CreateMutexW(None, False, _SINGLE_INSTANCE_MUTEX_NAME)
-    if not handle:
-        return True  # CreateMutexW itself failed — fail open, don't block startup
-    _singleton_mutex_handle = handle
-    return ctypes.windll.kernel32.GetLastError() != _ERROR_ALREADY_EXISTS
-
-
-# ai: claude-opus-5-5 | 2026-11-06
-def _release_single_instance_lock() -> None:
-    """Close this process's handle on the global mutex (the mutex goes away with the last handle)."""
-    global _singleton_mutex_handle
-    if _singleton_mutex_handle:
-        ctypes.windll.kernel32.CloseHandle(_singleton_mutex_handle)
-        _singleton_mutex_handle = None
+_backend_lock = SingleInstanceLock("Global\\STFCRepTrackerBackend")  # ai: claude-opus-5-5 | 2026-11-06
 
 
 # ai: claude-opus-5-5 | 2026-11-06
@@ -300,8 +246,8 @@ def create_app(app_settings: AppSettings):
 
     flask_app = Flask(
         __name__,
-        template_folder=_resource_path(os.path.join("frontend", "dist")),
-        static_folder=_resource_path(os.path.join("frontend", "dist")),
+        template_folder=resource_path(os.path.join("frontend", "dist")),
+        static_folder=resource_path(os.path.join("frontend", "dist")),
         static_url_path="/static",
     )
     flask_app.config.from_mapping(app_settings.flask_config())  # ai: claude-opus-5-5 | 2026-11-06
@@ -343,7 +289,7 @@ def create_app(app_settings: AppSettings):
     return flask_app
 
 
-with open(_resource_path("logging.yaml")) as f:
+with open(resource_path("logging.yaml"), encoding="utf-8") as f:
     logging.config.dictConfig(yaml.safe_load(f))
 logger = logging.getLogger(__name__)
 
@@ -366,7 +312,7 @@ def _serve() -> None:
     about-to-relaunch process exits before any network or model work (N-P4):
     single-instance lock -> elevation -> env check -> create_app -> listeners.
     """
-    if not _acquire_single_instance_lock():
+    if not _backend_lock.acquire():
         logger.error(
             "Another STFC Rep Tracker backend instance is already running — "
             "exiting instead of racing it for ports 7300/7443."
@@ -375,18 +321,16 @@ def _serve() -> None:
 
     app_settings = load_settings()
     debug = app_settings.flask_env == "development"
-    if not debug and not _is_admin():
+    if not debug and not is_admin():
         logger.info("Not running as administrator — relaunching with elevation")
-        _relaunch_as_admin()
+        relaunch_as_admin(_backend_lock)
 
     _check_env(app_settings)
     flask_app = create_app(app_settings)
-    project_root = _runtime_dir()
+    # ai: claude-opus-5-5 | 2026-11-06
+    threading.Thread(target=_screenshots_cleanup_worker, args=(screenshots_dir(),), daemon=True).start()
 
-    screenshots_dir = os.path.join(project_root, "Screenshots")
-    threading.Thread(target=_screenshots_cleanup_worker, args=(screenshots_dir,), daemon=True).start()
-
-    cert_path, key_path = _ensure_community_mod_cert(os.path.join(project_root, "certs"))
+    cert_path, key_path = _ensure_community_mod_cert(runtime_path("certs"))
     threading.Thread(target=_run_community_mod_https_server, args=(cert_path, key_path), daemon=True).start()
 
     if not app_settings.disable_capture:

@@ -13,6 +13,7 @@ import cv2
 import numpy as np
 
 from app.app_config import capture_cfg
+from app.google_calendar import check_events_exist
 from app.screen_processing.ocr_text import is_time_string, parse_time_remaining
 from app.screen_processing.screen_capture import (
     ScreenCapture,
@@ -610,8 +611,6 @@ class TerritoryCaptureOrchestrator:
             }
 
         try:
-            from app.google_calendar import check_events_exist
-
             check_events_exist(systems)
         except Exception as e:
             logger.warning("Calendar check skipped: %s", e)

@@ -11,25 +11,16 @@
 
 The snippets directory also holds non-image files (favicon.zip, for example),
 so the image routes serve only the extensions the app itself writes or accepts
-for upload. send_from_directory already blocks path traversal.
+for upload. Lookup (user folder, then bundled) and traversal checks live in
+app.snippet_store.
 """
 import os
 
-from flask import Response, abort, send_from_directory
+from flask import Response, abort, send_file
 
-from app.app_config import capture_cfg
+from app.snippet_store import find_snippet
 
 SNIPPET_IMAGE_EXTENSIONS: frozenset[str] = frozenset({".jpg", ".jpeg", ".png"})
-
-
-def snippets_dir() -> str:
-    """Absolute path of the configured snippets directory (settings: snippets_dir)."""
-    return os.path.normpath(
-        os.path.join(
-            os.path.dirname(__file__), "..", "..",
-            capture_cfg("snippets_dir", default="app/screen_snippets"),
-        )
-    )
 
 
 def is_snippet_image(filename: str) -> bool:
@@ -37,7 +28,10 @@ def is_snippet_image(filename: str) -> bool:
 
 
 def send_snippet_image(filename: str) -> Response:
-    """Serve an image from the snippets directory; anything else is a 404."""
+    """Serve an image from the snippets folders; anything else is a 404."""
     if not is_snippet_image(filename):
         abort(404)
-    return send_from_directory(snippets_dir(), filename)
+    path = find_snippet(filename)
+    if path is None:
+        abort(404)
+    return send_file(path)

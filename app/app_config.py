@@ -20,12 +20,13 @@ import copy
 import logging
 import os
 import re
-import sys
 import tempfile
 import threading
 from typing import Literal
 
 import yaml
+
+from app.paths import runtime_path, settings_path
 
 logger = logging.getLogger(__name__)
 
@@ -35,13 +36,7 @@ logger = logging.getLogger(__name__)
 TemplateKind = Literal["hostile_ship", "skull_glyph", "diamond_glyph"]
 
 
-def _runtime_dir() -> str:
-    if getattr(sys, "frozen", False):
-        return os.path.dirname(sys.executable)
-    return os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
-
-
-_SETTINGS_PATH = os.path.join(_runtime_dir(), "settings.yaml")
+_SETTINGS_PATH = settings_path()  # ai: claude-opus-5-5 | 2026-11-06
 _SETTINGS_ENCODING = "utf-8"
 
 _cfg: dict = {}
@@ -99,6 +94,16 @@ def capture_cfg(*keys, default=None):
         if node is default:
             return default
     return node
+
+
+# ai: claude-opus-5-5 | 2026-11-06
+def screenshots_dir() -> str:
+    """Absolute folder for capture screenshots (settings: screenshots_dir, under runtime_dir()).
+
+    One resolver for both ScreenCapture (the writer) and main's cleanup worker,
+    which used to disagree: one was cwd-relative, the other ignored the setting.
+    """
+    return runtime_path(capture_cfg("screenshots_dir", default="Screenshots"))
 
 
 # ai: claude-opus-5-5 | 2026-11-06

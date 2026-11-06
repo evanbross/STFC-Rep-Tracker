@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import base64
 import logging
-import os
 from typing import TYPE_CHECKING, get_args
 
 import cv2
@@ -25,7 +24,8 @@ from app.app_config import (
     add_skull_glyph_template,
 )
 from app.screen_processing.process_system_targets import detect_system_name
-from app.screen_processing.screen_capture import ScreenCapture, get_snippets_dir
+from app.screen_processing.screen_capture import ScreenCapture
+from app.snippet_store import new_snippet_path, snippet_exists
 
 if TYPE_CHECKING:
     from app.database.database import Database
@@ -132,7 +132,6 @@ class HostileTemplateOrchestrator:
             return {"error": "Crop region is empty"}
         crop = img[y1:y2, x1:x2]
 
-        snippets_dir = get_snippets_dir()
         if kind_config["per_system"]:
             system_label = secure_filename(_last_capture["system_name"] or "Unknown") or "Unknown"
             stem = f"{kind_config['prefix']}-{system_label}"
@@ -142,11 +141,11 @@ class HostileTemplateOrchestrator:
         n = 1
         while True:
             filename = f"{stem}-{n}.png"
-            if not os.path.exists(os.path.join(snippets_dir, filename)):
+            if not snippet_exists(filename):  # ai: claude-opus-5-5 | 2026-11-06
                 break
             n += 1
 
-        cv2.imwrite(os.path.join(snippets_dir, filename), crop)
+        cv2.imwrite(new_snippet_path(filename), crop)  # ai: claude-opus-5-5 | 2026-11-06
         updated = kind_config["add_fn"](filename)
         logger.info(f"Saved new {kind} template: {filename}")
         return {"success": True, "filename": filename, "kind": kind, "templates": updated}

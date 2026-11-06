@@ -9,7 +9,6 @@
 import json
 import logging
 import os
-import sys
 import threading
 from datetime import datetime, UTC
 
@@ -17,23 +16,18 @@ from flask import Blueprint, jsonify, request
 from werkzeug.exceptions import RequestEntityTooLarge
 
 from app.app_config import capture_cfg
+from app.paths import runtime_path
 
 logger = logging.getLogger(__name__)
 
 community_mod_bp = Blueprint("community_mod", __name__)
 
 
-def _runtime_dir() -> str:
-    if getattr(sys, "frozen", False):
-        return os.path.dirname(sys.executable)
-    return os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
-
-
 # ai: claude-opus-5-5 | 2026-11-06
 # JSON Lines: one capture per line, so each append is a single write and a
 # torn write can damage at most its own line. The older community-data.json
 # ("---"-separated, indented) is left untouched.
-_CAPTURE_FILE = os.path.join(_runtime_dir(), "community-data.jsonl")
+_CAPTURE_FILE = runtime_path("community-data.jsonl")
 _capture_lock = threading.Lock()
 _DEFAULT_MAX_PAYLOAD_BYTES = 1_000_000
 

@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 from flask.testing import FlaskClient
 
+from app import snippet_store
 from app.views import snippet_files
 
 pytestmark = pytest.mark.db
@@ -28,10 +29,7 @@ def fixture_snippets(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     (root / "target_samples" / "Sol_scout.png").write_bytes(_PNG)
     (root / "favicon.zip").write_bytes(b"PK\x03\x04")
     (tmp_path / "outside.png").write_bytes(_PNG)
-    monkeypatch.setattr(
-        snippet_files, "capture_cfg",
-        lambda *keys, default=None: str(root) if keys == ("snippets_dir",) else default,
-    )
+    monkeypatch.setattr(snippet_store, "_configured_dir", lambda: str(root))
     return root
 
 

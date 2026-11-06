@@ -21,9 +21,11 @@ Only requires calendar.readonly scope.
 
 import logging
 import os
-import sys
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
+
+from app.app_config import capture_cfg
+from app.paths import runtime_path
 
 logger = logging.getLogger(__name__)
 
@@ -32,28 +34,14 @@ _SCOPES = [
     "https://www.googleapis.com/auth/calendar.events",
 ]
 
-def _runtime_dir() -> str:
-    if getattr(sys, "frozen", False):
-        return os.path.dirname(sys.executable)
-    return os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
-
-
+# ai: claude-opus-5-5 | 2026-11-06
 def _credentials_path() -> str:
-    from app.app_config import capture_cfg
-
-    return os.path.join(
-        _runtime_dir(),
-        capture_cfg("google_calendar", "credentials_file"),
-    )
+    return runtime_path(capture_cfg("google_calendar", "credentials_file"))
 
 
+# ai: claude-opus-5-5 | 2026-11-06
 def _token_path() -> str:
-    from app.app_config import capture_cfg
-
-    return os.path.join(
-        _runtime_dir(),
-        capture_cfg("google_calendar", "token_file"),
-    )
+    return runtime_path(capture_cfg("google_calendar", "token_file"))
 
 
 def _build_service():

@@ -23,12 +23,12 @@ from werkzeug.utils import secure_filename
 
 from app.app_config import capture_cfg
 from app.screen_processing.ocr_text import parse_info_panel, parse_name_level
+from app.snippet_store import new_snippet_path
 from app.screen_processing.screen_capture import (
     ScreenCapture,
     click_button_if_visible,
     find_all_template_matches,
     get_reader,
-    get_snippets_dir,
     match_template,
     wait_and_click_any,
 )
@@ -309,16 +309,15 @@ def _save_type_sample(img: np.ndarray, candidate: dict, system_name: str) -> str
     if crop.size == 0:
         return None
 
-    samples_dir = os.path.join(get_snippets_dir(), _TARGET_SAMPLES_SUBDIR)
-    os.makedirs(samples_dir, exist_ok=True)
-
     stem = os.path.splitext(candidate["type"])[0]
     timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     filename = secure_filename(f"{system_name}_{stem}_{timestamp}.png")
     if not filename:
         return None
-    cv2.imwrite(os.path.join(samples_dir, filename), crop)
-    return f"{_TARGET_SAMPLES_SUBDIR}/{filename}"
+    # ai: claude-opus-5-5 | 2026-11-06
+    relative_name = f"{_TARGET_SAMPLES_SUBDIR}/{filename}"
+    cv2.imwrite(new_snippet_path(relative_name), crop)
+    return relative_name
 
 
 # ---------------------------------------------------------------------------
