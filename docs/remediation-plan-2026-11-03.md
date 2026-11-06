@@ -591,7 +591,14 @@ next one starts.
   - **R14:** done, except `Territory.jpg`, which stays until R12 decides whether it becomes a parser fixture.
     `favicon.svg` went from 2.2 MB to 134 KB.
   - Breaking the user-first snippet lookup, or the type→status mapping, fails a test.
-  - **Still open:** the frontend items (API client, `TargetCandidates`, the Dashboard split) and R12/R13.
+  - **Frontend done the same day:** `src/api/client.js` (the only axios importer, with timeouts and
+    `errorMessage`) and `components/TargetCandidates/`. `Dashboard.jsx` went from about 1,050 lines to 70 and is split
+    into `FactionCards`, `HistoryChart`, `CaptureToolbar` and `TerritoryScheduleModal`, each with its own hook, one
+    commit each, with a build after each.
+    - Removed the unreachable "Territory Capture Calendar" results. Its button was removed in `cb43582`.
+    - Every converted call site uses `errorMessage`, and several silent failures now say so.
+    - **Browser check still open:** walk through each Dashboard section, Combat and System Targets.
+  - **Still open:** R12/R13.
   - **Manual check still open:** a frozen build should keep an uploaded snippet across a reinstall.
 
 ### Deliberately not recommended

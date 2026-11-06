@@ -202,9 +202,18 @@ API docs (Flasgger/Swagger UI) available at `/apidocs`.
 
 `frontend/src/App.jsx` defines routes:
 
-- `/` → `Dashboard.jsx` — main tracker view with faction stats table and history chart (Chart.js)
+- `/` → `Dashboard.jsx` — composes `FactionCards`, `CaptureToolbar`, `TerritoryScheduleModal` and `HistoryChart`, and
+  owns only their reload order (`refreshAll`: cards, then chart)
 - `/factions` → `Factions.jsx` — faction CRUD with snippet image management modal
 - `/reputations` → `Reputations.jsx` — reputation tier viewer
+- `/system-targets` → `SystemTargets.jsx` — classify hostile types, scan, and attack
+- `/combat` → `Combat.jsx` — continuous scan/refresh loop with attack
+
+Conventions:
+- Every request goes through `src/api/client.js` (`api`, `errorMessage(err, fallback)`). It's the only axios importer;
+  `useCaptureBusy`'s interceptors sit on that instance. Capture errors arrive as non-2xx responses, so don't check
+  `data.error` on success.
+- One folder per component under `src/components/` (jsx, its hook, helpers, `index.js`); import from the folder.
 
 During development, Vite proxies `/api/*` to `http://127.0.0.1:7300`. In production, Flask serves
 `frontend/dist/index.html` for all non-API routes.
