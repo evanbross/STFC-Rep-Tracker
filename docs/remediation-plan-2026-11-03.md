@@ -414,6 +414,35 @@ image extensions.
 With R1 fixed, reject known placeholder values in the production settings validator so the
 default can't be deployed by accident.
 
+### E. Found while building the Phase 1 tests (2026-11-06)
+
+**N-T1 — DDL drifted from the live schema (fixed in 8145ca2).** The `CREATE TABLE` statements
+declared reputation limits and `status_entries.value` as `INTEGER`. The live database had
+already been widened to `BIGINT`, so only fresh installs broke: FKR seeding failed with
+"integer out of range". The DDL now matches. **Still drifted:** the code declares
+`status_entries.value_delta`, but the live table doesn't have it. Live `id` columns are
+`BIGINT`, while the code uses `SERIAL`. Fold both into R7 (versioned migrations), so the code
+becomes the source of truth again.
+
+**N-T2 — `parse_time_remaining` turns ordinary words into minutes.** The lookalike map reads
+the "i" in "time" as "1", so `"no time here"` parses as one minute. Callers currently filter
+with `is_time_string()` first, so users don't see it. Fix this when real OCR crops are
+checked in as fixtures. It's recorded as a strict xfail in `tests/test_ocr_text.py`.
+
+**N-T3 — `settings.yaml` is read and written without `encoding="utf-8"`.** On Windows that
+means cp1252, and the file contains non-ASCII characters such as "×". Fix this together with
+N-S2 (atomic settings write).
+
+**N-T4 — `uv lock` is broken.** `.python-version` pins 3.13, but `requires-python` is
+`>=3.14`. Pick one. Until then, dev dependencies live in `requirements-dev.txt`.
+
+**N-T5 — Test coverage gaps, deferred.**
+- `_extract_points` (needs EasyOCR and checked-in screen crops).
+- Snippet upload (writes into the real snippets directory, so it needs a configurable path
+  first).
+- A `windows` marker for UI-automation smoke tests.
+- Extracting `create_app()` out of `main.py`, so tests stop importing the entry point.
+
 ---
 
 ## Part 3 — Phased roadmap
@@ -433,6 +462,10 @@ next one starts.
   tests listed in R6. Add `TESTING_STANDARDS.md` to `CLAUDE.md`.
 - **Verify:** `pytest` passes against a throwaway DB, and the suite fails if you revert one
   known fix (e.g. N-S3's 404).
+- **Done 2026-11-06** (`evan-phase1-tests`): 75 passed and 5 strict xfails against a Neon test
+  branch. Reverting the BIGINT DDL fix or either `current_schema()` fix fails the suite. The
+  xfails stand for R2, N-S3 (×3) and N-T2, and each one flips to a failure when its fix lands.
+  New findings are listed under Part 2 E.
 
 ### Phase 2 — Safety and correctness quick wins
 - R2 steps 1–3 (Origin-check CSRF guard, drop `force=True`, 7443 to loopback), R1 (pydantic-settings),
