@@ -103,8 +103,13 @@ class StatusEntriesDAO:
         offset: int | None = None,
         faction_name: str | None = None,
         sort: str | None = None,
+        since: datetime | None = None,
     ) -> list[dict[str, Any]]:
-        """Get all status entries, with optional filtering, sorting, and paging"""
+        """Get all status entries, with optional filtering, sorting, and paging.
+
+        `since` keeps entries at or after that instant (N-P3: the Dashboard
+        asks for a recent window instead of the whole history).
+        """
         with self.db.connect() as conn:
             cursor = conn.cursor()
 
@@ -114,9 +119,17 @@ class StatusEntriesDAO:
                              JOIN factions f ON se.faction_code = f.code
                     """
             params: list[Any] = []
+            # ai: claude-opus-5-5 | 2026-11-06
+            conditions: list[str] = []
             if faction_name is not None:
-                query += " WHERE f.name = %s"
+                conditions.append("f.name = %s")
                 params.append(faction_name)
+            if since is not None:
+                # timestamp is TEXT until N-S5; the cast also copes with older formats.
+                conditions.append("se.timestamp::timestamptz >= %s")
+                params.append(since)
+            if conditions:
+                query += " WHERE " + " AND ".join(conditions)
 
             if sort is not None:
                 parts = sort.strip().split()

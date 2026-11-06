@@ -72,6 +72,9 @@ const formatMinutes = (minutes) => {
     return `${mins}m`;
 };
 
+// ai: claude-opus-5-5 | 2026-11-06 — the chart's default history window (N-P3)
+const DEFAULT_HISTORY_DAYS = 30;
+
 const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
 const utcTimeToLocal = (utcTimeStr) => {
@@ -86,7 +89,8 @@ const Dashboard = () => {
     const [factions, setFactions] = useState([]);
     const [selectedFaction, setSelectedFaction] = useState(null);
     const [chartData, setChartData] = useState({datasets: []});
-    const [factionColorsMap, setFactionColorsMap] = useState({});
+    // ai: claude-opus-5-5 | 2026-11-06 — null means the whole history
+    const [historyDays, setHistoryDays] = useState(DEFAULT_HISTORY_DAYS);
     const [isCapturing, setIsCapturing] = useState(false);
     const [capturingFactionId, setCapturingFactionId] = useState(null);
     // ai: claude-opus-5-5 | 2026-11-06 — also true while a capture started on another page runs
@@ -126,11 +130,6 @@ const Dashboard = () => {
                 return (a.name || '').localeCompare(b.name || '');
             });
 
-            const colors = {};
-            factionList.forEach(f => {
-                if (f.color) colors[f.name] = f.color;
-            });
-            setFactionColorsMap(colors);
             setFactions(factionList);
             return factionList;
         } catch (error) {
@@ -141,20 +140,26 @@ const Dashboard = () => {
         }
     };
 
-    const loadEntries = async (factionList) => {
+    // ai: claude-opus-5-5 | 2026-11-06
+    // Colors come from the faction list passed in, not from state, so one
+    // fetch is enough (N-P3); `days` limits the history to a recent window.
+    const loadEntries = async (factionList, days = historyDays) => {
         try {
-            const response = await axios.get('/api/status_entries/all');
+            const params = days ? {days} : {};
+            const response = await axios.get('/api/status_entries/all', {params});
             const grouped = {};
+            const colors = {};
             // Seed all on_chart factions so they appear in the legend even with no data
             const list = factionList ?? factions;
             for (const f of list) {
                 if (f.on_chart) grouped[f.name] = [];
+                if (f.color) colors[f.name] = f.color;
             }
             for (const entry of response.data) {
                 if (!grouped[entry.faction_name]) grouped[entry.faction_name] = [];
                 grouped[entry.faction_name].push(entry);
             }
-            updateChart(grouped);
+            updateChart(grouped, colors);
         } catch (error) {
             console.error('Error loading entries:', error);
             if (!error.response) {
@@ -163,12 +168,12 @@ const Dashboard = () => {
         }
     };
 
-    const updateChart = (data) => {
+    const updateChart = (data, colors) => {
         const datasets = [];
         for (const [factionName, entries] of Object.entries(data)) {
             const hasData = entries.length > 0 && entries.some(e => e.value !== 0);
             {
-                const color = factionColorsMap[factionName] || 'rgb(128, 128, 128)';
+                const color = colors[factionName] || 'rgb(128, 128, 128)'; // ai: claude-opus-5-5 | 2026-11-06
 
                 const backgroundColor = colorToRgba(color, 0.2);
 
@@ -190,12 +195,12 @@ const Dashboard = () => {
         setHiddenDatasets({});
     };
 
-    // Re-update chart when factionColorsMap changes
-    useEffect(() => {
-        if (Object.keys(factionColorsMap).length > 0) {
-            loadEntries(factions);
-        }
-    }, [factionColorsMap]);
+    // ai: claude-opus-5-5 | 2026-11-06
+    const toggleFullHistory = () => {
+        const nextDays = historyDays ? null : DEFAULT_HISTORY_DAYS;
+        setHistoryDays(nextDays);
+        loadEntries(factions, nextDays);
+    };
 
 
     const submitEntry = async (factionName, value) => {
@@ -1018,6 +1023,15 @@ const Dashboard = () => {
                             </div>
                         );
                     })}
+                    {/* ai: claude-opus-5-5 | 2026-11-06 */}
+                    <button
+                        type="button"
+                        onClick={toggleFullHistory}
+                        style={{marginLeft: 'auto', fontSize: '0.8rem'}}
+                        title={historyDays ? 'Load every entry ever recorded' : `Show only the last ${DEFAULT_HISTORY_DAYS} days`}
+                    >
+                        {historyDays ? 'Show all history' : `Last ${DEFAULT_HISTORY_DAYS} days`}
+                    </button>
                 </div>
                 <Line ref={chartRef} options={chartOptions} data={chartData}/>
             </div>

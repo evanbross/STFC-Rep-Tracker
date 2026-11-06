@@ -9,7 +9,7 @@
 # ai: claude-opus-5-5 | 2026-11-06
 """Request-body parsing and the app-wide mapping of expected errors to HTTP status.
 
-Routes call parse_body(Model) and let InvalidRequestError, NotFoundError and
+Routes call parse_body(Model) / parse_query(Model) and let InvalidRequestError, NotFoundError and
 ConflictError propagate; register_error_handlers() turns them into 400/404/409
 JSON responses. Error bodies keep the {"error": ...} shape the frontend reads.
 """
@@ -57,6 +57,15 @@ def parse_body(model: type[ModelT], *, optional: bool = False) -> ModelT:
         data = {}
     try:
         return model.model_validate(data)
+    except ValidationError as exc:
+        raise InvalidRequestError(_field_errors(exc)) from exc
+
+
+# ai: claude-opus-5-5 | 2026-11-06
+def parse_query(model: type[ModelT]) -> ModelT:
+    """Validate the query string against `model` (first value of each repeated key)."""
+    try:
+        return model.model_validate(request.args.to_dict())
     except ValidationError as exc:
         raise InvalidRequestError(_field_errors(exc)) from exc
 

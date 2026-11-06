@@ -68,3 +68,27 @@ def test_invalid_sort_is_400(client: FlaskClient) -> None:
     response = client.get("/api/status_entries/?sort=value; DROP TABLE factions")
 
     assert response.status_code == 400
+
+
+# ai: claude-opus-5-5 | 2026-11-06
+def test_days_keeps_only_recent_entries(client: FlaskClient, db: Database) -> None:
+    """The Dashboard asks for a recent window instead of the whole history (N-P3)."""
+    create_faction(client, "FED", "Federation")
+    insert_entries(db, "FED", {0: 1})                       # 2026-01-01: long before the window
+    assert client.post("/api/status_entries/", json={"faction": "Federation", "value": 2}).status_code == 201
+
+    recent = client.get("/api/status_entries/all?days=30").get_json()
+    everything = client.get("/api/status_entries/all").get_json()
+
+    assert [e["value"] for e in recent] == [2]
+    assert [e["value"] for e in everything] == [1, 2]
+
+
+# ai: claude-opus-5-5 | 2026-11-06
+@pytest.mark.parametrize("query", ["days=0", "days=abc", "limit=-1", "offset=x"])
+def test_invalid_query_parameter_is_400(client: FlaskClient, query: str) -> None:
+    """Bad numbers used to be dropped silently, returning the full history instead."""
+    response = client.get(f"/api/status_entries/?{query}")
+
+    assert response.status_code == 400
+    assert "fields" in response.get_json()

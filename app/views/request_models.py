@@ -55,6 +55,17 @@ class RequestModel(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True, extra="ignore")
 
 
+# ai: claude-opus-5-5 | 2026-11-06
+class StatusEntriesQuery(RequestModel):
+    """Query string of GET /api/status_entries/ (and /all). `days` keeps only recent entries."""
+
+    faction_name: str | None = None
+    limit: int | None = Field(default=None, ge=0)
+    offset: int | None = Field(default=None, ge=0)
+    sort: str | None = None
+    days: int | None = Field(default=None, ge=1, le=36500)
+
+
 class FactionIn(RequestModel):
     """Body of POST /api/factions/ and PUT /api/factions/<code>."""
 

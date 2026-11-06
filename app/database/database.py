@@ -110,9 +110,3 @@ class Database:
         self.selected_snippets_dao.create_table(cursor)
         self.territory_systems_dao.create_table(cursor)
         self.target_types_dao.create_table(cursor)
-
-    def get_factions_dao(self):
-        return self.factions_dao
-
-    def get_status_entries_dao(self):
-        return self.status_entries_dao

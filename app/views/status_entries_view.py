@@ -7,12 +7,13 @@
 # Licensing inquiries: license@zombietech.biz
 # =============================================================================
 import logging
+from datetime import UTC, datetime, timedelta
 
-from flask import Blueprint, jsonify, request, current_app
+from flask import Blueprint, jsonify, current_app
 from flask.views import MethodView
 
-from app.views.request_models import StatusEntryIn
-from app.views.validation import parse_body
+from app.views.request_models import StatusEntriesQuery, StatusEntryIn
+from app.views.validation import parse_body, parse_query
 
 logger = logging.getLogger(__name__)
 
@@ -50,20 +51,23 @@ class StatusEntriesView(MethodView):
             type: string
             required: false
             description: "Column to sort by with optional direction, e.g. 'value DESC'"
+          - name: days
+            in: query
+            type: integer
+            required: false
+            description: Only entries from the last N days (omit for the full history)
         responses:
           200:
             description: A flat list of status entries
           400:
-            description: Invalid sort value
+            description: Invalid sort value or query parameter
         """
-        db = current_app.config["DATABASE"]
-        faction_name = request.args.get("faction_name", type=str)
-        limit = request.args.get("limit", type=int)
-        offset = request.args.get("offset", type=int)
-        sort = request.args.get("sort", type=str)
+        # ai: claude-opus-5-5 | 2026-11-06
+        query = parse_query(StatusEntriesQuery)
+        since = datetime.now(UTC) - timedelta(days=query.days) if query.days else None
         try:
-            entries = db.get_status_entries_dao().get_all_entries(
-                faction_name=faction_name, limit=limit, offset=offset, sort=sort
+            entries = current_app.config["DATABASE"].status_entries.get_all_entries(
+                faction_name=query.faction_name, limit=query.limit, offset=query.offset, sort=query.sort, since=since
             )
         except ValueError as e:
             return jsonify({"error": str(e)}), 400
