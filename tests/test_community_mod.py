@@ -58,13 +58,18 @@ def _chunked_post(client: FlaskClient, body: bytes) -> int:
     return client.open(builder).status_code
 
 
-def test_payload_is_one_json_line_without_secrets(mod_client: FlaskClient, capture_file: Path) -> None:
-    response = mod_client.post(_URL, json=[{"rid": 1, "amount": 5}], headers={"Authorization": "Bearer x"})
+# ai: claude-opus-5-5 | 2026-11-06
+@pytest.mark.parametrize("secret_header", ["Authorization", "Stfc-Sync-Token"])
+def test_payload_is_one_json_line_without_secrets(
+    mod_client: FlaskClient, capture_file: Path, secret_header: str
+) -> None:
+    response = mod_client.post(_URL, json=[{"rid": 1, "amount": 5}], headers={secret_header: "secret-value"})
 
     assert response.status_code == 200
     [record] = _lines(capture_file)
     assert record["payload"] == [{"rid": 1, "amount": 5}]
-    assert "Authorization" not in record["headers"]
+    assert {k.lower() for k in record["headers"]}.isdisjoint({secret_header.lower()})
+    assert "secret-value" not in capture_file.read_text(encoding="utf-8")
 
 
 def test_each_capture_is_its_own_line(mod_client: FlaskClient, capture_file: Path) -> None:

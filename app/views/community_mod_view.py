@@ -40,7 +40,7 @@ _DEFAULT_MAX_PAYLOAD_BYTES = 1_000_000
 ISOGEN_1_RID = 2991010408
 TRITANIUM_RID = 743985951
 
-_SENSITIVE_HEADERS = {"authorization", "cookie", "x-api-key", "x-auth-token"}
+_SENSITIVE_HEADERS = {"authorization", "cookie", "x-api-key", "x-auth-token", "stfc-sync-token"}  # ai: claude-opus-5-5 | 2026-11-06
 
 
 @community_mod_bp.route("/", methods=["POST"])
