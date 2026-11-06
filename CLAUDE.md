@@ -63,6 +63,10 @@ are read: `FLASK_ENV` (`development` | `production` | `testing`, default `develo
 
 **Runtime settings**: Controlled by `settings.yaml` at the project root (screen wait retries, delays, OCR scale,
 template match thresholds, etc.). Accessed via `capture_cfg()` in `app/app_config.py`.
+- The file is UTF-8 and must parse. A file that exists but is broken stops startup; a missing one means defaults.
+- The app writes it only through `_add_combat_template` (combat template lists). That re-reads the file under a lock,
+  re-parses the edit and checks that only that list changed, then swaps the file in atomically, keeping comments and
+  CRLF line endings.
 
 ## Running Tests
 
