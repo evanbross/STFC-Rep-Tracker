@@ -11,8 +11,9 @@
 import pytest
 from flask.testing import FlaskClient
 
+from app.database import factions_dao as factions_dao_module
 from app.database.database import Database
-from tests.api_helpers import create_faction, create_fkr_faction, insert_entries
+from tests.api_helpers import FKR_TABLE, create_faction, create_fkr_faction, insert_entries
 
 pytestmark = pytest.mark.db
 
@@ -95,6 +96,41 @@ def test_summary_numbers(client: FlaskClient, db: Database) -> None:
     assert status["next_rep_level"] == "Neighbor"
     assert status["goal_value"] == 5000
     assert status["minutes_to_goal"] == pytest.approx(6.66)   # (4999 - 4000) / 150
+
+
+# ai: claude-opus-5-5 | 2026-11-06
+@pytest.mark.usefixtures("fixed_avg_window")
+def test_summary_sees_tier_edit_without_restart(client: FlaskClient, db: Database) -> None:
+    """Tier rows are cached in memory; a tier PUT must refresh what the summary reads."""
+    create_fkr_faction(client, db, "FED", "Federation")
+    insert_entries(db, "FED", {0: 1000, 10: 2000, 20: 4000})
+    tiers = client.get(f"/api/reputations/by-table/{FKR_TABLE}").get_json()
+    tolerated = next(t for t in tiers if t["name"] == "Tolerated")
+    url = f"/api/reputations/by-table/{FKR_TABLE}/{tolerated['id']}"
+    try:
+        assert client.put(url, json={"high_limit": 4150}).status_code == 200
+
+        [summary] = client.get("/api/factions/summary").get_json()
+
+        assert summary["status"]["minutes_to_goal"] == pytest.approx(1.0)   # (4150 - 4000) / 150
+    finally:
+        client.put(url, json={"high_limit": tolerated["high_limit"]})
+
+
+# ai: claude-opus-5-5 | 2026-11-06
+def test_summary_limits_average_window_per_faction(client: FlaskClient, db: Database, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Each faction averages over its own newest N entries, while entry_count covers all of them."""
+    monkeypatch.setattr(factions_dao_module, "capture_cfg", lambda *keys, default=None: 2)
+    create_faction(client, "AAA", "Alpha", display_order=1)
+    create_faction(client, "BBB", "Bravo", display_order=2)
+    insert_entries(db, "AAA", {0: 0, 10: 100, 20: 400})       # newest two: +300 in 10 min
+    insert_entries(db, "BBB", {0: 0, 5: 50})
+
+    alpha, bravo = client.get("/api/factions/summary?sort=display_order").get_json()
+
+    assert (alpha["entry_count"], alpha["current_value"]) == (3, 400)
+    assert alpha["status"]["avg_value_delta_per_minute"] == pytest.approx(30.0)
+    assert (bravo["entry_count"], bravo["current_value"], bravo["last_delta"]) == (2, 50, 50)
 
 
 def test_summary_without_entries(client: FlaskClient) -> None:

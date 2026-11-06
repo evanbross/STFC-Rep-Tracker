@@ -12,6 +12,7 @@ import pytest
 from flask.testing import FlaskClient
 
 from app.database.database import Database
+from app.database.reputations_dao import ReputationsDAO
 from tests.api_helpers import FKR_TABLE, create_fkr_faction
 
 pytestmark = pytest.mark.db
@@ -80,9 +81,15 @@ def test_update_reads_columns_of_the_active_schema(fkr_client: FlaskClient, db: 
 
 # ai: claude-opus-5-5 | 2026-11-06
 def test_read_uses_columns_of_the_active_schema(fkr_client: FlaskClient, db: Database) -> None:
-    """ReputationsDAO picks its SELECT from the columns of the table it reads, not 'public'."""
+    """ReputationsDAO picks its SELECT from the columns of the table it reads, not 'public'.
+
+    Tier rows are cached, so the cache is dropped after the out-of-band ALTER
+    (a restart does the same); the reload is what inspects the columns.
+    """
+    dao = ReputationsDAO.get_dao_by_table_name(FKR_TABLE)
     with db.connect() as conn, conn.cursor() as cursor:
         cursor.execute(f'ALTER TABLE "{FKR_TABLE}" RENAME COLUMN high_limit TO high_limit_hidden')
+    dao.invalidate_tiers()
     try:
         response = fkr_client.get(f"/api/reputations/by-table/{FKR_TABLE}")
 
@@ -91,6 +98,7 @@ def test_read_uses_columns_of_the_active_schema(fkr_client: FlaskClient, db: Dat
     finally:
         with db.connect() as conn, conn.cursor() as cursor:
             cursor.execute(f'ALTER TABLE "{FKR_TABLE}" RENAME COLUMN high_limit_hidden TO high_limit')
+        dao.invalidate_tiers()
 
 
 def test_update_row_without_fields_is_400(fkr_client: FlaskClient) -> None:

@@ -12,6 +12,9 @@ import re
 import threading
 from typing import Any
 
+from app.database import reputation_tiers
+from app.domain_errors import NotFoundError, NoUpdatableFieldsError
+
 logger = logging.getLogger(__name__)
 TABLE_NAME_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -25,6 +28,11 @@ class ReputationsDAO:
     def __init__(self, db: Any, table_name: str) -> None:
         self.db = db
         self.table_name = self._validate_table_name(table_name)
+        # ai: claude-opus-5-5 | 2026-11-06
+        # Tier rows are seed data that change only through update_row, so
+        # they are read once and served from memory (N-P2, N-P6).
+        self._rows: list[dict[str, Any]] | None = None
+        self._tiers_lock = threading.Lock()
 
     @staticmethod
     def get_dao_by_faction_name(name: str) -> "ReputationsDAO | None":
@@ -51,21 +59,17 @@ class ReputationsDAO:
         with cls._registry_lock:
             return {dao.table_name for dao in cls.dao_instances_by_faction.values()}
 
+    # ai: claude-opus-5-5 | 2026-11-06
     @staticmethod
-    def _get_columns(cursor: Any, table_name: str) -> list[str]:
-        """Return lowercase column names for table_name via information_schema."""
+    def _get_columns(cursor: Any, table_name: str) -> dict[str, str]:
+        """Map lowercase column name -> actual column name for table_name in the active schema."""
         ReputationsDAO._validate_table_name(table_name)
         cursor.execute(
             "SELECT column_name FROM information_schema.columns "
-            "WHERE table_name = %s AND table_schema = current_schema()",  # ai: claude-opus-5-5 | 2026-11-05
+            "WHERE table_name = %s AND table_schema = current_schema()",
             (table_name,),
         )
-        return [row[0].lower() for row in cursor.fetchall()]
-
-    @staticmethod
-    def _resolve_name_col(columns: list[str]) -> str:
-        """Return the correct column name for the name column (always lowercase 'name')."""
-        return "name"
+        return {row[0].lower(): row[0] for row in cursor.fetchall()}
 
     @staticmethod
     def _validate_table_name(table_name: str) -> str:
@@ -132,67 +136,94 @@ class ReputationsDAO:
             f"Initialized {len(ReputationsDAO.dao_instances_by_faction)} reputation DAO mappings"
         )
 
-    def get_all(self, db: Any = None, table_name: str | None = None) -> list[dict[str, Any]]:
-        """Get list of all reputations from the table"""
-        target_db = self.db if db is None else db
-        table_name = self.table_name if table_name is None else table_name
+    # ai: claude-opus-5-5 | 2026-11-06
+    def get_all(self) -> list[dict[str, Any]]:
+        """Return every tier row, ordered by low_limit, from the in-memory cache."""
+        return [dict(row) for row in self._cached_rows()]
 
-        try:
-            with target_db.connect() as conn:
-                cursor = conn.cursor()
+    # ai: claude-opus-5-5 | 2026-11-06
+    def load_tiers(self, cursor: Any) -> None:
+        """Fill the tier cache using the caller's cursor (init_database does this after seeding)."""
+        rows = self._read_rows(cursor)
+        with self._tiers_lock:
+            self._rows = rows
 
-                columns = self._get_columns(cursor, table_name)
-                name_col = self._resolve_name_col(columns)
+    # ai: claude-opus-5-5 | 2026-11-06
+    def invalidate_tiers(self) -> None:
+        """Drop the cache; the next read reloads it from the table."""
+        with self._tiers_lock:
+            self._rows = None
 
-                query = f'SELECT id, {name_col}, low_limit, high_limit FROM "{table_name}" ORDER BY low_limit'
+    # ai: claude-opus-5-5 | 2026-11-06
+    def find_tier(self, value: int) -> dict[str, Any] | None:
+        """Return the tier whose range contains value, or None."""
+        row = reputation_tiers.find_tier(self._cached_rows(), value)
+        return dict(row) if row else None
 
-                # Check if high_limit exists (DTI doesn't have it, but has other columns)
-                if "high_limit" not in columns:
-                    if "messages_count" in columns and "credit_amount" in columns:
-                        query = f'SELECT id, {name_col}, low_limit, messages_count, credit_amount FROM "{table_name}" ORDER BY low_limit'
-                        cursor.execute(query)
-                        return [
-                            {
-                                "id": row[0],
-                                "name": row[1],
-                                "low_limit": row[2],
-                                "messages_count": row[3],
-                                "credit_amount": row[4],
-                            }
-                            for row in cursor.fetchall()
-                        ]
-                    else:
-                        # Fallback for tables without high_limit
-                        query = f'SELECT id, {name_col}, low_limit FROM "{table_name}" ORDER BY low_limit'
-                        cursor.execute(query)
-                        return [
-                            {
-                                "id": row[0],
-                                "name": row[1],
-                                "low_limit": row[2],
-                                "high_limit": None,
-                            }
-                            for row in cursor.fetchall()
-                        ]
-                else:
-                    cursor.execute(query)
-                    return [
-                        {
-                            "id": row[0],
-                            "name": row[1],
-                            "low_limit": row[2],
-                            "high_limit": row[3],
-                        }
-                        for row in cursor.fetchall()
-                    ]
-        except Exception as e:
-            raise ValueError(f"Error fetching reputations from {table_name}: {e}") from e
+    # ai: claude-opus-5-5 | 2026-11-06
+    def find_next_tier(self, current_high_limit: int | None) -> dict[str, Any] | None:
+        """Return the tier that follows a tier ending at current_high_limit, or None."""
+        row = reputation_tiers.find_next_tier(self._cached_rows(), current_high_limit)
+        return dict(row) if row else None
+
+    # ai: claude-opus-5-5 | 2026-11-06
+    def update_row(self, row_id: int, fields: dict[str, Any]) -> None:
+        """Set the given columns on one tier row, then refresh the cache.
+
+        Only fields that are real columns of this table are written; column
+        names come from information_schema, never from the caller.
+        Raises NoUpdatableFieldsError when no field matches a column, NotFoundError when
+        the table or row does not exist.
+        """
+        with self.db.connect() as conn, conn.cursor() as cursor:
+            columns = self._get_columns(cursor, self.table_name)
+            if not columns:
+                raise NotFoundError(f"Table '{self.table_name}' not found")
+            updates = {columns[field]: value for field, value in fields.items() if field in columns}
+            if not updates:
+                raise NoUpdatableFieldsError("No valid fields to update")
+            assignments = ", ".join(f'"{column}" = %s' for column in updates)
+            cursor.execute(
+                f'UPDATE "{self.table_name}" SET {assignments} WHERE id = %s', [*updates.values(), row_id]
+            )
+            if cursor.rowcount == 0:
+                raise NotFoundError(f"Row {row_id} not found in '{self.table_name}'")
+        # Invalidate only after the commit, so no reader can cache the old row again.
+        self.invalidate_tiers()
+
+    def _cached_rows(self) -> list[dict[str, Any]]:
+        with self._tiers_lock:
+            if self._rows is None:
+                with self.db.connect() as conn, conn.cursor() as cursor:
+                    self._rows = self._read_rows(cursor)
+            return self._rows
+
+    def _read_rows(self, cursor: Any) -> list[dict[str, Any]]:
+        """Read every tier row, choosing the SELECT from the columns this table has."""
+        columns = self._get_columns(cursor, self.table_name)
+        table = self.table_name
+        if "high_limit" in columns:
+            cursor.execute(f'SELECT id, name, low_limit, high_limit FROM "{table}" ORDER BY low_limit')
+            return [
+                {"id": r[0], "name": r[1], "low_limit": r[2], "high_limit": r[3]}
+                for r in cursor.fetchall()
+            ]
+        if "messages_count" in columns and "credit_amount" in columns:
+            cursor.execute(
+                f'SELECT id, name, low_limit, messages_count, credit_amount FROM "{table}" ORDER BY low_limit'
+            )
+            return [
+                {"id": r[0], "name": r[1], "low_limit": r[2], "messages_count": r[3], "credit_amount": r[4]}
+                for r in cursor.fetchall()
+            ]
+        cursor.execute(f'SELECT id, name, low_limit FROM "{table}" ORDER BY low_limit')
+        return [
+            {"id": r[0], "name": r[1], "low_limit": r[2], "high_limit": None}
+            for r in cursor.fetchall()
+        ]
 
     def create_table(self, cursor: Any) -> None:
         """Create the current reputation table schema."""
-        columns = self._get_columns(cursor, self.table_name)
-        name_col = self._resolve_name_col(columns)
-
         cursor.execute(f"""
                        CREATE TABLE IF NOT EXISTS "{self.table_name}"
                        (
@@ -216,7 +247,6 @@ class ReputationsDAO:
 
     def apply_initial_reputations(self, cursor: Any) -> None:
         columns = self._get_columns(cursor, self.table_name)
-        name_col = self._resolve_name_col(columns)
 
         # Check if high_limit exists (some special tables like DTI might not have it yet or at all)
         has_high_limit = "high_limit" in columns
@@ -226,9 +256,9 @@ class ReputationsDAO:
                 name, low_limit, high_limit = entry[0], entry[1], entry[2]
                 cursor.execute(
                     f"""
-                               INSERT INTO "{self.table_name}" ({name_col}, low_limit, high_limit)
+                               INSERT INTO "{self.table_name}" (name, low_limit, high_limit)
                                VALUES (%s, %s, %s)
-                               ON CONFLICT ({name_col}) DO UPDATE
+                               ON CONFLICT (name) DO UPDATE
                                    SET low_limit  = EXCLUDED.low_limit,
                                        high_limit = EXCLUDED.high_limit
                                """,
@@ -239,75 +269,13 @@ class ReputationsDAO:
                 name, low_limit = entry[0], entry[1]
                 cursor.execute(
                     f"""
-                               INSERT INTO "{self.table_name}" ({name_col}, low_limit)
+                               INSERT INTO "{self.table_name}" (name, low_limit)
                                VALUES (%s, %s)
-                               ON CONFLICT ({name_col}) DO UPDATE
+                               ON CONFLICT (name) DO UPDATE
                                    SET low_limit = EXCLUDED.low_limit
                                """,
                     (name, low_limit),
                 )
-
-    def find_next_reputation_name(self, conn: Any, current_high_limit: int | None) -> str | None:
-        """Return the name of the tier that starts where the current tier ends, or None."""
-        if current_high_limit is None:
-            return None
-        cursor = conn.cursor()
-        cursor.execute(
-            f'SELECT name FROM "{self.table_name}" WHERE low_limit IN (%s, %s) ORDER BY low_limit LIMIT 1',
-            (current_high_limit, current_high_limit + 1),
-        )
-        row = cursor.fetchone()
-        return row[0] if row else None
-
-    def find_next_reputation_low_limit(self, conn: Any, current_high_limit: int | None) -> int | None:
-        """Return the low_limit of the next tier, or None."""
-        if current_high_limit is None:
-            return None
-        cursor = conn.cursor()
-        cursor.execute(
-            f'SELECT low_limit FROM "{self.table_name}" WHERE low_limit IN (%s, %s) ORDER BY low_limit LIMIT 1',
-            (current_high_limit, current_high_limit + 1),
-        )
-        row = cursor.fetchone()
-        return row[0] if row else None
-
-    def find_reputation_by_value(self, conn: Any, value: int) -> tuple | None:
-        cursor = conn.cursor()
-        try:
-            cursor.execute(
-                f"""
-                           SELECT rep.name, rep.low_limit, rep.high_limit
-                           FROM "{self.table_name}" AS rep
-                           WHERE rep.low_limit <= %s
-                             AND (rep.high_limit >= %s OR rep.high_limit IS NULL)
-                           """,
-                (value, value),
-            )
-        except Exception as e:
-            logger.error(f"Error querying reputation for faction '{self.table_name}': {e}")
-            raise
-        return cursor.fetchone()
-
-    def get_last(self, table_name: str | None = None) -> dict[str, Any] | None:
-        """Get the final entry (highest low_limit) from the table, returning name and high_limit."""
-        table_name = table_name if table_name is not None else self.table_name
-        with self.db.connect() as conn:
-            cursor = conn.cursor()
-            columns = self._get_columns(cursor, table_name)
-            name_col = self._resolve_name_col(columns)
-
-            if "high_limit" in columns:
-                cursor.execute(
-                    f'SELECT {name_col}, high_limit FROM "{table_name}" ORDER BY low_limit DESC LIMIT 1'
-                )
-                row = cursor.fetchone()
-                return {"name": row[0], "high_limit": row[1]} if row else None
-            else:
-                cursor.execute(
-                    f'SELECT {name_col} FROM "{table_name}" ORDER BY low_limit DESC LIMIT 1'
-                )
-                row = cursor.fetchone()
-                return {"name": row[0], "high_limit": None} if row else None
 
     def get_table_name(self) -> str:
         return self.table_name

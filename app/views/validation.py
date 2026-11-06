@@ -21,7 +21,7 @@ from flask.typing import ResponseReturnValue
 from pydantic import BaseModel, ValidationError
 from werkzeug.exceptions import HTTPException
 
-from app.domain_errors import ConflictError, NotFoundError
+from app.domain_errors import ConflictError, NotFoundError, NoUpdatableFieldsError
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +68,10 @@ def register_error_handlers(flask_app: Flask) -> None:
     def handle_invalid_request(exc: InvalidRequestError) -> ResponseReturnValue:
         summary = "; ".join(f"{f['field']}: {f['message']}" for f in exc.fields)
         return jsonify({"error": f"Invalid request: {summary}", "fields": exc.fields}), 400
+
+    @flask_app.errorhandler(NoUpdatableFieldsError)  # ai: claude-opus-5-5 | 2026-11-06
+    def handle_no_updatable_fields(exc: NoUpdatableFieldsError) -> ResponseReturnValue:
+        return jsonify({"error": str(exc)}), 400
 
     @flask_app.errorhandler(NotFoundError)
     def handle_not_found(exc: NotFoundError) -> ResponseReturnValue:

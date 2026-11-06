@@ -25,3 +25,8 @@ class NotFoundError(DomainError):
 
 class ConflictError(DomainError):
     """The write would violate a uniqueness rule (HTTP 409)."""
+
+
+# ai: claude-opus-5-5 | 2026-11-06
+class NoUpdatableFieldsError(DomainError):
+    """A partial update named no field the target record has (HTTP 400)."""

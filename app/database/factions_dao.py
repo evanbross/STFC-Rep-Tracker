@@ -238,36 +238,45 @@ class FactionsDAO:
             cursor.execute("SELECT name FROM factions ORDER BY display_order")
             return [row[0] for row in cursor.fetchall()]
 
+    # ai: claude-opus-5-5 | 2026-11-06
+    # One statement for every faction (N-P2): the last N entries per faction
+    # come from ROW_NUMBER, the total from COUNT(*) OVER the same partition.
+    # Factions with no entries still appear once, with NULL entry columns.
+    _SUMMARY_QUERY = """
+        SELECT f.code, f.name, f.on_chart, f.color, f.reputation_table_name,
+               f.display_order, f.reputation_dao_name,
+               e.value, e.timestamp, e.entry_count
+        FROM factions f
+        LEFT JOIN (
+            SELECT faction_code, value, timestamp,
+                   ROW_NUMBER() OVER (PARTITION BY faction_code ORDER BY timestamp DESC) AS rn,
+                   COUNT(*) OVER (PARTITION BY faction_code) AS entry_count
+            FROM status_entries
+        ) e ON e.faction_code = f.code AND e.rn <= %s
+        ORDER BY f.display_order, f.code, e.rn
+    """
+
+    # ai: claude-opus-5-5 | 2026-11-06
     @staticmethod
-    def _fetch_entries_and_count(cursor, faction_id):
-        """Query recent status entries and total count for a faction."""
-        avg_entries = capture_cfg("factions", "avg_entries", default=5)
-        cursor.execute(
-            f"""
-               SELECT value, timestamp
-               FROM status_entries
-               WHERE faction_code = %s
-               ORDER BY timestamp DESC
-               LIMIT {int(avg_entries)}
-            """,
-            (faction_id,),
-        )
-        entries = cursor.fetchall()
-        latest = entries[0] if entries else None
-        previous = entries[1] if len(entries) > 1 else None
+    def _reputation_dao_for(name: str, reputation_table_name: str | None) -> "reputations_dao.ReputationsDAO | None":
+        """The faction's registered tier DAO, else any DAO already serving its table."""
+        dao = reputations_dao.ReputationsDAO.get_dao_by_faction_name(name)
+        if dao is None and reputation_table_name:
+            dao = reputations_dao.ReputationsDAO.get_dao_by_table_name(reputation_table_name)
+        return dao
 
-        cursor.execute(
-            "SELECT COUNT(*) FROM status_entries WHERE faction_code = %s",
-            (faction_id,),
-        )
-        entry_count = cursor.fetchone()[0]
-
-        return entries, entry_count, latest, previous
-
+    # ai: claude-opus-5-5 | 2026-11-06
     @staticmethod
-    def _compute_faction_status(conn, entries, latest, previous, name, reputation_table_name):
-        """Compute rate, rep level, and goal data for a faction. Returns (status, rep_level, value_delta)."""
-        status = {
+    def _compute_faction_status(
+        entries: list[tuple[int, str]],
+        rep_dao: "reputations_dao.ReputationsDAO | None",
+    ) -> tuple[dict[str, Any], str, int]:
+        """Compute rate, rep level, and goal data from newest-first (value, timestamp) entries.
+
+        Returns (status, rep_level, value_delta). Tier lookups read the DAO's
+        in-memory cache, so this makes no database calls.
+        """
+        status: dict[str, Any] = {
             "time_delta": 0,
             "value_delta": 0,
             "raw_value_delta_per_minute": 0.0,
@@ -275,28 +284,23 @@ class FactionsDAO:
             "minutes_to_goal": 0.0,
             "reputation_level": "Unknown",
         }
-        rep_level = "Unknown"
-        value_delta = 0
+        if len(entries) < 2:
+            return status, "Unknown", 0
 
-        if not (latest and previous):
-            return status, rep_level, value_delta
-
-        rep_dao = reputations_dao.ReputationsDAO.get_dao_by_faction_name(name)
-        if rep_dao is None:
-            rep_dao = reputations_dao.ReputationsDAO(conn, reputation_table_name)
-        reputation_row = rep_dao.find_reputation_by_value(conn, latest[0])
+        latest, previous, oldest = entries[0], entries[1], entries[-1]
+        tier = rep_dao.find_tier(latest[0]) if rep_dao else None
+        high_limit = tier.get("high_limit") if tier else None
 
         t1 = datetime.fromisoformat(previous[1])
         t2 = datetime.fromisoformat(latest[1])
         time_diff_mins = (t2 - t1).total_seconds() / 60
         value_delta = latest[0] - previous[0]
-        rep_level = reputation_row[0] if reputation_row else "Unknown"
+        rep_level = tier["name"] if tier else "Unknown"
 
         if time_diff_mins <= 0:
             return status, rep_level, value_delta
 
         raw_rate = value_delta / time_diff_mins
-        oldest = entries[-1]
         avg_span_mins = (t2 - datetime.fromisoformat(oldest[1])).total_seconds() / 60
         avg_rate = (latest[0] - oldest[0]) / avg_span_mins if avg_span_mins > 0 else raw_rate
 
@@ -307,13 +311,13 @@ class FactionsDAO:
             "avg_value_delta_per_minute": avg_rate,
         })
 
-        if reputation_row is not None:
-            status["reputation_level"] = reputation_row[0]
-            status["next_rep_level"] = rep_dao.find_next_reputation_name(conn, reputation_row[2])
-            status["goal_value"] = rep_dao.find_next_reputation_low_limit(conn, reputation_row[2])
-            if avg_rate > 0 and reputation_row[2] is not None:
-                dist = reputation_row[2] - latest[0]
-                goal_mins = round(dist / avg_rate, 2)
+        if tier is not None:
+            next_tier = rep_dao.find_next_tier(high_limit)
+            status["reputation_level"] = tier["name"]
+            status["next_rep_level"] = next_tier["name"] if next_tier else None
+            status["goal_value"] = next_tier["low_limit"] if next_tier else None
+            if avg_rate > 0 and high_limit is not None:
+                goal_mins = round((high_limit - latest[0]) / avg_rate, 2)
                 status["minutes_to_goal"] = goal_mins
                 status["minutes"] = goal_mins
         else:
@@ -346,39 +350,46 @@ class FactionsDAO:
             result.sort(key=sort_keys[key], reverse=reverse)
         return result
 
+    # ai: claude-opus-5-5 | 2026-11-06
     def get_faction_summary(self, sort_by: str | None = None) -> list[dict[str, Any]]:
         """Get summary data for all factions including latest value, delta, rates, and rep level."""
-        with self.db.connect() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                           SELECT f.code, f.name, f.on_chart, f.color, f.reputation_table_name, f.display_order, f.reputation_dao_name
-                           FROM factions f
-                           ORDER BY f.display_order
-                           """)
-            factions_list = cursor.fetchall()
+        avg_entries = int(capture_cfg("factions", "avg_entries", default=5))
+        with self.db.connect() as conn, conn.cursor() as cursor:
+            cursor.execute(self._SUMMARY_QUERY, (avg_entries,))
+            rows = cursor.fetchall()
 
-            result = []
-            for faction_code, name, on_chart, color, reputation_table_name, display_order, reputation_dao_name in factions_list:
-                entries, entry_count, latest, previous = self._fetch_entries_and_count(cursor, faction_code)
-                status, rep_level, value_delta = self._compute_faction_status(
-                    conn, entries, latest, previous, name, reputation_table_name
-                )
-                result.append({
-                    "id": faction_code,   # backward-compat alias
-                    "code": faction_code,
-                    "name": name,
-                    "faction_type": faction_code,
-                    "on_chart": on_chart,
-                    "display_order": display_order,
-                    "reputation_table_name": reputation_table_name,
-                    "reputation_dao_name": reputation_dao_name,
-                    "color": color,
-                    "current_value": latest[0] if latest else 0,
-                    "rep_level": rep_level,
-                    "last_delta": value_delta,
-                    "last_updated": latest[1] if latest else None,
-                    "entry_count": entry_count,
-                    "status": status,
-                })
+        factions: dict[str, dict[str, Any]] = {}
+        for (code, name, on_chart, color, reputation_table_name, display_order,
+             reputation_dao_name, value, timestamp, entry_count) in rows:
+            faction = factions.setdefault(code, {
+                "id": code,   # backward-compat alias
+                "code": code,
+                "name": name,
+                "faction_type": code,
+                "on_chart": on_chart,
+                "display_order": display_order,
+                "reputation_table_name": reputation_table_name,
+                "reputation_dao_name": reputation_dao_name,
+                "color": color,
+                "entry_count": entry_count or 0,
+                "_entries": [],
+            })
+            if value is not None:
+                faction["_entries"].append((value, timestamp))
+
+        result = []
+        for faction in factions.values():
+            entries = faction.pop("_entries")
+            rep_dao = self._reputation_dao_for(faction["name"], faction["reputation_table_name"])
+            status, rep_level, value_delta = self._compute_faction_status(entries, rep_dao)
+            latest = entries[0] if entries else None
+            faction.update({
+                "current_value": latest[0] if latest else 0,
+                "rep_level": rep_level,
+                "last_delta": value_delta,
+                "last_updated": latest[1] if latest else None,
+                "status": status,
+            })
+            result.append(faction)
 
         return self._sort_faction_summary(result, sort_by)

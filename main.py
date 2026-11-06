@@ -283,7 +283,7 @@ def create_app(app_settings: AppSettings):
     register_error_handlers(flask_app)  # ai: claude-opus-5-5 | 2026-11-06
     Swagger(flask_app)
 
-    database = Database(flask_app.config["DATABASE_URL"])
+    database = Database(flask_app.config["DATABASE_URL"], app_settings.database_url_direct)  # ai: claude-opus-5-5 | 2026-11-06
     flask_app.config["DATABASE"] = database
 
     flask_app.register_blueprint(calendar_bp, url_prefix="/api/calendar")
