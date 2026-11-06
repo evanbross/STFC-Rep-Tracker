@@ -13,6 +13,7 @@ import psycopg2.errors
 
 from app.app_config import capture_cfg
 from app.database import reputations_dao
+from app.domain_errors import ConflictError, NotFoundError
 
 
 class FactionsDAO:
@@ -144,8 +145,8 @@ class FactionsDAO:
                         snippet_unselected,
                     ),
                 )
-            except psycopg2.errors.UniqueViolation:
-                raise ValueError(f"Faction with name '{name}' or code '{code}' already exists")
+            except psycopg2.errors.UniqueViolation as exc:
+                raise ConflictError(f"Faction with name '{name}' or code '{code}' already exists") from exc  # ai: claude-opus-5-5 | 2026-11-06
 
             return self._params_to_dict(
                 code, name, color, reputation_table_name, on_chart,
@@ -171,7 +172,7 @@ class FactionsDAO:
 
             cursor.execute("SELECT code FROM factions WHERE code = %s", (current_code,))
             if not cursor.fetchone():
-                raise ValueError(f"Faction with code '{current_code}' not found")
+                raise NotFoundError(f"Faction with code '{current_code}' not found")  # ai: claude-opus-5-5 | 2026-11-06
 
             try:
                 cursor.execute(
@@ -201,8 +202,8 @@ class FactionsDAO:
                         current_code,
                     ),
                 )
-            except psycopg2.errors.UniqueViolation:
-                raise ValueError(f"Faction with name '{name}' or code '{new_code}' already exists")
+            except psycopg2.errors.UniqueViolation as exc:
+                raise ConflictError(f"Faction with name '{name}' or code '{new_code}' already exists") from exc  # ai: claude-opus-5-5 | 2026-11-06
 
             return self._params_to_dict(
                 new_code, name, color, reputation_table_name, on_chart,

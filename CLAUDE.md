@@ -118,6 +118,13 @@ neither the app's own origin nor in `CORS_ORIGINS`. Requests with neither header
 New origins that serve the UI must be added to `CORS_ORIGINS`. The 7443 listener binds to
 `community_mod.bind_host` in `settings.yaml` (default `127.0.0.1`).
 
+**Request bodies and errors**:
+- JSON bodies are parsed with `parse_body(Model)` (`app/views/validation.py`) against the Pydantic models in
+  `app/views/request_models.py`. A bad body becomes a 400 `{"error", "fields"}` that never echoes the input.
+- DAOs raise `NotFoundError` / `ConflictError` (`app/domain_errors.py`). App-level handlers map them to 404 / 409,
+  and any other exception to a generic 500 with the traceback logged.
+- Routes don't need their own `try/except Exception`.
+
 **Views** (`app/views/`): Flask Blueprints. Each retrieves the DB via `current_app.config["DATABASE"]`. Blueprints are
 registered in `main.py` with URL prefixes:
 

@@ -8,7 +8,7 @@
 # =============================================================================
 import logging
 
-from flask import Blueprint, jsonify, current_app, request
+from flask import Blueprint, jsonify, current_app
 
 from app.screen_processing.process_away_teams import AwayTeamOrchestrator
 from app.screen_processing.process_event_rewards import EventRewardsOrchestrator
@@ -20,6 +20,8 @@ from app.screen_processing.process_reputations import (
     ProcessReputationsOrchestrator,
     capture_and_identify_faction,
 )
+from app.views.request_models import AttackIn, RefreshTargetsIn, TemplateCropIn
+from app.views.validation import parse_body
 
 logger = logging.getLogger(__name__)
 
@@ -292,15 +294,11 @@ def refresh_system_targets():
       500:
         description: Unexpected error during capture
     """
-    data = request.get_json(silent=True) or {}
-    system_name = data.get("system_name")
-    if not system_name:
-        return jsonify({"error": "system_name is required"}), 400
-    known_candidates = data.get("known_candidates") or []
+    body = parse_body(RefreshTargetsIn)  # ai: claude-opus-5-5 | 2026-11-06
 
     return _run_capture(
         lambda: SystemTargetOrchestrator(_get_db()),
-        lambda o: o.refresh_targets(system_name, known_candidates),
+        lambda o: o.refresh_targets(body.system_name, body.known_candidates),
         "Error refreshing system targets",
         "System target refresh failed",
     )
@@ -343,23 +341,11 @@ def attack_system_target():
       500:
         description: Unexpected error during capture
     """
-    data = request.get_json(silent=True) or {}
-    try:
-        click_x = int(data["click_x"])
-        click_y = int(data["click_y"])
-    except (KeyError, TypeError, ValueError):
-        return jsonify({"error": "click_x and click_y are required integers"}), 400
-
-    try:
-        vx = float(data.get("vx", 0.0))
-        vy = float(data.get("vy", 0.0))
-        scanned_at = float(data["scanned_at"]) if "scanned_at" in data else None
-    except (TypeError, ValueError):
-        return jsonify({"error": "vx, vy, and scanned_at must be numbers"}), 400
+    body = parse_body(AttackIn)  # ai: claude-opus-5-5 | 2026-11-06
 
     return _run_capture(
         lambda: SystemTargetOrchestrator(_get_db()),
-        lambda o: o.attack_target(click_x, click_y, vx, vy, scanned_at),
+        lambda o: o.attack_target(body.click_x, body.click_y, body.vx, body.vy, body.scanned_at),
         "Error attacking system target",
         "Attack failed",
     )
@@ -387,9 +373,6 @@ def capture_hostile_template_screen():
         "Error capturing screen for hostile ship template",
         "Screen capture failed",
     )
-
-
-_ALLOWED_TEMPLATE_KINDS = {"hostile_ship", "skull_glyph", "diamond_glyph"}
 
 
 # ai: claude-sonnet-5 | 2026-09-18
@@ -428,22 +411,11 @@ def save_hostile_template():
       500:
         description: Unexpected error during save
     """
-    data = request.get_json(silent=True) or {}
-    try:
-        x = int(data["x"])
-        y = int(data["y"])
-        w = int(data["w"])
-        h = int(data["h"])
-    except (KeyError, TypeError, ValueError):
-        return jsonify({"error": "x, y, w, and h are required integers"}), 400
-
-    kind = data.get("kind", "hostile_ship")
-    if kind not in _ALLOWED_TEMPLATE_KINDS:
-        return jsonify({"error": f"kind must be one of {sorted(_ALLOWED_TEMPLATE_KINDS)}"}), 400
+    body = parse_body(TemplateCropIn)  # ai: claude-opus-5-5 | 2026-11-06
 
     return _run_capture(
         lambda: HostileTemplateOrchestrator(_get_db()),
-        lambda o: o.save_template(x, y, w, h, kind=kind),
+        lambda o: o.save_template(body.x, body.y, body.w, body.h, kind=body.kind),
         "Error saving combat template",
         "Save failed",
     )

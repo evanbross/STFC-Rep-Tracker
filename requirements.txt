@@ -1,6 +1,7 @@
 attrs==25.4.0
 cryptography>=44.0.0
 psycopg2-binary==2.9.12
+annotated-types==0.8.0
 blinker==1.9.0
 certifi==2026.2.25
 click==8.3.1
@@ -35,6 +36,9 @@ pillow==12.1.1
 platformdirs==4.9.4
 PyAutoGUI==0.9.54
 pyclipper==1.4.0
+pydantic==2.14.3
+pydantic_core==2.50.4
+pydantic-settings==2.16.2
 PyGetWindow==0.0.9
 PyMonCtl==0.92
 PyMsgBox==2.0.1
@@ -62,7 +66,8 @@ tifffile==2026.2.24
 torch==2.13.0
 torchvision==0.28.0
 tqdm==4.67.3
-typing_extensions==4.15.0
+typing_extensions==4.16.0
+typing-inspection==0.4.5
 urllib3==2.6.3
 Werkzeug==3.1.6
 google-api-python-client>=2.0.0

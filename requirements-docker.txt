@@ -22,6 +22,14 @@ psycopg2-binary==2.9.12
 PyYAML==6.0.3
 python-dotenv==1.1.0
 
+# Request validation and typed settings
+pydantic==2.14.3
+pydantic-settings==2.16.2
+pydantic_core==2.50.4
+annotated-types==0.8.0
+typing-inspection==0.4.5
+typing_extensions==4.16.0
+
 # TLS cert generation (community-mod HTTPS)
 cryptography>=44.0.0
 

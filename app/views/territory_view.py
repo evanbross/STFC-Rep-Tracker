@@ -8,7 +8,10 @@
 # =============================================================================
 import logging
 
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, current_app, jsonify
+
+from app.views.request_models import CalendarEventIn, TerritorySystemIn
+from app.views.validation import parse_body
 
 logger = logging.getLogger(__name__)
 
@@ -37,38 +40,22 @@ def get_systems():
     return jsonify(systems)
 
 
+# ai: claude-opus-5-5 | 2026-11-06
 @territory_bp.post("/systems")
 def upsert_system():
-    db = current_app.config["DATABASE"]
-    data = request.get_json() or {}
-    name = (data.get("name") or "").strip()
-    day_of_week = data.get("day_of_week")
-    event_time = (data.get("event_time") or "").strip()
-
-    if not name or day_of_week is None or not event_time:
-        return jsonify({"error": "name, day_of_week, and event_time are required"}), 400
-    if not isinstance(day_of_week, int) or not (0 <= day_of_week <= 6):
-        return jsonify({"error": "day_of_week must be an integer 0–6 (Mon–Sun)"}), 400
-
-    system = db.territory_systems.upsert(name, day_of_week, event_time)
+    body = parse_body(TerritorySystemIn)
+    system = current_app.config["DATABASE"].territory_systems.upsert(body.name, body.day_of_week, body.event_time)
     _annotate_with_calendar([system])
     return jsonify(system), 200
 
 
+# ai: claude-opus-5-5 | 2026-11-06
 @territory_bp.put("/systems/<int:system_id>")
 def update_system(system_id: int):
-    db = current_app.config["DATABASE"]
-    data = request.get_json() or {}
-    name = (data.get("name") or "").strip()
-    day_of_week = data.get("day_of_week")
-    event_time = (data.get("event_time") or "").strip()
-
-    if not name or day_of_week is None or not event_time:
-        return jsonify({"error": "name, day_of_week, and event_time are required"}), 400
-    if not isinstance(day_of_week, int) or not (0 <= day_of_week <= 6):
-        return jsonify({"error": "day_of_week must be an integer 0–6 (Mon–Sun)"}), 400
-
-    system = db.territory_systems.update(system_id, name, day_of_week, event_time)
+    body = parse_body(TerritorySystemIn)
+    system = current_app.config["DATABASE"].territory_systems.update(
+        system_id, body.name, body.day_of_week, body.event_time
+    )
     if not system:
         return jsonify({"error": "not found"}), 404
     _annotate_with_calendar([system])
@@ -106,12 +93,11 @@ def create_calendar_event(system_id: int):
     if not system:
         return jsonify({"error": "not found"}), 404
 
-    data = request.get_json(silent=True) or {}
-    calendar_id: str = data.get("calendar_id", "primary")
+    body = parse_body(CalendarEventIn, optional=True)  # ai: claude-opus-5-5 | 2026-11-06
 
     try:
         from app.google_calendar import create_territory_event
-        system["calendar_event"] = create_territory_event(system, calendar_id=calendar_id)
+        system["calendar_event"] = create_territory_event(system, calendar_id=body.calendar_id)
         return jsonify(system)
     except Exception:
         logger.exception("Error creating Google Calendar event for territory system %s", system_id)

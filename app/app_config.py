@@ -19,10 +19,16 @@ import logging
 import os
 import re
 import sys
+from typing import Literal
 
 import yaml
 
 logger = logging.getLogger(__name__)
+
+# ai: claude-opus-5-5 | 2026-11-06
+# The combat template kinds that can be saved from the UI; each one has an
+# add_<kind>_template() below. Request validation uses this Literal directly.
+TemplateKind = Literal["hostile_ship", "skull_glyph", "diamond_glyph"]
 
 
 def _runtime_dir() -> str:

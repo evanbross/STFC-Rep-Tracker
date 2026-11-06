@@ -25,6 +25,7 @@ from werkzeug.serving import make_server
 from app.app_config import capture_cfg
 from app.request_guards import install_cross_origin_write_guard
 from app.views.community_mod_view import community_mod_bp
+from app.views.validation import register_error_handlers
 
 # Load .env if present (ignored in containers where vars are injected directly)
 try:
@@ -283,6 +284,7 @@ def create_app():
     flask_app.config.from_object(get_config())
     CORS(flask_app, origins=flask_app.config["CORS_ORIGINS"])
     install_cross_origin_write_guard(flask_app, flask_app.config["CORS_ORIGINS"])  # ai: claude-opus-5-5 | 2026-11-06
+    register_error_handlers(flask_app)  # ai: claude-opus-5-5 | 2026-11-06
     Swagger(flask_app)
 
     database = Database(flask_app.config["DATABASE_URL"])

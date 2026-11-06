@@ -12,13 +12,14 @@ from __future__ import annotations
 import base64
 import logging
 import os
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, get_args
 
 import cv2
 import numpy as np
 from werkzeug.utils import secure_filename
 
 from app.app_config import (
+    TemplateKind,
     add_diamond_glyph_template,
     add_hostile_ship_template,
     add_skull_glyph_template,
@@ -47,6 +48,11 @@ _KIND_CONFIG = {
     "skull_glyph": {"prefix": "Skull", "per_system": False, "add_fn": add_skull_glyph_template},
     "diamond_glyph": {"prefix": "Diamond", "per_system": False, "add_fn": add_diamond_glyph_template},
 }
+# ai: claude-opus-5-5 | 2026-11-06
+# Request validation accepts exactly the TemplateKind values, so a kind added
+# there without a registry entry here (or vice versa) must fail at import.
+if set(_KIND_CONFIG) != set(get_args(TemplateKind)):
+    raise RuntimeError(f"_KIND_CONFIG {sorted(_KIND_CONFIG)} does not match TemplateKind {get_args(TemplateKind)}")
 
 
 class HostileTemplateOrchestrator:

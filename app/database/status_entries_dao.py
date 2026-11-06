@@ -9,6 +9,8 @@
 from datetime import datetime, timezone
 from typing import Any
 
+from app.domain_errors import NotFoundError
+
 
 class StatusEntriesDAO:
     def __init__(self, db: Any) -> None:
@@ -44,7 +46,7 @@ class StatusEntriesDAO:
             result = cursor.fetchone()
 
             if not result:
-                raise ValueError(f"Faction '{faction_name}' not found")
+                raise NotFoundError(f"Faction '{faction_name}' not found")  # ai: claude-opus-5-5 | 2026-11-06
 
             faction_code = result[0]
 

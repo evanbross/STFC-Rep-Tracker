@@ -97,3 +97,16 @@ def test_update_row_without_fields_is_400(fkr_client: FlaskClient) -> None:
     response = fkr_client.put(f"/api/reputations/by-table/{FKR_TABLE}/1", json={"bogus": 1})
 
     assert response.status_code == 400
+
+
+# ai: claude-opus-5-5 | 2026-11-06
+def test_update_unknown_row_is_404(fkr_client: FlaskClient) -> None:
+    response = fkr_client.put(f"/api/reputations/by-table/{FKR_TABLE}/999999", json={"high_limit": 1})
+
+    assert response.status_code == 404
+
+
+def test_update_row_rejects_non_integer_limit(fkr_client: FlaskClient) -> None:
+    response = fkr_client.put(f"/api/reputations/by-table/{FKR_TABLE}/1", json={"low_limit": "lots"})
+
+    assert response.status_code == 400

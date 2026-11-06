@@ -46,7 +46,6 @@ def test_post_missing_fields_is_400(client: FlaskClient, body: dict) -> None:
     assert client.post("/api/status_entries/", json=body).status_code == 400
 
 
-@pytest.mark.xfail(strict=True, reason="N-S3: non-numeric value returns 404, should be 400 (Phase 2)")
 def test_post_non_numeric_value_is_400(client: FlaskClient) -> None:
     create_faction(client, "FED", "Federation")
 

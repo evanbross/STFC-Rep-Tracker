@@ -9,15 +9,15 @@
 import logging
 import os
 
-from flask import Blueprint, jsonify, request, current_app, send_from_directory
+from flask import Blueprint, jsonify, current_app, send_from_directory
 
 from app.app_config import capture_cfg
+from app.views.request_models import TargetPreferenceIn
+from app.views.validation import parse_body
 
 logger = logging.getLogger(__name__)
 
 target_types_bp = Blueprint("target_types", __name__)
-
-_ALLOWED_PREFERENCES = {"unknown", "target", "avoid"}
 
 
 def _get_db():
@@ -84,13 +84,8 @@ def update_target_type(type_id):
       404:
         description: Target type not found
     """
-    data = request.get_json(silent=True) or {}
-    preference = data.get("preference")
-    if preference not in _ALLOWED_PREFERENCES:
-        return jsonify({"error": f"preference must be one of {sorted(_ALLOWED_PREFERENCES)}"}), 400
-
-    display_name = data.get("display_name")
-    updated = _get_db().target_types.set_preference(type_id, preference, display_name)
+    body = parse_body(TargetPreferenceIn)  # ai: claude-opus-5-5 | 2026-11-06
+    updated = _get_db().target_types.set_preference(type_id, body.preference, body.display_name)
     if updated is None:
         return jsonify({"error": "Target type not found"}), 404
     return jsonify(updated)

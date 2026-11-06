@@ -50,7 +50,6 @@ def test_update_unknown_faction_is_404(client: FlaskClient) -> None:
     assert response.status_code == 404
 
 
-@pytest.mark.xfail(strict=True, reason="N-S3: duplicate create returns 400, should be 409 (Phase 2)")
 def test_duplicate_create_is_409(client: FlaskClient) -> None:
     create_faction(client, "KLI", "Klingon")
 
@@ -59,7 +58,6 @@ def test_duplicate_create_is_409(client: FlaskClient) -> None:
     assert response.status_code == 409
 
 
-@pytest.mark.xfail(strict=True, reason="N-S3: duplicate rename returns 404, should be 409 (Phase 2)")
 def test_duplicate_update_is_409(client: FlaskClient) -> None:
     create_faction(client, "KLI", "Klingon")
     create_faction(client, "ROM", "Romulan", display_order=2)
@@ -118,3 +116,36 @@ def test_summary_sort_descending(client: FlaskClient, db: Database) -> None:
     summary = client.get("/api/factions/summary?sort=-current_value").get_json()
 
     assert [s["code"] for s in summary] == ["BBB", "AAA"]
+
+
+# ai: claude-opus-5-5 | 2026-11-06
+@pytest.mark.parametrize(("sent", "stored"), [("", None), ("3", 3), (4, 4), (None, None)])
+def test_display_order_accepts_form_values(client: FlaskClient, sent: object, stored: int | None) -> None:
+    """The Factions form sends display_order as raw input text ('' when blank)."""
+    response = client.post("/api/factions/", json={"code": "FED", "name": "Federation", "display_order": sent})
+
+    assert response.status_code == 201, response.get_json()
+    assert response.get_json()["display_order"] == stored
+
+
+def test_invalid_body_lists_fields_without_echoing_input(client: FlaskClient) -> None:
+    response = client.post("/api/factions/", json={"code": "FED", "name": "Federation", "on_chart": "secret-ish"})
+
+    assert response.status_code == 400
+    body = response.get_json()
+    assert [f["field"] for f in body["fields"]] == ["on_chart"]
+    assert "secret-ish" not in response.get_data(as_text=True)
+
+
+def test_unexpected_error_is_500_without_details(
+    client: FlaskClient, db: Database, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def explode(*_args: object) -> None:
+        raise RuntimeError("password=hunter2 at /srv/internal/path")
+
+    monkeypatch.setattr(db.factions, "add_faction", explode)
+
+    response = client.post("/api/factions/", json={"code": "FED", "name": "Federation"})
+
+    assert response.status_code == 500
+    assert response.get_json() == {"error": "Unexpected server error"}

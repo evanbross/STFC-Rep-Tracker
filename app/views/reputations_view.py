@@ -9,9 +9,12 @@
 import logging
 from typing import Any
 
-from flask import Blueprint, Response, current_app, jsonify, request
+from flask import Blueprint, Response, current_app, jsonify
 
 from app.database.reputations_dao import ReputationsDAO
+from app.domain_errors import NotFoundError
+from app.views.request_models import ReputationRowPatch
+from app.views.validation import parse_body
 
 logger = logging.getLogger(__name__)
 
@@ -125,60 +128,43 @@ def update_reputation_row(table_name: str, row_id: int) -> tuple[Response, int] 
       200:
         description: Updated successfully
       400:
-        description: Bad request
+        description: Invalid body, or no field this table has
+      404:
+        description: Unknown table or row
     """
     err = _validate_table_name(table_name)
     if err:
         return err
-    db = current_app.config["DATABASE"]
-    body = request.get_json()
-    if not body:
-        return jsonify({"error": "No data provided"}), 400
+    # ai: claude-opus-5-5 | 2026-11-06
+    # Only fields the client actually sent change; an explicit null is kept so
+    # the top tier's high_limit can be cleared.
+    sent = parse_body(ReputationRowPatch).model_dump(exclude_unset=True)
 
-    try:
-        with db.connect() as conn:
-            cursor = conn.cursor()
+    with current_app.config["DATABASE"].connect() as conn:
+        cursor = conn.cursor()
 
-            cursor.execute(
-                "SELECT column_name FROM information_schema.columns "
-                "WHERE table_name = %s AND table_schema = current_schema()",  # ai: claude-opus-5-5 | 2026-11-05
-                (table_name,),
-            )
-            rows = cursor.fetchall()
-            columns = {row[0].lower(): row[0] for row in rows}
-            if not columns:
-                return jsonify({"error": f"Table '{table_name}' not found"}), 400
+        cursor.execute(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_name = %s AND table_schema = current_schema()",  # ai: claude-opus-5-5 | 2026-11-05
+            (table_name,),
+        )
+        columns = {row[0].lower(): row[0] for row in cursor.fetchall()}
+        if not columns:
+            raise NotFoundError(f"Table '{table_name}' not found")
 
-            name_col = columns.get("name", "name")
-            updates: list[str] = []
-            params: list[Any] = []
+        # Column names come from information_schema, never from the request.
+        updates = {columns[field]: value for field, value in sent.items() if field in columns}
+        if not updates:
+            return jsonify({"error": "No valid fields to update"}), 400
 
-            if "name" in body:
-                updates.append(f"{name_col} = %s")
-                params.append(body["name"])
-            if "low_limit" in body:
-                updates.append("low_limit = %s")
-                params.append(body["low_limit"])
-            if "high_limit" in body and "high_limit" in columns:
-                updates.append("high_limit = %s")
-                params.append(body["high_limit"])
-            if "messages_count" in body and "messages_count" in columns:
-                updates.append("messages_count = %s")
-                params.append(body["messages_count"])
-            if "credit_amount" in body and "credit_amount" in columns:
-                updates.append("credit_amount = %s")
-                params.append(body["credit_amount"])
+        assignments = ", ".join(f'"{column}" = %s' for column in updates)
+        cursor.execute(
+            f'UPDATE "{table_name}" SET {assignments} WHERE id = %s', [*updates.values(), row_id]
+        )
+        if cursor.rowcount == 0:
+            raise NotFoundError(f"Row {row_id} not found in '{table_name}'")
 
-            if not updates:
-                return jsonify({"error": "No valid fields to update"}), 400
-
-            params.append(row_id)
-            cursor.execute(f'UPDATE "{table_name}" SET {", ".join(updates)} WHERE id = %s', params)
-
-        return jsonify({"success": True})
-    except Exception:
-        logger.exception("Error updating reputation row")
-        return jsonify({"error": "Failed to update reputation row"}), 500
+    return jsonify({"success": True})
 
 
 @reputations_bp.route("/by-table/<table_name>", methods=["GET"])

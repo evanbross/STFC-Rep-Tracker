@@ -11,6 +11,9 @@ import logging
 from flask import Blueprint, jsonify, request, current_app
 from flask.views import MethodView
 
+from app.views.request_models import StatusEntryIn
+from app.views.validation import parse_body
+
 logger = logging.getLogger(__name__)
 
 status_entries_bp = Blueprint("status_entries", __name__)
@@ -90,28 +93,14 @@ class StatusEntriesView(MethodView):
           201:
             description: Entry created successfully
           400:
-            description: Missing faction or value
+            description: Missing or non-integer faction/value
           404:
             description: Faction not found
         """
-        db = current_app.config["DATABASE"]
-        data = request.get_json(silent=True)
-        if not data:
-            return jsonify({"error": "Request body must be valid JSON"}), 400
-        faction_name = data.get("faction")
-        value = data.get("value")
-
-        if not faction_name or value is None:
-            return jsonify({"error": "Missing faction or value"}), 400
-
-        try:
-            entry = db.status_entries.add_status_entry(faction_name, int(value))
-            return jsonify(entry), 201
-        except ValueError as e:
-            return jsonify({"error": str(e)}), 404
-        except Exception as e:
-            logger.exception("Error adding status entry")
-            return jsonify({"error": "Failed to add status entry"}), 500
+        # ai: claude-opus-5-5 | 2026-11-06
+        body = parse_body(StatusEntryIn)
+        entry = current_app.config["DATABASE"].status_entries.add_status_entry(body.faction, body.value)
+        return jsonify(entry), 201
 
 
 AllStatusEntriesView = StatusEntriesView

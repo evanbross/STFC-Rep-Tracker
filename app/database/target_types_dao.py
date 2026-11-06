@@ -8,12 +8,17 @@
 # =============================================================================
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal, get_args
 
 if TYPE_CHECKING:
     from app.database.database import Database
 
-_ALLOWED_PREFERENCES = frozenset({"unknown", "target", "avoid"})
+# ai: claude-opus-5-5 | 2026-11-06
+# Single source for preference values: request validation, the DAO guard, and
+# the table's CHECK constraint all derive from this Literal.
+TargetPreference = Literal["unknown", "target", "avoid"]
+TARGET_PREFERENCES: tuple[str, ...] = get_args(TargetPreference)
+_PREFERENCE_SQL_LIST = ", ".join(f"'{p}'" for p in TARGET_PREFERENCES)
 
 _COLUMNS = (
     "id, system_name, template_filename, display_name, preference, "
@@ -52,14 +57,14 @@ class TargetTypesDAO:
         self.db = db
 
     def create_table(self, cursor) -> None:
-        cursor.execute("""
+        cursor.execute(f"""
             CREATE TABLE IF NOT EXISTS target_types (
                 id                    SERIAL PRIMARY KEY,
                 system_name           TEXT NOT NULL,
                 template_filename     TEXT NOT NULL,
                 display_name          TEXT,
                 preference            TEXT NOT NULL DEFAULT 'unknown'
-                                          CHECK (preference IN ('unknown', 'target', 'avoid')),
+                                          CHECK (preference IN ({_PREFERENCE_SQL_LIST})),
                 sample_image_filename TEXT,
                 example_name          TEXT,
                 example_level         INTEGER,
@@ -126,7 +131,7 @@ class TargetTypesDAO:
 
     def set_preference(self, type_id: int, preference: str, display_name: str | None = None) -> dict | None:
         """Update a type's target/avoid/unknown preference, and optionally rename it."""
-        if preference not in _ALLOWED_PREFERENCES:
+        if preference not in TARGET_PREFERENCES:
             raise ValueError(f"Invalid preference: {preference!r}")
         with self.db.connect() as conn:
             cursor = conn.cursor()

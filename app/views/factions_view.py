@@ -14,6 +14,8 @@ from flask import Blueprint, jsonify, request, current_app, send_from_directory
 from werkzeug.utils import secure_filename
 
 from app.app_config import capture_cfg
+from app.views.request_models import FactionIn
+from app.views.validation import parse_body
 
 logger = logging.getLogger(__name__)
 
@@ -141,43 +143,24 @@ def add_faction():
       201:
         description: Faction created successfully
       400:
-        description: Missing required fields or faction already exists
+        description: Invalid request body
+      409:
+        description: A faction with that name or code already exists
     """
-    db = current_app.config["DATABASE"]
-    data = request.get_json(silent=True)
-    if not data:
-        return jsonify({"error": "Request body must be valid JSON"}), 400
-    name = data.get("name")
-    code = data.get("code")
-    color = data.get("color")
-    reputation_table_name = data.get("reputation_table_name")
-    on_chart = data.get("on_chart", 0)
-    display_order = data.get("display_order")
-    reputation_dao_name = data.get("reputation_dao_name")
-    snippet_selected_button = data.get("snippet_selected_button")
-    snippet_unselected = data.get("snippet_unselected")
-
-    if not name or not code:
-        return jsonify({"error": "Missing name or code"}), 400
-
-    try:
-        result = db.factions.add_faction(
-            name,
-            code,
-            color,
-            reputation_table_name,
-            int(on_chart),
-            int(display_order) if display_order is not None else None,
-            reputation_dao_name,
-            snippet_selected_button,
-            snippet_unselected,
-        )
-        return jsonify(result), 201
-    except ValueError as e:
-        return jsonify({"error": str(e)}), 400
-    except Exception as e:
-        logger.exception("Error adding faction")
-        return jsonify({"error": "Failed to add faction"}), 500
+    # ai: claude-opus-5-5 | 2026-11-06
+    body = parse_body(FactionIn)
+    result = current_app.config["DATABASE"].factions.add_faction(
+        body.name,
+        body.code,
+        body.color,
+        body.reputation_table_name,
+        body.on_chart,
+        body.display_order,
+        body.reputation_dao_name,
+        body.snippet_selected_button,
+        body.snippet_unselected,
+    )
+    return jsonify(result), 201
 
 
 @factions_bp.route("/<string:current_code>", methods=["PUT"])
@@ -222,45 +205,28 @@ def update_faction(current_code):
     responses:
       200:
         description: Faction updated successfully
+      400:
+        description: Invalid request body
       404:
         description: Faction not found
+      409:
+        description: Another faction already has that name or code
     """
-    db = current_app.config["DATABASE"]
-    data = request.get_json(silent=True)
-    if not data:
-        return jsonify({"error": "Request body must be valid JSON"}), 400
-    name = data.get("name")
-    new_code = data.get("code")
-    color = data.get("color")
-    reputation_table_name = data.get("reputation_table_name")
-    on_chart = data.get("on_chart", 0)
-    display_order = data.get("display_order")
-    reputation_dao_name = data.get("reputation_dao_name")
-    snippet_selected_button = data.get("snippet_selected_button")
-    snippet_unselected = data.get("snippet_unselected")
-
-    if not name or not new_code:
-        return jsonify({"error": "Missing name or code"}), 400
-
-    try:
-        result = db.factions.update_faction(
-            current_code,
-            name,
-            new_code,
-            color,
-            reputation_table_name,
-            int(on_chart),
-            int(display_order) if display_order is not None else None,
-            reputation_dao_name,
-            snippet_selected_button,
-            snippet_unselected,
-        )
-        return jsonify(result), 200
-    except ValueError as e:
-        return jsonify({"error": str(e)}), 404
-    except Exception as e:
-        logger.exception("Error updating faction")
-        return jsonify({"error": "Failed to update faction"}), 500
+    # ai: claude-opus-5-5 | 2026-11-06
+    body = parse_body(FactionIn)
+    result = current_app.config["DATABASE"].factions.update_faction(
+        current_code,
+        body.name,
+        body.code,
+        body.color,
+        body.reputation_table_name,
+        body.on_chart,
+        body.display_order,
+        body.reputation_dao_name,
+        body.snippet_selected_button,
+        body.snippet_unselected,
+    )
+    return jsonify(result), 200
 
 
 @factions_bp.route("/summary", methods=["GET"])
