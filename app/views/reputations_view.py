@@ -28,54 +28,6 @@ def _validate_table_name(table_name: str) -> tuple[Response, int] | None:
     return None
 
 
-def _get_faction_reputations(table_name: str, display_name: str) -> tuple[Response, int] | Response:
-    """Shared handler for per-faction reputation GET routes."""
-    dao = ReputationsDAO.get_dao_by_table_name(table_name)
-    if not dao:
-        return jsonify({"error": f"{display_name} reputation DAO not found"}), 404
-    return jsonify(dao.get_all())
-
-
-@reputations_bp.route("", methods=["GET"])
-def get_reputations() -> tuple[Response, int] | Response:
-    return _get_faction_reputations("fkr_reputations", "FKR")
-
-
-@reputations_bp.route("/augment", methods=["GET"])
-def get_augment_reputations() -> tuple[Response, int] | Response:
-    return _get_faction_reputations("augment_reputations", "Augment")
-
-
-@reputations_bp.route("/rogue", methods=["GET"])
-def get_rogue_reputations() -> tuple[Response, int] | Response:
-    return _get_faction_reputations("rogue_reputations", "Rogue")
-
-
-@reputations_bp.route("/bajoran", methods=["GET"])
-def get_bajoran_reputations() -> tuple[Response, int] | Response:
-    return _get_faction_reputations("bajoran_reputations", "Bajoran")
-
-
-@reputations_bp.route("/terran", methods=["GET"])
-def get_terran_reputations() -> tuple[Response, int] | Response:
-    return _get_faction_reputations("terran_reputations", "Terran")
-
-
-@reputations_bp.route("/dti", methods=["GET"])
-def get_dti_reputations() -> tuple[Response, int] | Response:
-    return _get_faction_reputations("dti_reputations", "DTI")
-
-
-@reputations_bp.route("/section31", methods=["GET"])
-def get_section31_reputations() -> tuple[Response, int] | Response:
-    return _get_faction_reputations("section31_reputations", "Section 31")
-
-
-@reputations_bp.route("/ex-borg", methods=["GET"])
-def get_ex_borg_reputations() -> tuple[Response, int] | Response:
-    return _get_faction_reputations("ex_borg_reputations", "Ex-Borg")
-
-
 # ai: claude-opus-5-5 | 2026-11-06
 @reputations_bp.route("/types", methods=["GET"])
 def get_reputation_types() -> Response:

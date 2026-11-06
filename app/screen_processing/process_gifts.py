@@ -16,7 +16,6 @@ from app.screen_processing.screen_capture import (
     is_template_visible,
     wait_and_click,
     wait_for_any_template,
-    wait_for_template,
 )
 
 logger = logging.getLogger(__name__)

@@ -70,6 +70,15 @@ template match thresholds, etc.). Accessed via `capture_cfg()` in `app/app_confi
   re-parses the edit and checks that only that list changed, then swaps the file in atomically, keeping comments and
   CRLF line endings.
 
+**File locations** (`app/paths.py`, a leaf module): `runtime_dir()` is writable and survives reinstalls (the exe folder
+when frozen). `resource_dir()` holds bundled read-only files (PyInstaller `_internal`). In a source checkout both are
+the project root.
+- Resolve files with `runtime_path()` / `resource_path()`. Don't compute paths from `__file__` or the cwd.
+- Snippets go through `app/snippet_store.py`. Lookups check the user folder first, then the bundled one. New snippets
+  are always written to the user folder (`new_snippet_path`), so upgrades don't wipe them.
+- Screenshots go to `app_config.screenshots_dir()`.
+- Elevation and single-instance mutexes live in `app/win_process.py`, shared by `launcher.py` and `main.py`.
+
 ## Running Tests
 
 ```bash
@@ -148,7 +157,10 @@ registered in `main.py` with URL prefixes:
 | `status_entries_view.py` | `/api/status_entries` |
 | `reputations_view.py`    | `/api/reputations`    |
 | `capture_screen_view.py` | `/api/capture-screen` |
-| `system_view.py`         | `/api/system`         |
+| `target_types_view.py`   | `/api/target-types`   |
+| `territory_view.py`      | `/api/territory`      |
+| `calendar_view.py`       | `/api/calendar`       |
+| `community_mod_view.py`  | `/api/community-mod`  |
 
 Key endpoints:
 

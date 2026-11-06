@@ -222,13 +222,6 @@ class FactionsDAO:
             snippets = [{"id": r[0], "filename": r[1], "snippet_type": r[2]} for r in cursor.fetchall()]
             return self._row_to_dict(row, snippets)
 
-    def get_faction_names(self) -> list[str]:
-        """Get a list of all faction names ordered by display_order"""
-        with self.db.connect() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT name FROM factions ORDER BY display_order")
-            return [row[0] for row in cursor.fetchall()]
-
     # ai: claude-opus-5-5 | 2026-11-06
     # One statement for every faction (N-P2): the last N entries per faction
     # come from ROW_NUMBER, the total from COUNT(*) OVER the same partition.
