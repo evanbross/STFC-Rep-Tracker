@@ -11,7 +11,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, errorMessage } from '../api/client';
 import HostileTemplateCapture from '../components/HostileTemplateCapture';
-import TargetFlags from '../utils/targetFlags';
+import TargetCandidates, { useAttackTarget } from '../components/TargetCandidates';
 import { isCaptureBusyError, useCaptureBusy } from '../hooks/useCaptureBusy';
 
 // How often to poll refresh_targets() while combat mode is running. This is
@@ -24,28 +24,17 @@ const REFRESH_INTERVAL_MS = 4000;
 // backend/window doesn't retry forever.
 const MAX_CONSECUTIVE_REFRESH_ERRORS = 10;
 
-const formatCargo = (cargo) => {
-  const entries = Object.entries(cargo || {});
-  if (entries.length === 0) return '—';
-  return entries.map(([resource, amount]) => `${resource} ${amount.toLocaleString()}`).join(', ');
-};
-
-const formatIntercept = (seconds) => {
-  if (seconds == null) return '—';
-  return seconds < 60 ? `${seconds.toFixed(1)}s` : `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`;
-};
-
 const Combat = () => {
   const [running, setRunning] = useState(false);
   const [starting, setStarting] = useState(false);
   const [systemName, setSystemName] = useState(null);
   const [candidates, setCandidates] = useState([]);
   const [needsClassification, setNeedsClassification] = useState(false);
-  const [attackingIdx, setAttackingIdx] = useState(null);
   const [error, setError] = useState(null);
   const [message, setMessage] = useState(null);
   // ai: claude-opus-5-5 | 2026-11-06 — true while a foreground capture runs on any page
   const captureBusy = useCaptureBusy();
+  const { attackingIdx, attack } = useAttackTarget(); // ai: claude-opus-5-5 | 2026-11-06
 
   // Refs mirror state that async continuations (the refresh loop, the
   // in-flight attack) need to read without capturing a stale closure.
@@ -156,40 +145,21 @@ const Combat = () => {
     clearTimeout(timerRef.current);
   };
 
+  // ai: claude-opus-5-5 | 2026-11-06 — called after TargetCandidates' confirm prompt
   const handleAttack = async (candidate, idx) => {
-    if (!window.confirm(`Attack ${candidate.name || 'this target'} (Lv ${candidate.level ?? '?'})?`)) {
-      return;
-    }
     // Pause the background refresh loop while we're clicking, so it can't
     // fire mid-attack and fight the mouse for control of the game window.
     clearTimeout(timerRef.current);
-    setAttackingIdx(idx);
     setError(null);
     setMessage(null);
-    try {
-      const response = await api.post('/api/capture-screen/system-targets/attack', {
-        click_x: candidate.click_x,
-        click_y: candidate.click_y,
-        vx: candidate.vx,
-        vy: candidate.vy,
-        scanned_at: candidate.scanned_at,
-      });
-      const data = response.data;
-      if (data.error) {
-        setError(data.error);
-        if (runningRef.current) scheduleNextRefresh();
-      } else {
-        setMessage(`Attack launched on ${candidate.name || 'target'}. Re-scanning…`);
-        setAttackingIdx(null);
-        await handleStart(); // full re-scan — the target list just changed meaningfully
-        return;
-      }
-    } catch (e) {
-      setError(e.response?.data?.error || 'Cannot reach the server. Is the backend running?');
-      if (runningRef.current) scheduleNextRefresh();
-    } finally {
-      setAttackingIdx(null);
+    const result = await attack(candidate, idx);
+    if (result.launched) {
+      setMessage(`Attack launched on ${candidate.name || 'target'}. Re-scanning…`);
+      await handleStart(); // full re-scan — the target list just changed meaningfully
+      return;
     }
+    setError(result.error);
+    if (runningRef.current) scheduleNextRefresh();
   };
 
   return (
@@ -228,42 +198,12 @@ const Combat = () => {
       )}
 
       {candidates.length > 0 && (
-        <table>
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th className="text-right">Level</th>
-              <th className="text-right">Hull</th>
-              <th className="text-right">Shield</th>
-              <th>Cargo</th>
-              <th className="text-right">Intercept</th>
-              <th className="text-right">Score</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {candidates.map((c, idx) => (
-              <tr key={idx} style={idx === 0 ? { fontWeight: 'bold' } : {}}>
-                <td>{idx === 0 ? '★ ' : ''}{c.name || 'Unknown'}<TargetFlags hazard={c.hazard} bounty={c.bounty} /></td>
-                <td className="text-right">{c.level ?? '—'}</td>
-                <td className="text-right">{c.hull_pct != null ? `${c.hull_pct}%` : '—'}</td>
-                <td className="text-right">{c.shield_pct != null ? `${c.shield_pct}%` : '—'}</td>
-                <td>{formatCargo(c.cargo)}</td>
-                <td className="text-right">{formatIntercept(c.time_to_intercept_sec)}</td>
-                <td className="text-right">{c.score?.toFixed(2) ?? '—'}</td>
-                <td>
-                  <button
-                    className="btn-danger"
-                    onClick={() => handleAttack(c, idx)}
-                    disabled={attackingIdx !== null || captureBusy}
-                  >
-                    {attackingIdx === idx ? 'Attacking…' : 'Attack'}
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <TargetCandidates
+          candidates={candidates}
+          onAttack={handleAttack}
+          attackingIdx={attackingIdx}
+          disabled={captureBusy}
+        />
       )}
     </div>
   );

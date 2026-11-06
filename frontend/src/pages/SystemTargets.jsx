@@ -10,19 +10,8 @@
 import React, { useState } from 'react';
 import { api, errorMessage } from '../api/client';
 import HostileTemplateCapture from '../components/HostileTemplateCapture';
-import TargetFlags from '../utils/targetFlags';
+import TargetCandidates, { useAttackTarget } from '../components/TargetCandidates';
 import { useCaptureBusy } from '../hooks/useCaptureBusy';
-
-const formatCargo = (cargo) => {
-  const entries = Object.entries(cargo || {});
-  if (entries.length === 0) return '—';
-  return entries.map(([resource, amount]) => `${resource} ${amount.toLocaleString()}`).join(', ');
-};
-
-const formatIntercept = (seconds) => {
-  if (seconds == null) return '—';
-  return seconds < 60 ? `${seconds.toFixed(1)}s` : `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`;
-};
 
 const PREFERENCE_LABELS = { target: 'Target', avoid: 'Avoid', unknown: 'Unclassified' };
 
@@ -87,7 +76,6 @@ const TargetTypeCard = ({ type, onSetPreference, onRename }) => {
 
 const SystemTargets = () => {
   const [scanning, setScanning] = useState(false);
-  const [attackingIdx, setAttackingIdx] = useState(null);
   const [candidates, setCandidates] = useState(null);
   const [systemName, setSystemName] = useState(null);
   const [targetTypes, setTargetTypes] = useState(null);
@@ -95,10 +83,16 @@ const SystemTargets = () => {
   const [message, setMessage] = useState(null);
   // ai: claude-opus-5-5 | 2026-11-06 — disabled while any capture runs, on any page
   const captureBusy = useCaptureBusy();
+  const { attackingIdx, attack } = useAttackTarget(); // ai: claude-opus-5-5 | 2026-11-06
 
+  // ai: claude-opus-5-5 | 2026-11-06 — a failed load used to be an unhandled rejection
   const loadTargetTypes = async (name) => {
-    const response = await api.get(`/api/target-types/system/${encodeURIComponent(name)}`);
-    setTargetTypes(response.data);
+    try {
+      const response = await api.get(`/api/target-types/system/${encodeURIComponent(name)}`);
+      setTargetTypes(response.data);
+    } catch (e) {
+      setError(errorMessage(e, 'Failed to load target types.'));
+    }
   };
 
   const handleScan = async () => {
@@ -149,31 +143,15 @@ const SystemTargets = () => {
     }
   };
 
+  // ai: claude-opus-5-5 | 2026-11-06 — called after TargetCandidates' confirm prompt
   const handleAttack = async (candidate, idx) => {
-    if (!window.confirm(`Attack ${candidate.name || 'this target'} (Lv ${candidate.level ?? '?'})?`)) {
-      return;
-    }
-    setAttackingIdx(idx);
     setError(null);
     setMessage(null);
-    try {
-      const response = await api.post('/api/capture-screen/system-targets/attack', {
-        click_x: candidate.click_x,
-        click_y: candidate.click_y,
-        vx: candidate.vx,
-        vy: candidate.vy,
-        scanned_at: candidate.scanned_at,
-      });
-      const data = response.data;
-      if (data.error) {
-        setError(data.error);
-      } else {
-        setMessage(`Attack launched on ${candidate.name || 'target'}.`);
-      }
-    } catch (e) {
-      setError(e.response?.data?.error || 'Cannot reach the server. Is the backend running?');
-    } finally {
-      setAttackingIdx(null);
+    const result = await attack(candidate, idx);
+    if (result.launched) {
+      setMessage(`Attack launched on ${candidate.name || 'target'}.`);
+    } else {
+      setError(result.error);
     }
   };
 
@@ -227,42 +205,12 @@ const SystemTargets = () => {
       )}
 
       {candidates && candidates.length > 0 && (
-        <table>
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th className="text-right">Level</th>
-              <th className="text-right">Hull</th>
-              <th className="text-right">Shield</th>
-              <th>Cargo</th>
-              <th className="text-right">Intercept</th>
-              <th className="text-right">Score</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {candidates.map((c, idx) => (
-              <tr key={idx} style={idx === 0 ? { fontWeight: 'bold' } : {}}>
-                <td>{idx === 0 ? '★ ' : ''}{c.name || 'Unknown'}<TargetFlags hazard={c.hazard} bounty={c.bounty} /></td>
-                <td className="text-right">{c.level ?? '—'}</td>
-                <td className="text-right">{c.hull_pct != null ? `${c.hull_pct}%` : '—'}</td>
-                <td className="text-right">{c.shield_pct != null ? `${c.shield_pct}%` : '—'}</td>
-                <td>{formatCargo(c.cargo)}</td>
-                <td className="text-right">{formatIntercept(c.time_to_intercept_sec)}</td>
-                <td className="text-right">{c.score?.toFixed(2) ?? '—'}</td>
-                <td>
-                  <button
-                    className="btn-danger"
-                    onClick={() => handleAttack(c, idx)}
-                    disabled={attackingIdx !== null || captureBusy}
-                  >
-                    {attackingIdx === idx ? 'Attacking…' : 'Attack'}
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <TargetCandidates
+          candidates={candidates}
+          onAttack={handleAttack}
+          attackingIdx={attackingIdx}
+          disabled={captureBusy}
+        />
       )}
     </div>
   );

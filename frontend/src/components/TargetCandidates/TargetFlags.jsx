@@ -9,8 +9,7 @@
 // ai: claude-sonnet-5 | 2026-09-18
 import React from 'react';
 
-// Shared between Combat.jsx and SystemTargets.jsx so the skull/diamond
-// badge rendering can't silently diverge between the two candidate tables.
+// Skull/diamond badges for one candidate row; rendered only by TargetCandidates.
 const TargetFlags = ({ hazard, bounty }) => {
   if (!hazard && !bounty) return null;
   return (
