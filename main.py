@@ -148,6 +148,10 @@ def _is_admin() -> bool:
 def _relaunch_as_admin() -> None:
     script = os.path.abspath(sys.argv[0])
     params = " ".join(f'"{a}"' for a in sys.argv[1:])
+    # ai: claude-opus-5-5 | 2026-11-06
+    # Release the single-instance mutex before the elevated child starts, so
+    # the child can never find it still held by this exiting parent (N-P4).
+    _release_single_instance_lock()
     ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, f'"{script}" {params}', None, 1)
     sys.exit(0)
 
@@ -173,6 +177,29 @@ def _acquire_single_instance_lock() -> bool:
         return True  # CreateMutexW itself failed — fail open, don't block startup
     _singleton_mutex_handle = handle
     return ctypes.windll.kernel32.GetLastError() != _ERROR_ALREADY_EXISTS
+
+
+# ai: claude-opus-5-5 | 2026-11-06
+def _release_single_instance_lock() -> None:
+    """Close this process's handle on the global mutex (the mutex goes away with the last handle)."""
+    global _singleton_mutex_handle
+    if _singleton_mutex_handle:
+        ctypes.windll.kernel32.CloseHandle(_singleton_mutex_handle)
+        _singleton_mutex_handle = None
+
+
+# ai: claude-opus-5-5 | 2026-11-06
+def _warm_ocr_reader() -> None:
+    """Background thread: load the EasyOCR model now, so the first capture doesn't stall on it."""
+    try:
+        # Windows-only capture stack, imported here for the same reason create_app
+        # imports capture_bp lazily: containers run without it (DISABLE_CAPTURE).
+        from app.screen_processing.screen_capture import get_reader
+        started = time.monotonic()
+        get_reader()
+        logger.info("OCR model loaded in %.1fs", time.monotonic() - started)
+    except Exception:
+        logger.exception("OCR warm-up failed; the model will load on first capture instead")
 
 
 def _ensure_community_mod_cert(cert_dir: str) -> tuple[str, str]:
@@ -320,10 +347,25 @@ with open(_resource_path("logging.yaml")) as f:
     logging.config.dictConfig(yaml.safe_load(f))
 logger = logging.getLogger(__name__)
 
-settings = load_settings()  # ai: claude-opus-5-5 | 2026-11-06
-app = create_app(settings)
 
-if __name__ == "__main__":
+# ai: claude-opus-5-5 | 2026-11-06
+def create_wsgi_app() -> Flask:
+    """App factory for WSGI servers (gunicorn "main:create_wsgi_app()") and tests.
+
+    Importing main has no side effects beyond logging setup: the schema init
+    and connection pool start only when an app is actually built.
+    """
+    app_settings = load_settings()
+    _check_env(app_settings)
+    return create_app(app_settings)
+
+
+# ai: claude-opus-5-5 | 2026-11-06
+def _serve() -> None:
+    """Desktop entry point. Cheap checks run first, so a duplicate or
+    about-to-relaunch process exits before any network or model work (N-P4):
+    single-instance lock -> elevation -> env check -> create_app -> listeners.
+    """
     if not _acquire_single_instance_lock():
         logger.error(
             "Another STFC Rep Tracker backend instance is already running — "
@@ -331,33 +373,33 @@ if __name__ == "__main__":
         )
         sys.exit(1)
 
-    _check_env(settings)
+    app_settings = load_settings()
+    debug = app_settings.flask_env == "development"
+    if not debug and not _is_admin():
+        logger.info("Not running as administrator — relaunching with elevation")
+        _relaunch_as_admin()
+
+    _check_env(app_settings)
+    flask_app = create_app(app_settings)
     project_root = _runtime_dir()
 
     screenshots_dir = os.path.join(project_root, "Screenshots")
-    t = threading.Thread(target=_screenshots_cleanup_worker, args=(screenshots_dir,), daemon=True)
-    t.start()
+    threading.Thread(target=_screenshots_cleanup_worker, args=(screenshots_dir,), daemon=True).start()
 
     cert_path, key_path = _ensure_community_mod_cert(os.path.join(project_root, "certs"))
-    https_thread = threading.Thread(
-        target=_run_community_mod_https_server,
-        args=(cert_path, key_path),
-        daemon=True,
-    )
-    https_thread.start()
+    threading.Thread(target=_run_community_mod_https_server, args=(cert_path, key_path), daemon=True).start()
 
-    if not app.config["DEBUG"] and not _is_admin():
-        logger.info("Not running as administrator — relaunching with elevation")
-        _relaunch_as_admin()
+    if not app_settings.disable_capture:
+        threading.Thread(target=_warm_ocr_reader, name="ocr-warmup", daemon=True).start()
+
     _build_frontend_if_needed()
-    port = settings.port  # ai: claude-opus-5-5 | 2026-11-06
+    port = app_settings.port
     try:
-        app.run(debug=app.config["DEBUG"], port=port, use_reloader=False)
+        flask_app.run(debug=debug, port=port, use_reloader=False)
     except OSError as e:
         # WSAEACCES (10013) on Windows means the port is either in use or in the
         # system's excluded port range.  Give a concrete, actionable message.
         if e.errno in (errno.EACCES, 10013):
-            # Try to identify which process owns the port
             logger.error(
                 f"Cannot bind to port {port}: access denied.\n"
                 f"  Another application is likely using port {port}, or Windows has excluded it.\n"
@@ -368,3 +410,7 @@ if __name__ == "__main__":
         else:
             logger.error(f"Failed to start server on port {port}: {e}")
         sys.exit(1)
+
+
+if __name__ == "__main__":
+    _serve()

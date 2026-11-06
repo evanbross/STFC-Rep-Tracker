@@ -56,7 +56,9 @@ npm run build
 **Environment**: `config.py` defines `AppSettings` (pydantic-settings). It is the one place environment variables
 are read: `FLASK_ENV` (`development` | `production` | `testing`, default `development`), `SECRET_KEY`,
 `DATABASE_URL_POOLED` / `DIRECT`, `CORS_ORIGINS`, `CADDY_APP_NAME`, `PORT`, `DISABLE_CAPTURE`.
-- `main.py` builds it once with `load_settings()` and passes it to `create_app(settings)`.
+- `main.py` builds it once with `load_settings()` and passes it to `create_app(settings)`. Importing `main` builds
+  nothing: `python main.py` runs `_serve()` (lock → elevation → env check → app → listeners → OCR warm-up), and
+  Gunicorn/tests call the `create_wsgi_app()` factory (`main:create_wsgi_app()`).
 - In production, a missing, placeholder, or short (<16 chars) `SECRET_KEY` stops startup.
 - Settings errors name the field, never the value.
 - Add new env vars to `AppSettings`; don't call `os.environ.get` elsewhere.

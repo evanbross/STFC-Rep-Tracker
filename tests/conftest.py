@@ -115,10 +115,11 @@ def fixture_flask_app() -> Iterator[Flask]:
     with closing(psycopg2.connect(admin_url)) as conn, conn, conn.cursor() as cursor:
         cursor.execute(f'CREATE SCHEMA "{_SCHEMA}"')
     try:
-        # main.py builds the app at import time, so it is imported only after
-        # pytest_configure has pointed every DB URL at the scoped test schema.
+        # ai: claude-opus-5-5 | 2026-11-06
+        # The app is built only after pytest_configure has pointed every DB
+        # URL at the scoped test schema.
         main = importlib.import_module("main")
-        built_app: Flask = main.app
+        built_app: Flask = main.create_wsgi_app()
         built_app.config["TESTING"] = True
         yield built_app
     finally:

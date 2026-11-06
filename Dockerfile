@@ -46,4 +46,4 @@ CMD ["gunicorn", \
      "--bind", "0.0.0.0:7300", \
      "--timeout", "120", \
      "--access-logfile", "-", \
-     "main:app"]
+     "main:create_wsgi_app()"]
