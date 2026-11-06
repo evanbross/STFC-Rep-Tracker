@@ -577,6 +577,22 @@ next one starts.
 - R14: remove `favicon.zip`, the root `package-lock.json`, root `Territory.jpg`, and the
   `2026-09-14_*.jpg` screenshot after confirming nothing references them. Move any image that a
   test needs into `tests/fixtures/`. Optimize the 2.2 MB `favicon.svg`.
+- **Backend half done 2026-11-06** (`evan-phase5-refactors`): 235 passed and 1 strict xfail (N-T2).
+  - **N-O1:** `app/paths.py` (leaf) has `runtime_dir` / `resource_dir`, and `app/snippet_store.py` handles snippets.
+    The split decision: lookups check the user folder (under `runtime_dir`) first, then the bundled one (`_internal`).
+    Every new snippet goes to the user folder. In a source checkout both are the same folder. Screenshots now follow
+    the `screenshots_dir` setting everywhere, instead of the process cwd.
+  - **N-O2:** `app/win_process.py` holds `is_admin`, `relaunch_as_admin`, and `SingleInstanceLock`.
+  - **N-O3 / N-O7:** the 8 per-faction routes, `system_view.py`, 3 unused DAO methods, and the whole unused
+    `app/models/` package are gone. The rest of N-O7 landed in Phases 3–4.
+  - **N-O5:** `capture_errors.py` + `BaseOrchestrator`. `_run_capture` maps types to status codes, and each message
+    keeps its old status. Exceptions: `save_template`'s request errors are now the documented 400s, and Event
+    Rewards is a 501 with its button disabled. This also closes N-X1.
+  - **R14:** done, except `Territory.jpg`, which stays until R12 decides whether it becomes a parser fixture.
+    `favicon.svg` went from 2.2 MB to 134 KB.
+  - Breaking the user-first snippet lookup, or the type→status mapping, fails a test.
+  - **Still open:** the frontend items (API client, `TargetCandidates`, the Dashboard split) and R12/R13.
+  - **Manual check still open:** a frozen build should keep an uploaded snippet across a reinstall.
 
 ### Deliberately not recommended
 - **A full auth system.** It's only worth building if LAN or remote access becomes a goal.
