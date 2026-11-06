@@ -17,6 +17,9 @@ import cv2
 import numpy as np
 
 from app.app_config import capture_cfg
+from app.domain_errors import NotFoundError
+from app.screen_processing.base_orchestrator import BaseOrchestrator
+from app.screen_processing.capture_errors import CaptureError, CaptureTargetNotFound
 from app.screen_processing.screen_capture import (
     ScreenCapture,
     click_button_if_visible,
@@ -33,32 +36,22 @@ logger = logging.getLogger(__name__)
 # is not yet annotated.
 _FactionDict = dict[str, Any]
 
-# Return type for _navigate_to_factions: success gives (window, None),
-# failure gives (None, error dict).
-_NavResult = tuple[Any, None] | tuple[None, dict[str, str]]
-
-
-class ProcessReputationsOrchestrator:
+# ai: claude-opus-5-5 | 2026-11-06
+class ProcessReputationsOrchestrator(BaseOrchestrator):
     def __init__(self, db: Any) -> None:
-        from app.database.status_entries_dao import StatusEntriesDAO
-
-        self.sc: ScreenCapture = ScreenCapture()
-        self.stat_dao: StatusEntriesDAO = StatusEntriesDAO(db)
+        super().__init__()
+        self.stat_dao: Any = db.status_entries
         self.factions_dao: Any = db.factions
 
-    def _navigate_to_factions(self) -> _NavResult:
+    def _navigate_to_factions(self) -> Any:
         """Activate window, then navigate to the faction store if not already there.
 
         Checks for the faction store header snippet first — if it's already visible,
         skips the home-screen navigation and Factions button click entirely.
 
-        Returns (window, None) on success or (None, error_dict) on failure.
+        Returns the window. Raises a CaptureError subclass on failure.
         """
-        try:
-            window = self.sc.get_and_activate_window()
-        except RuntimeError as e:
-            logger.error(e)
-            return None, {"error": str(e)}
+        window = self._activate()
 
         img = self.sc.capture(window)
         header_threshold: float = capture_cfg("factions", "header_threshold", default=0.70)
@@ -67,14 +60,10 @@ class ProcessReputationsOrchestrator:
             logger.info(
                 f"Already on faction store (header score={header_match[1]:.3f}) — skipping navigation"
             )
-            return window, None
+            return window
 
         logger.info("Faction store header not detected — navigating from home screen")
-        try:
-            self.sc.navigate_to_home_screen(window)
-        except RuntimeError as e:
-            logger.error(f"Could not reach home screen: {e}")
-            return None, {"error": str(e)}
+        self.sc.navigate_to_home_screen(window)  # ai: claude-opus-5-5 | 2026-11-06
 
         if not wait_and_click_any(
             ["Factions Button.jpg", "Factions Button2.jpg", "Factions Button 3.jpg"],
@@ -82,10 +71,9 @@ class ProcessReputationsOrchestrator:
             window,
             (window.left, window.top),
         ):
-            logger.error("Factions Button not found")
-            return None, {"error": "Factions Button not found"}
+            raise CaptureTargetNotFound("Factions Button not found")  # ai: claude-opus-5-5 | 2026-11-06
 
-        return window, None
+        return window
 
     def _save_results(self, results: list[_FactionDict]) -> list[_FactionDict]:
         """Persist captured reputation points to the database.
@@ -108,22 +96,20 @@ class ProcessReputationsOrchestrator:
         return saved
 
     def process_single_faction(self, faction_code: str) -> dict[str, Any]:
-        window, err = self._navigate_to_factions()
-        if err:
-            return err
-
+        # ai: claude-opus-5-5 | 2026-11-06
+        # Look the faction up before driving the mouse: an unknown code is a 404
+        # (via the app's NotFoundError handler) without touching the game.
         faction = self.factions_dao.get_faction_by_code(faction_code)
         if not faction:
-            return {"error": f"Faction '{faction_code}' not found"}
+            raise NotFoundError(f"Faction '{faction_code}' not found")
+        window = self._navigate_to_factions()
 
         results = _process_faction_list([faction], window, self.sc)
         saved = self._save_results(results)
         return {"saved": saved, "results": results}
 
     def process_reputations(self) -> dict[str, Any]:
-        window, err = self._navigate_to_factions()
-        if err:
-            return err
+        window = self._navigate_to_factions()  # ai: claude-opus-5-5 | 2026-11-06
 
         results = _process_faction_list(self.factions_dao.get_all_factions(), window, self.sc)
         saved = self._save_results(results)
@@ -188,29 +174,29 @@ def _find_highlighted_faction(
     return None
 
 
-def capture_and_identify_faction(db: Any) -> dict[str, Any]:
-    """Capture the current STFC window and identify which faction is highlighted.
+# ai: claude-opus-5-5 | 2026-11-06
+class IdentifyFactionOrchestrator(BaseOrchestrator):
+    """Single-shot: which faction is highlighted on the faction store right now?"""
 
-    Returns a dict with {"faction": name} or {"error": message}.
-    """
-    sc = ScreenCapture()
-    try:
-        window = sc.get_and_activate_window()
-    except RuntimeError as e:
-        logger.error(e)
-        return {"error": str(e)}
+    def __init__(self, db: Any) -> None:
+        super().__init__()
+        self.factions_dao: Any = db.factions
 
-    img = sc.capture(window)
-    factions: list[_FactionDict] = sorted(
-        db.factions.get_all_factions(), key=lambda f: f.get("display_order") or 999
-    )
+    def identify(self) -> dict[str, Any]:
+        """Return {"faction": name}, or {"faction": None} if nothing matched.
 
-    try:
-        faction = _find_highlighted_faction(img, factions)
-        return {"faction": faction}
-    except Exception as e:
-        logger.error(e)
-        return {"error": str(e)}
+        Raises GameWindowNotFound, or CaptureError if the screenshot failed.
+        Any other exception reaches _run_capture as a generic 500, so library
+        text is never sent to the client (N-X1).
+        """
+        window = self._activate()
+        img = self.sc.capture(window)
+        if img is None:
+            raise CaptureError("Could not capture the faction store screen")
+        factions: list[_FactionDict] = sorted(
+            self.factions_dao.get_all_factions(), key=lambda f: f.get("display_order") or 999
+        )
+        return {"faction": _find_highlighted_faction(img, factions)}
 
 
 def _preprocess_for_ocr(region_bgr: np.ndarray) -> np.ndarray:

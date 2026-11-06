@@ -234,7 +234,6 @@ const Dashboard = () => {
             away_team_collect: '/api/capture-screen/away-team-collect',
             away_team: '/api/capture-screen/away-team',
             gifts: '/api/capture-screen/gifts',
-            event_rewards: '/api/capture-screen/event-rewards',
             territory_capture: '/api/capture-screen/territory-capture',
         };
         setIsCapturing(true);
@@ -668,7 +667,7 @@ const Dashboard = () => {
                     <button className="btn-capture" onClick={() => handleCaptureScreen('gifts')} disabled={anyCaptureRunning}>
                         Gifts
                     </button>
-                    <button className="btn-capture" disabled={true}>
+                    <button className="btn-capture" disabled={true} title="Not implemented yet">
                         Event Rewards
                     </button>
                     <button className="btn-outline" onClick={openTerritorySchedule}>

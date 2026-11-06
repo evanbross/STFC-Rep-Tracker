@@ -24,7 +24,8 @@ from app.app_config import (
     add_skull_glyph_template,
 )
 from app.screen_processing.process_system_targets import detect_system_name
-from app.screen_processing.screen_capture import ScreenCapture
+from app.screen_processing.base_orchestrator import BaseOrchestrator
+from app.screen_processing.capture_errors import CaptureError, CaptureRequestError
 from app.snippet_store import new_snippet_path, snippet_exists
 
 if TYPE_CHECKING:
@@ -55,7 +56,7 @@ if set(_KIND_CONFIG) != set(get_args(TemplateKind)):
     raise RuntimeError(f"_KIND_CONFIG {sorted(_KIND_CONFIG)} does not match TemplateKind {get_args(TemplateKind)}")
 
 
-class HostileTemplateOrchestrator:
+class HostileTemplateOrchestrator(BaseOrchestrator):  # ai: claude-opus-5-5 | 2026-11-06
     """Lets the user bootstrap/extend the combat template lists — hostile ship
     icons, and the skull/diamond label glyphs — from the running app instead
     of hand-editing settings.yaml and snippet files.
@@ -70,7 +71,7 @@ class HostileTemplateOrchestrator:
     """
 
     def __init__(self, db: "Database") -> None:
-        self.sc = ScreenCapture()
+        super().__init__()  # ai: claude-opus-5-5 | 2026-11-06
         self.db = db
 
     # ai: claude-sonnet-5 | 2026-09-17
@@ -81,15 +82,11 @@ class HostileTemplateOrchestrator:
         saved filename and the "Add for <system>" button label) — unlike
         scan_targets(), a failed OCR here isn't fatal.
         """
-        try:
-            window = self.sc.get_and_activate_window()
-        except RuntimeError as e:
-            logger.error(str(e))
-            return {"error": str(e)}
-
+        # ai: claude-opus-5-5 | 2026-11-06
+        window = self._activate()
         img = self.sc.capture(window, activate=False)
         if img is None:
-            return {"error": "Could not capture system screen"}
+            raise CaptureError("Could not capture system screen")
 
         system_name = detect_system_name(img)
         _last_capture["img"] = img
@@ -97,7 +94,7 @@ class HostileTemplateOrchestrator:
 
         ok, buf = cv2.imencode(".png", img)
         if not ok:
-            return {"error": "Failed to encode screenshot"}
+            raise CaptureError("Failed to encode screenshot")  # ai: claude-opus-5-5 | 2026-11-06
 
         img_h, img_w = img.shape[:2]
         return {
@@ -117,19 +114,21 @@ class HostileTemplateOrchestrator:
         templates (e.g. a couple of ship types, or a ship type plus the
         skull/diamond glyph on its label) seen in one screenshot.
         """
+        # ai: claude-opus-5-5 | 2026-11-06
+        # Request problems are 400s; the docstring of the route already promised that.
         kind_config = _KIND_CONFIG.get(kind)
         if kind_config is None:
-            return {"error": f"Unknown template kind: {kind!r}"}
+            raise CaptureRequestError(f"Unknown template kind: {kind!r}")
 
         img: np.ndarray | None = _last_capture["img"]
         if img is None:
-            return {"error": "No screenshot captured yet — capture the screen first"}
+            raise CaptureRequestError("No screenshot captured yet — capture the screen first")
 
         img_h, img_w = img.shape[:2]
         x1, y1 = max(0, x), max(0, y)
         x2, y2 = min(img_w, x + w), min(img_h, y + h)
         if x2 <= x1 or y2 <= y1:
-            return {"error": "Crop region is empty"}
+            raise CaptureRequestError("Crop region is empty")
         crop = img[y1:y2, x1:x2]
 
         if kind_config["per_system"]:

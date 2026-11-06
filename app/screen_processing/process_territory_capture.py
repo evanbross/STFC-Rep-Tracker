@@ -15,8 +15,9 @@ import numpy as np
 from app.app_config import capture_cfg
 from app.google_calendar import check_events_exist
 from app.screen_processing.ocr_text import is_time_string, parse_time_remaining
+from app.screen_processing.base_orchestrator import BaseOrchestrator
+from app.screen_processing.capture_errors import CaptureError, CaptureTargetNotFound
 from app.screen_processing.screen_capture import (
-    ScreenCapture,
     click_button_if_visible,
     find_all_template_matches,
     get_reader,
@@ -524,24 +525,16 @@ def _extract_territory_systems(img: np.ndarray) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 
-class TerritoryCaptureOrchestrator:
-    def __init__(self) -> None:
-        self.sc = ScreenCapture()
-
+class TerritoryCaptureOrchestrator(BaseOrchestrator):  # ai: claude-opus-5-5 | 2026-11-06
     def navigate_to_territory_capture(self) -> dict:
         """Navigate to home → Alliance → Territory, then OCR the takeover timers.
 
         Returns:
           {"success": True, "systems": [...]} on success, where each system is:
             {"name": str, "time_remaining": str, "event_time": "YYYY-MM-DD HH:MM"}
-          {"error": str} on failure.
+        Raises a CaptureError subclass on failure.
         """
-        try:
-            window = self.sc.get_and_activate_window()
-        except RuntimeError as e:
-            logger.error(str(e))
-            return {"error": str(e)}
-
+        window = self._activate()  # ai: claude-opus-5-5 | 2026-11-06
         screen_offset = (window.left, window.top)
 
         # Navigate to the territory page if not already there.
@@ -554,20 +547,16 @@ class TerritoryCaptureOrchestrator:
         if img is not None and is_button_visible(_on_page_templates, img):
             logger.info("already on Alliance Territory page — skipping navigation")
         else:
-            try:
-                self.sc.navigate_to_home_screen(window)
-            except RuntimeError as e:
-                logger.error("Could not reach home screen: %s", e)
-                return {"error": str(e)}
+            # ai: claude-opus-5-5 | 2026-11-06
+            self.sc.navigate_to_home_screen(window)
 
             img = self.sc.capture(window)
             if not click_button_if_visible(
                 ["Alliance Button 1.jpg", "Alliance Button 2.jpg"], img, screen_offset
             ):
-                logger.error("Alliance Button not found on home screen")
-                return {
-                    "error": "Alliance Button not found — add Alliance Button 1.jpg to app/screen_snippets/"
-                }
+                raise CaptureTargetNotFound(
+                    "Alliance Button not found — add Alliance Button 1.jpg to app/screen_snippets/"
+                )
             logger.info("clicked Alliance Button")
 
             if not wait_and_click_any(
@@ -576,10 +565,9 @@ class TerritoryCaptureOrchestrator:
                 window,
                 screen_offset,
             ):
-                logger.error("Territory Button not found after clicking Alliance")
-                return {
-                    "error": "Territory Button not found — add Territory Button 1.jpg to app/screen_snippets/"
-                }
+                raise CaptureTargetNotFound(  # ai: claude-opus-5-5 | 2026-11-06
+                    "Territory Button not found — add Territory Button 1.jpg to app/screen_snippets/"
+                )
             logger.info("clicked Territory Button")
 
         # Wait for the page to finish loading.
@@ -601,14 +589,14 @@ class TerritoryCaptureOrchestrator:
             )
             img = self.sc.capture(window)
         if img is None:
-            return {"error": "Could not capture territory screen"}
+            raise CaptureError("Could not capture territory screen")  # ai: claude-opus-5-5 | 2026-11-06
 
         systems = _extract_territory_systems(img)
         if not systems:
-            return {
-                "error": "Territory OCR found no systems — page may not have loaded. "
+            raise CaptureError(  # ai: claude-opus-5-5 | 2026-11-06
+                "Territory OCR found no systems — page may not have loaded. "
                 "Check that Territory Portrait and Next Takeover snippet images are configured."
-            }
+            )
 
         try:
             check_events_exist(systems)

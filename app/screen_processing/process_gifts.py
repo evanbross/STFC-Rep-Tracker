@@ -10,8 +10,9 @@ import logging
 import time
 
 from app.app_config import capture_cfg
+from app.screen_processing.base_orchestrator import BaseOrchestrator
+from app.screen_processing.capture_errors import CaptureError, CaptureTargetNotFound
 from app.screen_processing.screen_capture import (
-    ScreenCapture,
     click_button_if_visible,
     is_template_visible,
     wait_and_click,
@@ -28,11 +29,8 @@ _CLAIM_ONE = "Gifts Claim 1.jpg"
 _DONE = "Done.jpg"
 
 
-class GiftsOrchestrator:
-    def __init__(self) -> None:
-        self.sc = ScreenCapture()
-
-    def capture_gifts(self):
+class GiftsOrchestrator(BaseOrchestrator):  # ai: claude-opus-5-5 | 2026-11-06
+    def capture_gifts(self) -> dict:
         """Navigate to the Gifts screen and claim all available gifts.
 
         Navigation:
@@ -45,12 +43,7 @@ class GiftsOrchestrator:
           - Wait for the gifts list to reload (tab selected OR next Claim All).
           - Repeat until no more Claim All buttons appear.
         """
-        try:
-            window = self.sc.get_and_activate_window()
-        except RuntimeError as e:
-            logger.error(str(e))
-            return {"error": str(e)}
-
+        window = self._activate()  # ai: claude-opus-5-5 | 2026-11-06
         screen_offset: tuple[int, int] = (window.left, window.top)
         loop_delay: float = capture_cfg("gifts", "loop_delay", default=0.25)
         claim_first_delay: float = capture_cfg("gifts", "claim_first_delay", default=0.5)
@@ -87,16 +80,11 @@ class GiftsOrchestrator:
 
                 # Not on the gifts screen at all — go home and open Gifts
                 logger.info(f"Gifts tab not visible, navigating to home screen (attempt {attempt})")
-                try:
-                    self.sc.navigate_to_home_screen(window)
-                except RuntimeError as e:
-                    logger.error(f"could not reach home screen: {e}")
-                    return {"error": str(e)}
+                self.sc.navigate_to_home_screen(window)  # ai: claude-opus-5-5 | 2026-11-06
 
                 img = self.sc.capture(window)
                 if not click_button_if_visible(["Gifts 1.jpg", "Gifts 2.jpg"], img, screen_offset):
-                    logger.error("Gifts button not visible on home screen")
-                    return {"error": "Gifts button not visible on home screen"}
+                    raise CaptureTargetNotFound("Gifts button not visible on home screen")
                 logger.info("clicked Gifts button on home screen")
 
                 visible_tab, _ = wait_for_any_template([_TAB_SELECTED, _TAB_UNSELECTED], self.sc, window)
@@ -105,8 +93,7 @@ class GiftsOrchestrator:
                 time.sleep(loop_delay)
 
             if not on_gifts_screen:
-                logger.error(f"could not reach Gifts screen after {max_nav_attempts} attempts")
-                return {"error": f"Gifts screen not reached after {max_nav_attempts} attempts"}
+                raise CaptureError(f"Gifts screen not reached after {max_nav_attempts} attempts")  # ai: claude-opus-5-5 | 2026-11-06
 
         # ── Claim all gifts ───────────────────────────────────────────────────
         logger.info("starting claim loop")

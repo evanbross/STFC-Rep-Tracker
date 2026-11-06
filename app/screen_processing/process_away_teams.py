@@ -10,8 +10,9 @@ import logging
 import time
 
 from app.app_config import capture_cfg
+from app.screen_processing.base_orchestrator import BaseOrchestrator
+from app.screen_processing.capture_errors import CaptureError, CaptureTargetNotFound
 from app.screen_processing.screen_capture import (
-    ScreenCapture,
     click_button_if_visible,
     click_template_match_at,
     match_template,
@@ -44,20 +45,9 @@ def _log_near_misses(filenames, img) -> None:
             logger.info("%s score %.2f (threshold %.2f)", filename, match[1], threshold)
 
 
-class AwayTeamOrchestrator:
-    def __init__(self) -> None:
-        self.sc = ScreenCapture()
-
-    def _get_activated_window(self):
-        """Return (window, None) on success or (None, error_dict) on failure."""
-        try:
-            return self.sc.get_and_activate_window(), None
-        except RuntimeError as e:
-            logger.error(str(e))
-            return None, {"error": str(e)}
-
-    def _navigate_to_away_teams(self, window, screen_offset):
-        """Navigate to the Away Teams tab. Returns an error dict on failure, else None."""
+class AwayTeamOrchestrator(BaseOrchestrator):  # ai: claude-opus-5-5 | 2026-11-06
+    def _navigate_to_away_teams(self, window, screen_offset) -> None:
+        """Navigate to the Away Teams tab. Raises a CaptureError if it can't get there."""
         tab_selected_name = "Away Teams Tab Selected.jpg"
         tab_unselected_name = "Away Teams Tab Unselected.jpg"
         tab_images = [tab_selected_name, tab_unselected_name]
@@ -75,17 +65,16 @@ class AwayTeamOrchestrator:
 
         if visible_tab == tab_selected_name:
             logger.info("already on Away Teams page, skipping navigation")
-            return None
+            return
 
         if visible_tab == tab_unselected_name:
             if not click_button_if_visible(
                 "Away Teams Tab Unselected.jpg", img, screen_offset
             ):
-                logger.error("could not click Away Teams Tab Unselected")
-                return {"error": "Away Teams Tab Unselected not clickable"}
+                raise CaptureError("Away Teams Tab Unselected not clickable")  # ai: claude-opus-5-5 | 2026-11-06
             logger.info("clicked Away Teams Tab Unselected")
             time.sleep(0.3)
-            return None
+            return
 
         # Neither tab template matched — log how close each one came before
         # falling through to the 'T'-key path, so a near-miss (stale snippet)
@@ -109,51 +98,43 @@ class AwayTeamOrchestrator:
 
         if visible_tab == tab_selected_name:
             logger.info("Away Teams page opened via 'T' key")
-            return None
+            return
 
         if visible_tab == tab_unselected_name:
             if not click_button_if_visible(
                 "Away Teams Tab Unselected.jpg", img, screen_offset
             ):
-                logger.error("could not click Away Teams Tab Unselected")
-                return {"error": "Away Teams Tab Unselected not clickable"}
+                raise CaptureError("Away Teams Tab Unselected not clickable")  # ai: claude-opus-5-5 | 2026-11-06
             logger.info("clicked Away Teams Tab Unselected (after 'c' key)")
             time.sleep(0.3)
-            return None
+            return
 
         fresh = self.sc.capture(window)
         if fresh is not None:
             _log_near_misses(tab_images, fresh)
 
         # Last resort: navigate via home screen → Mission Button → Away Teams tab.
-        try:
-            self.sc.navigate_to_home_screen(window)
-        except RuntimeError as e:
-            logger.error(f"could not reach home screen: {e}")
-            return {"error": str(e)}
+        # ai: claude-opus-5-5 | 2026-11-06
+        self.sc.navigate_to_home_screen(window)
 
         img = self.sc.capture(window)
         if not click_button_if_visible(
             ["Mission Button.jpg", "Mission Button 2.jpg"], img, screen_offset
         ):
-            logger.error("Mission Button not found")
-            return {
-                "error": "Mission Button not found — add Mission Button.jpg to app/screen_snippets/"
-            }
+            raise CaptureTargetNotFound(
+                "Mission Button not found — add Mission Button.jpg to app/screen_snippets/"
+            )
         logger.info("clicked Mission Button")
         time.sleep(0.5)
 
         img = self.sc.capture(window)
         if not click_button_if_visible(tab_images, img, screen_offset):
-            logger.error("Away Teams Tab (Un)selected not found")
             _log_near_misses(tab_images, img)
-            return {
-                "error": "Away Teams Tab (Un)selected not found — add Away Teams Tab Unselected.jpg to app/screen_snippets/"
-            }
+            raise CaptureTargetNotFound(  # ai: claude-opus-5-5 | 2026-11-06
+                "Away Teams Tab (Un)selected not found — add Away Teams Tab Unselected.jpg to app/screen_snippets/"
+            )
         logger.info("clicked Away Teams Tab")
         time.sleep(0.5)
-
-        return None
 
     # Templates that confirm the Away Teams list is fully rendered.
     # "Away Teams List Indicator.jpg" only appears when missions are in-progress;
@@ -281,15 +262,9 @@ class AwayTeamOrchestrator:
         """Navigate to Away Teams and collect all completed missions (REPORT → COLLECT only).
         Does not start new expeditions.
         """
-        window, err = self._get_activated_window()
-        if err:
-            return err
-
+        window = self._activate()  # ai: claude-opus-5-5 | 2026-11-06
         screen_offset = (window.left, window.top)
-
-        err = self._navigate_to_away_teams(window, screen_offset)
-        if err:
-            return err
+        self._navigate_to_away_teams(window, screen_offset)
 
         reports_clicked, collected = self._collect_reports(window, screen_offset)
 
@@ -304,15 +279,9 @@ class AwayTeamOrchestrator:
 
     def capture_away_team(self):
         """Navigate to Away Teams, collect all completed missions, then start new expeditions."""
-        window, err = self._get_activated_window()
-        if err:
-            return err
-
+        window = self._activate()  # ai: claude-opus-5-5 | 2026-11-06
         screen_offset = (window.left, window.top)
-
-        err = self._navigate_to_away_teams(window, screen_offset)
-        if err:
-            return err
+        self._navigate_to_away_teams(window, screen_offset)
 
         reports_clicked, collected = self._collect_reports(window, screen_offset)
         expeditions_started = self._start_expeditions(window, screen_offset)

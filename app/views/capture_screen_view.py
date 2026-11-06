@@ -8,25 +8,32 @@
 # =============================================================================
 import logging
 import threading
+from collections.abc import Callable
+from typing import Any, TypeVar
 
 from flask import Blueprint, jsonify, current_app, request
+from flask.typing import ResponseReturnValue
 
+from app.domain_errors import DomainError
+from app.screen_processing.capture_errors import CaptureError
 from app.screen_processing.process_away_teams import AwayTeamOrchestrator
 from app.screen_processing.process_event_rewards import EventRewardsOrchestrator
 from app.screen_processing.process_gifts import GiftsOrchestrator
 from app.screen_processing.process_hostile_templates import HostileTemplateOrchestrator
+from app.screen_processing.process_reputations import (
+    IdentifyFactionOrchestrator,
+    ProcessReputationsOrchestrator,
+)
 from app.screen_processing.process_system_targets import SystemTargetOrchestrator
 from app.screen_processing.process_territory_capture import TerritoryCaptureOrchestrator
-from app.screen_processing.process_reputations import (
-    ProcessReputationsOrchestrator,
-    capture_and_identify_faction,
-)
 from app.views.request_models import AttackIn, RefreshTargetsIn, TemplateCropIn
 from app.views.validation import parse_body
 
 logger = logging.getLogger(__name__)
 
 capture_bp = Blueprint("capture", __name__)
+
+OrchestratorT = TypeVar("OrchestratorT")  # the orchestrator type a route builds and then calls
 
 
 def _get_db():
@@ -42,21 +49,38 @@ _automation_lock = threading.Lock()
 AUTOMATION_BUSY_MESSAGE = "Another capture is in progress"
 
 
-def _run_capture(make_orchestrator, capture_fn, log_msg, error_msg):
-    """Run a capture operation, returning a JSON response with appropriate status code."""
-    if not _automation_lock.acquire(blocking=False):  # ai: claude-opus-5-5 | 2026-11-06
+# ai: claude-opus-5-5 | 2026-11-06
+def _run_capture(
+    make_orchestrator: Callable[[], OrchestratorT],
+    capture_fn: Callable[[OrchestratorT], Any],
+    log_msg: str,
+    error_msg: str,
+) -> ResponseReturnValue:
+    """Run one capture under the automation lock and map its outcome to a response (N-O5).
+
+    - CaptureError subclasses carry a user-facing message and their own status.
+    - NotImplementedError (a placeholder capture) is a 501.
+    - DomainError (e.g. an unknown faction) goes to the app-level handlers.
+    - Anything else is logged with its traceback and answered with error_msg,
+      so exception text never reaches the client. This is the request
+      boundary, which is where a catch-all belongs.
+    """
+    if not _automation_lock.acquire(blocking=False):
         logger.info("refused %s: %s", request.path, AUTOMATION_BUSY_MESSAGE)
         return jsonify({"error": AUTOMATION_BUSY_MESSAGE, "busy": True}), 409
     try:
-        result = capture_fn(make_orchestrator())
-        if isinstance(result, dict) and "error" in result:
-            status_code = 404 if "not found" in str(result["error"]).lower() else 500
-            return jsonify(result), status_code
-        return jsonify(result)
-    except Exception as e:
+        return jsonify(capture_fn(make_orchestrator()))
+    except CaptureError as e:
+        logger.warning("%s: %s", log_msg, e)
+        return jsonify({"error": str(e)}), e.status_code
+    except NotImplementedError:
+        logger.warning("%s: not implemented", log_msg)
+        return jsonify({"error": f"{error_msg}: not implemented yet"}), 501
+    except DomainError:
+        raise
+    except Exception:
         logger.exception(log_msg)
-        status_code = 404 if "not found" in str(e).lower() else 500
-        return jsonify({"error": error_msg}), status_code
+        return jsonify({"error": error_msg}), 500
     finally:
         _automation_lock.release()
 
@@ -128,10 +152,9 @@ def identify_faction():
         description: Unexpected error during capture
     """
     # ai: claude-opus-5-5 | 2026-11-06
-    # Through _run_capture like every other automation, so it takes the lock too.
     return _run_capture(
-        _get_db,
-        capture_and_identify_faction,
+        lambda: IdentifyFactionOrchestrator(_get_db()),
+        lambda o: o.identify(),
         "Error identifying faction",
         "Failed to identify faction",
     )
@@ -237,12 +260,8 @@ def capture_event_rewards():
     tags:
       - Capture
     responses:
-      200:
-        description: Event reward data captured and saved
-      404:
-        description: Game window not found
-      500:
-        description: Unexpected error during capture
+      501:
+        description: Not implemented yet (placeholder)
     """
     return _run_capture(
         EventRewardsOrchestrator,

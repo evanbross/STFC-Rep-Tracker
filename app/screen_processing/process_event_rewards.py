@@ -8,26 +8,17 @@
 # =============================================================================
 import logging
 
-from app.screen_processing.screen_capture import ScreenCapture
+from app.screen_processing.base_orchestrator import BaseOrchestrator
 
 logger = logging.getLogger(__name__)
 
 
-class EventRewardsOrchestrator:
-    def __init__(self) -> None:
-        self.sc = ScreenCapture()
+# ai: claude-opus-5-5 | 2026-11-06
+class EventRewardsOrchestrator(BaseOrchestrator):
+    def capture_event_rewards(self) -> dict:
+        """Placeholder: navigating to and reading the Event Rewards screen isn't built yet.
 
-    def capture_event_rewards(self):
+        It used to take a screenshot and report success, which looked like a
+        working capture. It now fails loudly, and the Dashboard button is disabled.
         """
-        Activate the STFC window and capture the Event Rewards screen.
-        Navigation logic to be implemented.
-        """
-        try:
-            window = self.sc.get_and_activate_window()
-        except RuntimeError as e:
-            logger.error(f"{e}")
-            return {"error": str(e)}
-
-        filepath = self.sc.capture_window(window)
-        logger.info(f"Captured screenshot: {filepath}")
-        return {"image_path": filepath}
+        raise NotImplementedError("Event Rewards capture is not implemented yet")

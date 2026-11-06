@@ -184,12 +184,19 @@ API docs (Flasgger/Swagger UI) available at `/apidocs`.
   screenshots via PyAutoGUI, and provides template matching helpers.
   `capture_window(window, delay=None, activate=False)` — set `activate=True` only on the first capture; polling loops
   leave it False to avoid the 1s activation sleep.
+- Orchestrators subclass `BaseOrchestrator` (`base_orchestrator.py`), which holds `self.sc` and `_activate()`.
+  - They return only success payloads. On failure they raise a `capture_errors.py` class: `CaptureError` (500),
+    `CaptureTargetNotFound` / `GameWindowNotFound` (404), or `CaptureRequestError` (400).
+  - `capture_screen_view._run_capture` maps exception types to status codes under the automation lock. Don't return
+    `{"error": ...}` dicts, and don't match on message text.
+  - Messages are shown to the user, so write them as instructions.
 - `process_reputations.py` — `ProcessReputationsOrchestrator`. For each faction: waits for the unselected button
   template, clicks it, waits for the selected/desc confirm template, then runs EasyOCR on the top-left points region.
-  Also contains `capture_and_identify_faction()` for single-shot faction identification.
+  `IdentifyFactionOrchestrator` does single-shot faction identification.
 - `process_away_teams.py` — `AwayTeamOrchestrator`. Navigates to the Away Teams screen and collects mission results.
-- `process_gifts.py` — `GiftsOrchestrator`. Placeholder for gifts screen capture.
-- `process_event_rewards.py` — `EventRewardsOrchestrator`. Placeholder for event rewards capture.
+- `process_gifts.py` — `GiftsOrchestrator`. Navigates to Gifts and claims everything.
+- `process_event_rewards.py` — `EventRewardsOrchestrator`. Placeholder: raises `NotImplementedError` (501), and its
+  Dashboard button is disabled.
 
 ### Frontend (React + Vite)
 

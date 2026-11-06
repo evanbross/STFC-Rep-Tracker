@@ -22,6 +22,8 @@ import pyautogui
 from werkzeug.utils import secure_filename
 
 from app.app_config import capture_cfg
+from app.screen_processing.base_orchestrator import BaseOrchestrator
+from app.screen_processing.capture_errors import CaptureError, CaptureTargetNotFound
 from app.screen_processing.ocr_text import parse_info_panel, parse_name_level
 from app.snippet_store import new_snippet_path
 from app.screen_processing.screen_capture import (
@@ -532,7 +534,17 @@ def _inspect_candidates(
 # ---------------------------------------------------------------------------
 
 
-class SystemTargetOrchestrator:
+# ai: claude-opus-5-5 | 2026-11-06
+def _require_hostile_templates() -> None:
+    """Scanning finds nothing without at least one hostile ship template configured."""
+    if not capture_cfg("combat", "hostile_ship_templates", default=[]):
+        raise CaptureError(
+            "No ship icons detected — add hostile ship snippet "
+            "filenames to combat.hostile_ship_templates in settings.yaml"
+        )
+
+
+class SystemTargetOrchestrator(BaseOrchestrator):  # ai: claude-opus-5-5 | 2026-11-06
     """Scans the current system view for attackable targets and, on approval,
     selects one and clicks Attack.
 
@@ -550,7 +562,7 @@ class SystemTargetOrchestrator:
     """
 
     def __init__(self, db: "Database") -> None:
-        self.sc = ScreenCapture()
+        super().__init__()  # ai: claude-opus-5-5 | 2026-11-06
         self.db = db
 
     # ai: claude-sonnet-5 | 2026-09-14
@@ -566,44 +578,36 @@ class SystemTargetOrchestrator:
           {"success": True, "system_name": str, "candidates": [...], "top_pick": {...} | None}
             — normal result once every seen type is classified. Only types
               marked "target" are included as candidates.
-          {"error": str} on failure.
+        Raises a CaptureError subclass on failure.
 
         Each candidate includes click_x/click_y in *screen* coordinates, plus
         vx/vy (px/sec, image-local — translation invariant so valid either
         way) and scanned_at (epoch seconds), all of which attack_target()
         needs to re-predict the target's current position.
         """
-        try:
-            window = self.sc.get_and_activate_window()
-        except RuntimeError as e:
-            logger.error(str(e))
-            return {"error": str(e)}
-
+        # ai: claude-opus-5-5 | 2026-11-06
+        window = self._activate()
         screen_offset = (window.left, window.top)
 
         img0 = self.sc.capture(window)
         if img0 is None:
-            return {"error": "Could not capture system screen"}
+            raise CaptureError("Could not capture system screen")
 
         system_name = detect_system_name(img0)
         if not system_name:
-            return {
-                "error": "Could not determine current system name — check "
+            raise CaptureError(
+                "Could not determine current system name — check "
                 "combat.system_name_* crop settings in settings.yaml"
-            }
+            )
 
-        if not capture_cfg("combat", "hostile_ship_templates", default=[]):
-            return {
-                "error": "No ship icons detected — add hostile ship snippet "
-                "filenames to combat.hostile_ship_templates in settings.yaml"
-            }
+        _require_hostile_templates()
 
         # Targets move continuously, so a single frame can't tell us speed —
         # sample a second frame after a short delay to derive velocity.
         sample_interval = capture_cfg("combat", "velocity_sample_interval", default=1.5)
         hostiles, img1 = _sample_and_track(self.sc, window, sample_interval, first_frame=img0)
         if hostiles is None:
-            return {"error": "Could not capture system screen (second sample)"}
+            raise CaptureError("Could not capture system screen (second sample)")  # ai: claude-opus-5-5 | 2026-11-06
         if not hostiles:
             return {"success": True, "system_name": system_name, "candidates": [], "top_pick": None}
 
@@ -713,24 +717,15 @@ class SystemTargetOrchestrator:
         this is meant to run unattended in a loop. Run scan_targets() to
         pick up newly-appeared types.
         """
-        try:
-            window = self.sc.get_and_activate_window()
-        except RuntimeError as e:
-            logger.error(str(e))
-            return {"error": str(e)}
-
+        # ai: claude-opus-5-5 | 2026-11-06
+        window = self._activate()
         screen_offset = (window.left, window.top)
-
-        if not capture_cfg("combat", "hostile_ship_templates", default=[]):
-            return {
-                "error": "No ship icons detected — add hostile ship snippet "
-                "filenames to combat.hostile_ship_templates in settings.yaml"
-            }
+        _require_hostile_templates()
 
         sample_interval = capture_cfg("combat", "refresh_velocity_sample_interval", default=0.8)
         hostiles, img1 = _sample_and_track(self.sc, window, sample_interval)
         if hostiles is None:
-            return {"error": "Could not capture system screen"}
+            raise CaptureError("Could not capture system screen")
         if not hostiles:
             return {"success": True, "system_name": system_name, "candidates": [], "top_pick": None}
 
@@ -790,16 +785,12 @@ class SystemTargetOrchestrator:
         candidate) and then re-acquired against a fresh capture before
         clicking — clicking the raw scan-time coordinates would usually miss.
         """
-        try:
-            window = self.sc.get_and_activate_window()
-        except RuntimeError as e:
-            logger.error(str(e))
-            return {"error": str(e)}
-
+        # ai: claude-opus-5-5 | 2026-11-06
+        window = self._activate()
         screen_offset = (window.left, window.top)
         img = self.sc.capture(window)
         if img is None:
-            return {"error": "Could not capture system screen"}
+            raise CaptureError("Could not capture system screen")
 
         local_x = click_x - screen_offset[0]
         local_y = click_y - screen_offset[1]
@@ -824,10 +815,10 @@ class SystemTargetOrchestrator:
         )
         img2 = self.sc.capture(window)
         if img2 is None or not click_button_if_visible(attack_templates, img2, screen_offset):
-            return {
-                "error": "Attack button not found — target may not have been "
+            raise CaptureTargetNotFound(  # ai: claude-opus-5-5 | 2026-11-06
+                "Attack button not found — target may not have been "
                 "selected, or it moved outside the reacquire radius"
-            }
+            )
 
         confirm_templates = capture_cfg("combat", "attack_confirm_templates", default=[]) or []
         if confirm_templates:
@@ -842,6 +833,6 @@ class SystemTargetOrchestrator:
                 delay=confirm_delay,
             )
             if not clicked:
-                return {"error": "Attack confirmation dialog not found after clicking Attack"}
+                raise CaptureTargetNotFound("Attack confirmation dialog not found after clicking Attack")  # ai: claude-opus-5-5 | 2026-11-06
 
         return {"success": True}

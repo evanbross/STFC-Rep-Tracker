@@ -21,6 +21,7 @@ import pyautogui
 import pygetwindow as gw
 
 from app.app_config import capture_cfg, screenshots_dir
+from app.screen_processing.capture_errors import CaptureError, GameWindowNotFound
 from app.snippet_store import find_snippet
 
 # pygetwindow returns Win32Window on Windows. Typed as Any since stubs vary by platform.
@@ -619,11 +620,11 @@ class ScreenCapture:
     def get_and_activate_window(self):
         """Find the STFC window and bring it to the foreground.
 
-        Returns the window object. Raises RuntimeError if not found.
+        Returns the window object. Raises GameWindowNotFound if not found.
         """
         window = self.get_stfc_window()
         if not window:
-            raise RuntimeError("STFC window not found")
+            raise GameWindowNotFound()  # ai: claude-opus-5-5 | 2026-11-06
         logger.info(f"Found STFC window: {window.title}")
         self.activate_window(window)
         return window
@@ -757,32 +758,6 @@ class ScreenCapture:
         logger.debug(f"Sent {key} keypress to STFC window")
         time.sleep(0.5)
 
-    # def navigate_to_home_screen_key(self, window):
-    #     """Send the F2 keypress to the STFC window to navigate to the home screen."""
-    #     self.activate_window(window)
-    #     pyautogui.press("f2")
-    #     logger.debug("Sent F2 keypress to STFC window")
-    #     time.sleep(0.5)
-
-    # def navigate_to_home_screen(
-    #             self,
-    #             window,
-    #             target_templates=None,
-    #             nav_buttons=None,
-    #             busy_templates=None,
-    #             max_retries=None,
-    #             wait_after_click=None,
-    #             delay=0,
-    #     ):
-    #         #return self.navigate_to_home_screen_key(window)
-    #         return self.navigate_to_home_screen_graphics(window,
-    #                                                      target_templates,
-    #                                                      nav_buttons,
-    #                                                      busy_templates,
-    #                                                      max_retries,
-    #                                                      wait_after_click,
-    #                                                      delay)
-
     def navigate_to_home_screen(
         self,
         window,
@@ -796,7 +771,7 @@ class ScreenCapture:
         """Loop until a target template is visible, clicking nav buttons each iteration.
 
         Checks target_templates first (success), then busy_templates (wait and retry),
-        then clicks the first visible nav button. Raises RuntimeError if the target is
+        then clicks the first visible nav button. Raises CaptureError if the target is
         not reached within max_retries attempts.
         """
         screen_offset = (window.left, window.top)
@@ -859,4 +834,4 @@ class ScreenCapture:
                         f"no known navigation buttons visible (attempt {attempt}/{max_retries})"
                     )
 
-        raise RuntimeError(f"target screen not reached after {max_retries} attempts")
+        raise CaptureError(f"Home screen not reached after {max_retries} attempts")  # ai: claude-opus-5-5 | 2026-11-06
