@@ -6,50 +6,12 @@
  *
  * Licensing inquiries: license@zombietech.biz
  */
-import React, {useEffect, useRef, useState} from 'react';
+import React, {useEffect, useState} from 'react';
 import { api, errorMessage } from '../api/client';
-import {
-    CategoryScale,
-    Chart as ChartJS,
-    Legend,
-    LinearScale,
-    LineElement,
-    PointElement,
-    TimeScale,
-    Title,
-    Tooltip
-} from 'chart.js';
-import annotationPlugin from 'chartjs-plugin-annotation';
-import {Line} from 'react-chartjs-2';
-import 'chartjs-adapter-date-fns';
 import ContextMenu, {useContextMenu} from '../components/ContextMenu';
 import {useCaptureBusy} from '../hooks/useCaptureBusy';
+import HistoryChart, {useHistoryEntries} from '../components/HistoryChart';
 import TerritoryScheduleModal from '../components/TerritoryScheduleModal';
-
-ChartJS.register(
-    CategoryScale,
-    LinearScale,
-    PointElement,
-    LineElement,
-    Title,
-    Tooltip,
-    Legend,
-    TimeScale,
-    annotationPlugin
-);
-
-const colorToRgba = (color, alpha) => {
-    if (color.startsWith('#')) {
-        const r = parseInt(color.slice(1, 3), 16);
-        const g = parseInt(color.slice(3, 5), 16);
-        const b = parseInt(color.slice(5, 7), 16);
-        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-    }
-    if (color.startsWith('rgb')) {
-        return color.replace('rgb', 'rgba').replace(')', `, ${alpha})`);
-    }
-    return color;
-};
 
 const formatShort = (value, decimals = 0) => {
     if (value == null) return null;
@@ -73,28 +35,29 @@ const formatMinutes = (minutes) => {
     return `${mins}m`;
 };
 
-// ai: claude-opus-5-5 | 2026-11-06 — the chart's default history window (N-P3)
-const DEFAULT_HISTORY_DAYS = 30;
-
 const Dashboard = () => {
     const [factions, setFactions] = useState([]);
     const [selectedFaction, setSelectedFaction] = useState(null);
-    const [chartData, setChartData] = useState({datasets: []});
-    // ai: claude-opus-5-5 | 2026-11-06 — null means the whole history
-    const [historyDays, setHistoryDays] = useState(DEFAULT_HISTORY_DAYS);
+    const history = useHistoryEntries(); // ai: claude-opus-5-5 | 2026-11-06
     const [isCapturing, setIsCapturing] = useState(false);
     const [capturingFactionId, setCapturingFactionId] = useState(null);
     // ai: claude-opus-5-5 | 2026-11-06 — also true while a capture started on another page runs
     const captureBusy = useCaptureBusy();
     const anyCaptureRunning = isCapturing || capturingFactionId !== null || captureBusy;
-    const [hiddenDatasets, setHiddenDatasets] = useState({});
     const [showTerritorySchedule, setShowTerritorySchedule] = useState(false);
     const [cardsCollapsed, setCardsCollapsed] = useState(false);
     const awayTeamMenu = useContextMenu(); // ai: claude-opus-5-5 | 2026-10-17
-    const chartRef = useRef(null);
+
+    // ai: claude-opus-5-5 | 2026-11-06
+    // Cards first, then the chart: the chart takes its colors and legend from
+    // the same summary fetch. Falls back to the current list if that fetch failed.
+    const refreshAll = async () => {
+        const list = await loadFactions();
+        await history.reload(list ?? factions);
+    };
 
     useEffect(() => {
-        loadFactions().then(list => loadEntries(list));
+        refreshAll();
     }, []);
 
     const loadFactions = async () => {
@@ -120,69 +83,6 @@ const Dashboard = () => {
         }
     };
 
-    // ai: claude-opus-5-5 | 2026-11-06
-    // Colors come from the faction list passed in, not from state, so one
-    // fetch is enough (N-P3); `days` limits the history to a recent window.
-    const loadEntries = async (factionList, days = historyDays) => {
-        try {
-            const params = days ? {days} : {};
-            const response = await api.get('/api/status_entries/all', {params});
-            const grouped = {};
-            const colors = {};
-            // Seed all on_chart factions so they appear in the legend even with no data
-            const list = factionList ?? factions;
-            for (const f of list) {
-                if (f.on_chart) grouped[f.name] = [];
-                if (f.color) colors[f.name] = f.color;
-            }
-            for (const entry of response.data) {
-                if (!grouped[entry.faction_name]) grouped[entry.faction_name] = [];
-                grouped[entry.faction_name].push(entry);
-            }
-            updateChart(grouped, colors);
-        } catch (error) {
-            console.error('Error loading entries:', error);
-            if (!error.response) {
-                alert('Cannot reach the server. Is the backend running?');
-            }
-        }
-    };
-
-    const updateChart = (data, colors) => {
-        const datasets = [];
-        for (const [factionName, entries] of Object.entries(data)) {
-            const hasData = entries.length > 0 && entries.some(e => e.value !== 0);
-            {
-                const color = colors[factionName] || 'rgb(128, 128, 128)'; // ai: claude-opus-5-5 | 2026-11-06
-
-                const backgroundColor = colorToRgba(color, 0.2);
-
-                datasets.push({
-                    label: factionName,
-                    data: entries.map(entry => ({
-                        x: new Date(entry.timestamp),
-                        y: entry.value
-                    })),
-                    borderColor: color,
-                    backgroundColor: backgroundColor,
-                    tension: 0.1,
-                    fill: false,
-                    hidden: !hasData
-                });
-            }
-        }
-        setChartData({datasets});
-        setHiddenDatasets({});
-    };
-
-    // ai: claude-opus-5-5 | 2026-11-06
-    const toggleFullHistory = () => {
-        const nextDays = historyDays ? null : DEFAULT_HISTORY_DAYS;
-        setHistoryDays(nextDays);
-        loadEntries(factions, nextDays);
-    };
-
-
     const submitEntry = async (factionName, value) => {
         const parsed = parseInt(value, 10);
         if (!Number.isFinite(parsed)) {
@@ -194,8 +94,7 @@ const Dashboard = () => {
                 faction: factionName,
                 value: parsed
             });
-            const list = await loadFactions();
-            await loadEntries(list);
+            await refreshAll();
             return true;
         } catch (error) {
             console.error('Error adding entry:', error);
@@ -226,8 +125,7 @@ const Dashboard = () => {
                 // Full faction sweep — entries already saved automatically
                 const count = data.saved.length;
                 if (count > 0) {
-                    const list = await loadFactions();
-                    await loadEntries(list);
+                    await refreshAll();
                     const summary = data.saved
                         .map(s => `${s.faction}: ${s.points.toLocaleString()}`)
                         .join('\n');
@@ -273,8 +171,7 @@ const Dashboard = () => {
                 alert(`Error: ${data.error}`);
             } else if (data.saved && Array.isArray(data.saved)) {
                 if (data.saved.length > 0) {
-                    const list = await loadFactions();
-                    await loadEntries(list);
+                    await refreshAll();
                 } else {
                     alert(`${faction.name}: no reputation value could be read.`);
                 }
@@ -293,63 +190,6 @@ const Dashboard = () => {
         }
     };
 
-
-    const chartOptions = {
-        responsive: true,
-        maintainAspectRatio: false,
-        scales: {
-            x: {
-                type: 'time',
-                time: {
-                    minUnit: 'minute',
-                    displayFormats: {
-                        minute: 'MMM d, HH:mm',
-                        hour:   'MMM d, HH:mm',
-                        day:    'MMM d',
-                        week:   'MMM d',
-                        month:  'MMM yyyy',
-                    }
-                },
-                title: {
-                    display: true,
-                    text: 'Time'
-                }
-            },
-            y: {
-                title: {
-                    display: true,
-                    text: 'Reputation Value'
-                }
-            }
-        },
-        plugins: {
-            legend: {
-                display: false,
-            },
-            tooltip: {
-                mode: 'index',
-                intersect: false
-            },
-            annotation: {
-                annotations: {
-                    tenMillion: {
-                        type: 'line',
-                        yMin: 10000000,
-                        yMax: 10000000,
-                        borderColor: 'rgba(255, 255, 255, 0.6)',
-                        borderWidth: 3,
-                        label: {
-                            display: true,
-                            content: '10M',
-                            position: 'end',
-                            color: 'rgba(255, 255, 255, 0.8)',
-                            font: {size: 11}
-                        }
-                    }
-                }
-            }
-        }
-    };
 
     return (
         <div className="dashboard">
@@ -514,57 +354,7 @@ const Dashboard = () => {
                 )}
             </div>
 
-            <div className="chart-container">
-                <div style={{
-                    display: 'flex',
-                    flexWrap: 'wrap',
-                    gap: '0.4rem 1rem',
-                    padding: '0.5rem 0.75rem',
-                    marginBottom: '0.5rem'
-                }}>
-                    {chartData.datasets.map((ds, i) => {
-                        const isHidden = hiddenDatasets[i] ?? ds.hidden;
-                        return (
-                            <div
-                                key={ds.label}
-                                onClick={() => {
-                                    const chart = chartRef.current;
-                                    if (!chart) return;
-                                    const next = !isHidden;
-                                    chart.setDatasetVisibility(i, !next);
-                                    chart.update();
-                                    setHiddenDatasets(prev => ({...prev, [i]: next}));
-                                }}
-                                style={{
-                                    display: 'flex', alignItems: 'center', gap: '0.4rem',
-                                    cursor: 'pointer', opacity: isHidden ? 0.4 : 1,
-                                    fontSize: '0.8rem', userSelect: 'none'
-                                }}
-                            >
-                                <span style={{
-                                    display: 'inline-block', width: 12, height: 12,
-                                    borderRadius: 2, flexShrink: 0,
-                                    backgroundColor: isHidden ? 'transparent' : ds.borderColor,
-                                    border: `2px solid ${ds.borderColor}`
-                                }}/>
-                                <span style={{textDecoration: isHidden ? 'line-through' : 'none'}}>
-                                    {ds.label}
-                                </span>
-                            </div>
-                        );
-                    })}
-                    {/* ai: claude-opus-5-5 | 2026-11-06 */}
-                    <button
-                        type="button"
-                        onClick={toggleFullHistory}
-                        style={{marginLeft: 'auto', fontSize: '0.8rem'}}
-                        title={historyDays ? 'Load every entry ever recorded' : `Show only the last ${DEFAULT_HISTORY_DAYS} days`}
-                    >
-                        {historyDays ? 'Show all history' : `Last ${DEFAULT_HISTORY_DAYS} days`}
-                    </button>
-                </div>
-                <Line ref={chartRef} options={chartOptions} data={chartData}/>
-            </div>
+            <HistoryChart history={history} factions={factions}/>
         </div>
     );
 };
