@@ -17,3 +17,4 @@ google_token*.json
 /build
 /dist
 .pytest_cache
+/community-data.json.bak
