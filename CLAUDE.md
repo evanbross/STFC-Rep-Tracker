@@ -53,8 +53,13 @@ cd frontend
 npm run build
 ```
 
-**Environment**: Controlled by `FLASK_ENV` env var (`development` | `production` | `testing`). Defaults to
-`development`. See `config.py` for settings.
+**Environment**: `config.py` defines `AppSettings` (pydantic-settings). It is the one place environment variables
+are read: `FLASK_ENV` (`development` | `production` | `testing`, default `development`), `SECRET_KEY`,
+`DATABASE_URL_POOLED` / `DIRECT`, `CORS_ORIGINS`, `CADDY_APP_NAME`, `PORT`, `DISABLE_CAPTURE`.
+- `main.py` builds it once with `load_settings()` and passes it to `create_app(settings)`.
+- In production, a missing, placeholder, or short (<16 chars) `SECRET_KEY` stops startup.
+- Settings errors name the field, never the value.
+- Add new env vars to `AppSettings`; don't call `os.environ.get` elsewhere.
 
 **Runtime settings**: Controlled by `settings.yaml` at the project root (screen wait retries, delays, OCR scale,
 template match thresholds, etc.). Accessed via `capture_cfg()` in `app/app_config.py`.

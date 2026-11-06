@@ -26,6 +26,7 @@ from app.app_config import capture_cfg
 from app.request_guards import install_cross_origin_write_guard
 from app.views.community_mod_view import community_mod_bp
 from app.views.validation import register_error_handlers
+from config import AppSettings, load_settings
 
 # Load .env if present (ignored in containers where vars are injected directly)
 try:
@@ -68,10 +69,9 @@ def _screenshots_cleanup_worker(folder: str, keep: int = 30, interval: int = 300
         time.sleep(interval)
 
 
-def _check_env() -> None:
-    """Raise on startup if expected environment variables are not set."""
-    required = ["DATABASE_URL_POOLED", "DATABASE_URL_DIRECT"]
-    missing = [v for v in required if not os.environ.get(v)]
+def _check_env(app_settings: AppSettings) -> None:
+    """Raise on startup if the database environment variables are not set."""
+    missing = app_settings.missing_database_vars()  # ai: claude-opus-5-5 | 2026-11-06
     if missing:
         raise RuntimeError(
             f"Missing required environment variables: {', '.join(missing)}\n"
@@ -254,7 +254,7 @@ def _run_community_mod_https_server(cert_path: str, key_path: str, port: int = 7
     server.serve_forever()
 
 
-def create_app():
+def create_app(app_settings: AppSettings):
     """Create and configure the Flask application."""
     from flasgger import Swagger
     from flask import redirect, send_from_directory
@@ -268,12 +268,6 @@ def create_app():
     from app.views.system_view import system_bp
     from app.views.target_types_view import target_types_bp
     from app.views.territory_view import territory_bp
-    from config import get_config
-
-    # The capture blueprint imports Windows-only packages (pygetwindow, pyautogui,
-    # pywin32) at module level.  Skip it when running in a container where those
-    # packages are not installed.
-    _capture_disabled = os.environ.get("DISABLE_CAPTURE", "").lower() in ("1", "true", "yes")
 
     flask_app = Flask(
         __name__,
@@ -281,7 +275,7 @@ def create_app():
         static_folder=_resource_path(os.path.join("frontend", "dist")),
         static_url_path="/static",
     )
-    flask_app.config.from_object(get_config())
+    flask_app.config.from_mapping(app_settings.flask_config())  # ai: claude-opus-5-5 | 2026-11-06
     CORS(flask_app, origins=flask_app.config["CORS_ORIGINS"])
     install_cross_origin_write_guard(flask_app, flask_app.config["CORS_ORIGINS"])  # ai: claude-opus-5-5 | 2026-11-06
     register_error_handlers(flask_app)  # ai: claude-opus-5-5 | 2026-11-06
@@ -291,7 +285,10 @@ def create_app():
     flask_app.config["DATABASE"] = database
 
     flask_app.register_blueprint(calendar_bp, url_prefix="/api/calendar")
-    if not _capture_disabled:
+    # The capture blueprint imports Windows-only packages (pygetwindow, pyautogui,
+    # pywin32) at module level.  Skip it when running in a container where those
+    # packages are not installed.
+    if not app_settings.disable_capture:  # ai: claude-opus-5-5 | 2026-11-06
         from app.views.capture_screen_view import capture_bp
         flask_app.register_blueprint(capture_bp, url_prefix="/api/capture-screen")
     flask_app.register_blueprint(community_mod_bp, url_prefix="/api/community-mod")
@@ -321,7 +318,8 @@ with open(_resource_path("logging.yaml")) as f:
     logging.config.dictConfig(yaml.safe_load(f))
 logger = logging.getLogger(__name__)
 
-app = create_app()
+settings = load_settings()  # ai: claude-opus-5-5 | 2026-11-06
+app = create_app(settings)
 
 if __name__ == "__main__":
     if not _acquire_single_instance_lock():
@@ -331,7 +329,7 @@ if __name__ == "__main__":
         )
         sys.exit(1)
 
-    _check_env()
+    _check_env(settings)
     project_root = _runtime_dir()
 
     screenshots_dir = os.path.join(project_root, "Screenshots")
@@ -350,7 +348,7 @@ if __name__ == "__main__":
         logger.info("Not running as administrator — relaunching with elevation")
         _relaunch_as_admin()
     _build_frontend_if_needed()
-    port = int(os.environ.get("PORT", 7300))
+    port = settings.port  # ai: claude-opus-5-5 | 2026-11-06
     try:
         app.run(debug=app.config["DEBUG"], port=port, use_reloader=False)
     except OSError as e:

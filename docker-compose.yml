@@ -28,7 +28,9 @@ services:
       DATABASE_URL_POOLED: postgresql://stfc:stfc_password@db/stfc_rep_tracker
       DATABASE_URL_DIRECT:  postgresql://stfc:stfc_password@db/stfc_rep_tracker
       FLASK_ENV: production
-      SECRET_KEY: change-me-in-production   # ← override via .env or secrets
+      # Required: compose stops with this message if SECRET_KEY is unset. The app also
+      # refuses placeholder or short keys in production (config.py).
+      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env - see .env.example}
       DISABLE_CAPTURE: "true"
     volumes:
       # Bind-mount the snippets directory so the host-side capture module and
