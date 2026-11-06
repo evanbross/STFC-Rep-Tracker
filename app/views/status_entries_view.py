@@ -95,7 +95,7 @@ class StatusEntriesView(MethodView):
             description: Faction not found
         """
         db = current_app.config["DATABASE"]
-        data = request.get_json(force=True, silent=True)
+        data = request.get_json(silent=True)
         if not data:
             return jsonify({"error": "Request body must be valid JSON"}), 400
         faction_name = data.get("faction")

@@ -144,7 +144,7 @@ def add_faction():
         description: Missing required fields or faction already exists
     """
     db = current_app.config["DATABASE"]
-    data = request.get_json(force=True, silent=True)
+    data = request.get_json(silent=True)
     if not data:
         return jsonify({"error": "Request body must be valid JSON"}), 400
     name = data.get("name")
@@ -226,7 +226,7 @@ def update_faction(current_code):
         description: Faction not found
     """
     db = current_app.config["DATABASE"]
-    data = request.get_json(force=True, silent=True)
+    data = request.get_json(silent=True)
     if not data:
         return jsonify({"error": "Request body must be valid JSON"}), 400
     name = data.get("name")

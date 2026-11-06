@@ -70,7 +70,7 @@ def receive_payload():
         )
         return jsonify({"error": "Payload too large"}), 413
 
-    data = request.get_json(force=True, silent=True)
+    data = request.get_json(silent=True)
     if data is None:
         logger.warning("community-mod: received non-JSON payload")
         return jsonify({"error": "Request body must be valid JSON"}), 400

@@ -19,6 +19,12 @@ import threading
 import time
 
 import yaml
+from flask import Flask
+from werkzeug.serving import make_server
+
+from app.app_config import capture_cfg
+from app.request_guards import install_cross_origin_write_guard
+from app.views.community_mod_view import community_mod_bp
 
 # Load .env if present (ignored in containers where vars are injected directly)
 try:
@@ -221,35 +227,40 @@ def _ensure_community_mod_cert(cert_dir: str) -> tuple[str, str]:
     return cert_path, key_path
 
 
-def _run_community_mod_https_server(cert_path: str, key_path: str, port: int = 7443) -> None:
-    """Run a minimal Flask app serving only the community-mod blueprint over HTTPS."""
-    from flask import Flask
-    from flask_cors import CORS
-    from werkzeug.serving import make_server
+# ai: claude-opus-5-5 | 2026-11-06
+def create_community_mod_app() -> Flask:
+    """Minimal app exposing only the community-mod blueprint, for the HTTPS listener.
 
-    from app.views.community_mod_view import community_mod_bp
-
+    No CORS: the mod is not a browser page (captured requests carry no Origin),
+    so nothing needs to read responses cross-origin. The write guard still
+    rejects any browser page that tries to POST here.
+    """
     https_app = Flask("community_mod_https")
-    CORS(https_app)
+    install_cross_origin_write_guard(https_app, cors_origins=())
     https_app.register_blueprint(community_mod_bp, url_prefix="/api/community-mod")
+    return https_app
 
+
+# ai: claude-opus-5-5 | 2026-11-06
+def _run_community_mod_https_server(cert_path: str, key_path: str, port: int = 7443) -> None:
+    """Serve create_community_mod_app() over HTTPS on the configured bind host (loopback by default)."""
     ssl_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     ssl_ctx.load_cert_chain(cert_path, key_path)
 
-    server = make_server("0.0.0.0", port, https_app, ssl_context=ssl_ctx)
-    logger.info("community-mod HTTPS server listening on https://localhost:%d/api/community-mod", port)
+    bind_host = capture_cfg("community_mod", "bind_host", default="127.0.0.1")
+    server = make_server(bind_host, port, create_community_mod_app(), ssl_context=ssl_ctx)
+    logger.info("community-mod HTTPS server listening on https://%s:%d/api/community-mod", bind_host, port)
     server.serve_forever()
 
 
 def create_app():
     """Create and configure the Flask application."""
     from flasgger import Swagger
-    from flask import Flask, redirect, send_from_directory
+    from flask import redirect, send_from_directory
     from flask_cors import CORS
 
     from app.database.database import Database
     from app.views.calendar_view import calendar_bp
-    from app.views.community_mod_view import community_mod_bp
     from app.views.factions_view import factions_bp
     from app.views.reputations_view import reputations_bp
     from app.views.status_entries_view import status_entries_bp
@@ -271,6 +282,7 @@ def create_app():
     )
     flask_app.config.from_object(get_config())
     CORS(flask_app, origins=flask_app.config["CORS_ORIGINS"])
+    install_cross_origin_write_guard(flask_app, flask_app.config["CORS_ORIGINS"])  # ai: claude-opus-5-5 | 2026-11-06
     Swagger(flask_app)
 
     database = Database(flask_app.config["DATABASE_URL"])

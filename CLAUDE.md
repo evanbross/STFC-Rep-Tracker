@@ -112,6 +112,12 @@ catch-all.
 - `section31_reputations_dao.py` — `Section31ReputationsDAO`
 - `ex_borg_reputations_dao.py` — `ExBorgReputationsDAO`
 
+**Cross-origin write guard** (`app/request_guards.py`): a `before_request` hook on both Flask apps (main and the
+7443 community-mod listener) returns 403 for POST/PUT/PATCH/DELETE under `/api/` when `Origin` (or `Referer`) is
+neither the app's own origin nor in `CORS_ORIGINS`. Requests with neither header (curl, the community mod) pass.
+New origins that serve the UI must be added to `CORS_ORIGINS`. The 7443 listener binds to
+`community_mod.bind_host` in `settings.yaml` (default `127.0.0.1`).
+
 **Views** (`app/views/`): Flask Blueprints. Each retrieves the DB via `current_app.config["DATABASE"]`. Blueprints are
 registered in `main.py` with URL prefixes:
 
