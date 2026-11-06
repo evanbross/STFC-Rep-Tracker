@@ -9,7 +9,7 @@
 # ai: claude-opus-5-5 | 2026-11-06
 """Snippet-image files shared by the factions and target-types blueprints (N-X2).
 
-The snippets directory also holds non-image files (favicon.zip, for example),
+The snippets directory can also hold non-image files (an archive, for example),
 so the image routes serve only the extensions the app itself writes or accepts
 for upload. Lookup (user folder, then bundled) and traversal checks live in
 app.snippet_store.
