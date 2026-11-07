@@ -459,6 +459,34 @@ N-S2 (atomic settings write).
 - A `windows` marker for UI-automation smoke tests.
 - Extracting `create_app()` out of `main.py`, so tests stop importing the entry point.
 
+### F. Found in the browser checks (2026-11-07)
+
+The checks ran against a scratch schema on the Neon test branch, filled with that branch's copy of production
+(11 factions, 750 entries, 24 snippets), with `DISABLE_CAPTURE=1`. The live database was not touched.
+
+**N-B1 — Calendar sign-in timed out after 30 s (Phase 5 regression, fixed).** The shared client
+(`07f2095`) gave every request a 30 s ceiling. `POST /api/calendar/auth` answers only after the user finishes
+Google's consent page, so the modal reported "auth failed" while the server kept waiting. It now gets
+`INTERACTIVE_AUTH_TIMEOUT_MS` (5 min). It's the only non-capture call that waits on a person. The build passes;
+the real consent flow wasn't re-run.
+
+The rest predate the refactors:
+
+**N-B2 — One reading shows "Unknown".** `_compute_faction_status` returns before the tier lookup when a faction
+has fewer than 2 entries. The `time_diff_mins <= 0` branch returns the right `rep_level` but leaves
+`status.reputation_level` as "Unknown". A new faction with one value of 150,000 (Rogue tiers) showed "Unknown";
+after a second value it showed Accomplice.
+
+**N-B3 — Augment tiers stop at 1,000,500.** Augment at 13.9m shows "Unknown". The seed and production agree,
+so the tiers above "Ally, Capped" are missing data.
+
+**N-B4 — `on_chart` doesn't hide anything.** It only seeds empty factions into the chart legend; every faction
+with data is charted. Ten factions have `on_chart = 0` and are charted anyway. Decide what it should mean.
+
+**N-B5 — Opening TC Schedule starts the OAuth flow.** If the token is missing, opening the modal POSTs
+`/api/calendar/auth`, which opens Google's consent page. It is the dedicated auth endpoint, but nobody clicked
+"connect". An explicit button would match the auth rule in `CLAUDE.md`.
+
 ---
 
 ## Part 3 — Phased roadmap
@@ -491,7 +519,8 @@ next one starts.
   POST to `/api/status_entries/` is rejected and the UI still works unchanged.
 - **Code done 2026-11-06** (`evan-phase2-safety`): 166 passed and 1 strict xfail (N-T2). The R2 and N-S3
   xfails now pass, and each new guard was checked by reverting it and watching its test fail.
-  **The manual UI check is still open.**
+  **Manual check done 2026-11-07:** a `text/plain` POST from another origin (`127.0.0.1:8765`) got a 403 and was
+  logged, with no row written. A same-origin save from the Dashboard still returned 201. See Part 2 F.
 - Deviations from the plan, each for a reason found during the work:
   - **R2:** the 7443 app has **no** CORS at all. All 214 captured mod requests carry no `Origin`, so nothing
     needs to read responses cross-origin.
@@ -523,7 +552,9 @@ next one starts.
   - `get_faction_summary()` with 8 factions × 200 entries on the Neon test branch went from 1,668 ms to 93 ms
     median. Over HTTP on a real startup it took 122 ms. The test suite went from 91 s to 58 s, almost all of it
     from connection reuse.
-  - **The browser devtools check of Dashboard first paint is still open.**
+  - **Browser check done 2026-11-07:** the Dashboard makes 2 API calls on load: `/api/factions/summary` in 194 ms
+    (8.2 KB) and `/api/status_entries/all?days=30` in 107 ms (7.6 KB). "Show all history" works. First paint
+    takes about 1.1 s. Most of it is the lazy Dashboard chunks (~780 ms) from Flask's debug server, not the API.
 - Deviations from the plan, each for a reason found during the work:
   - **N-P1:** `ThreadedConnectionPool` raises once it's exhausted, so a semaphore makes callers wait. Neon drops
     idle connections on suspend, so a connection idle for more than 30 s gets a `SELECT 1` before reuse.
@@ -558,7 +589,9 @@ next one starts.
   - Breaking the FK reconcile, the unique-name index, or the seed fingerprint check each fails a test.
   - Init at head takes 447 ms, against 2,301 ms on every start before (most of what's left is the TLS handshake).
     The first start on an empty DB takes 5.7 s.
-  - **The UI check (create a faction, pick a type, see its rep level without a restart) is still open.**
+  - **UI check done 2026-11-07:** the type picker lists all 8 implementations. A faction created with the Rogue
+    type showed up at once, and with two values it read Accomplice → Known Associate, with no restart. One value
+    alone shows "Unknown" (N-B2, older than this phase).
 - Found by diffing the production copy against a fresh schema. Migration v2 fixes these:
   - `status_entries` / `faction_selected_snippets` FKs had no `ON UPDATE CASCADE` (one was `NOT VALID`), so renaming
     a faction code failed in production while the test passed on a fresh schema.
@@ -613,7 +646,9 @@ next one starts.
     commit each, with a build after each.
     - Removed the unreachable "Territory Capture Calendar" results. Its button was removed in `cb43582`.
     - Every converted call site uses `errorMessage`, and several silent failures now say so.
-    - **Browser check still open:** walk through each Dashboard section, Combat and System Targets.
+    - **Browser check done 2026-11-07:** each Dashboard section, Combat and System Targets render. Failed
+      requests show their message, and the Combat loop stops on a failed scan. Found one regression, N-B1
+      (calendar auth timeout), fixed the same day.
   - **R12/R13 done the same day:** `territory_parsing.py` and `system_targets_parsing.py` hold the pure logic. Their
     tunables come in as arguments, not from settings. Template matching, OCR and clicks stay in the `process_*.py`
     files. The extraction also removed duplicates: the territory row dict (3 copies), the confidence filter (3, now
