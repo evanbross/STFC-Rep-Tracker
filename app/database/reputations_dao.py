@@ -187,6 +187,12 @@ class ReputationsDAO:
         row = reputation_tiers.find_next_tier(self._cached_rows(), current_high_limit)
         return dict(row) if row else None
 
+    # ai: claude-opus-5-5 | 2026-11-07
+    def top_tier(self) -> dict[str, Any] | None:
+        """Return the highest tier in the table, or None when the table is empty."""
+        row = reputation_tiers.top_tier(self._cached_rows())
+        return dict(row) if row else None
+
     # ai: claude-opus-5-5 | 2026-11-06
     def update_row(self, row_id: int, fields: dict[str, Any]) -> None:
         """Set the given columns on one tier row, then refresh the cache.

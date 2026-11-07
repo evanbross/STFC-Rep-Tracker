@@ -10,7 +10,7 @@
 """Pure tier lookups that replaced the summary's per-faction tier queries."""
 import pytest
 
-from app.database.reputation_tiers import find_next_tier, find_tier
+from app.database.reputation_tiers import find_next_tier, find_tier, top_tier
 
 # Shaped like ReputationsDAO.get_all(): sorted by low_limit, open top tier.
 FKR_LIKE = [
@@ -58,3 +58,9 @@ def test_find_next_tier_prefers_the_lower_start() -> None:
 def test_find_next_tier_of_open_or_last_tier_is_none() -> None:
     assert find_next_tier(FKR_LIKE, None) is None
     assert find_next_tier(FKR_LIKE, 10**12) is None
+
+
+# ai: claude-opus-5-5 | 2026-11-07
+def test_top_tier_is_the_highest_start() -> None:
+    assert top_tier(list(reversed(FKR_LIKE)))["name"] == "Capped"
+    assert top_tier([]) is None

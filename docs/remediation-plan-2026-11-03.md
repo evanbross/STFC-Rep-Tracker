@@ -484,6 +484,10 @@ after a second value it showed Accomplice.
 
 **N-B3 — Augment tiers stop at 1,000,500.** Augment at 13.9m shows "Unknown". The seed and production agree,
 so the tiers above "Ally, Capped" are missing data.
+*Decision 2026-11-07:* when a table has no next tier, the faction is capped at the table's top tier, including a
+value past the top tier's `high_limit`. The summary sends `status.capped = true` with no goal and `minutes_to_goal`
+null, and the card shows "Capped at <tier>" with a full progress bar. Augment at 13.9m now reads "Ally, Capped".
+*Fixed 2026-11-07.*
 
 **N-B4 — `on_chart` doesn't hide anything.** It only seeds empty factions into the chart legend; every faction
 with data is charted. Ten factions have `on_chart = 0` and are charted anyway. Decide what it should mean.

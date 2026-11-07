@@ -149,6 +149,7 @@ def test_summary_single_entry_resolves_tier(client: FlaskClient, db: Database) -
     assert status["goal_value"] == 5000
     assert status["raw_value_delta_per_minute"] == 0.0
     assert status["minutes_to_goal"] == 0.0
+    assert status["capped"] is False
 
 
 # ai: claude-opus-5-5 | 2026-11-07
@@ -163,6 +164,29 @@ def test_summary_same_timestamp_entries_keep_tier_in_status(client: FlaskClient,
     assert summary["rep_level"] == "Tolerated"
     assert summary["status"]["reputation_level"] == "Tolerated"
     assert summary["status"]["raw_value_delta_per_minute"] == 0.0
+
+
+# ai: claude-opus-5-5 | 2026-11-07
+@pytest.mark.parametrize(
+    "value",
+    [500_000_000_100, 600_000_000_000],   # inside the FKR top tier, and past its high_limit
+    ids=["in-top-tier", "past-the-table"],
+)
+def test_summary_flags_top_tier_as_capped(client: FlaskClient, db: Database, value: int) -> None:
+    """N-B3: with no next tier, the faction is capped at the table's top tier and has no goal."""
+    create_fkr_faction(client, "FED", "Federation")
+    insert_entries(db, "FED", {0: value - 1000, 10: value})
+
+    [summary] = client.get("/api/factions/summary").get_json()
+
+    assert summary["rep_level"] == "Hero, Capped (lock4)"
+    status = summary["status"]
+    assert status["capped"] is True
+    assert status["reputation_level"] == "Hero, Capped (lock4)"
+    assert status["next_rep_level"] is None
+    assert status["goal_value"] is None
+    assert status["minutes_to_goal"] is None
+    assert status["raw_value_delta_per_minute"] == pytest.approx(100.0)
 
 
 def test_summary_without_entries(client: FlaskClient) -> None:

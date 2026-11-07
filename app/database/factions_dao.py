@@ -273,10 +273,23 @@ class FactionsDAO:
             return status, "Unknown", 0
 
         latest = entries[0]
+        # ai: claude-opus-5-5 | 2026-11-07
+        # The top tier has no next one, so a faction there (or past its high_limit,
+        # where the table has no rows) is capped: no goal and no time to goal.
         tier = rep_dao.find_tier(latest[0]) if rep_dao else None
+        top = rep_dao.top_tier() if rep_dao else None
+        if tier is None and top is not None and latest[0] >= top["low_limit"]:
+            tier = top
+        capped = tier is not None and tier["low_limit"] == top["low_limit"]
         high_limit = tier.get("high_limit") if tier else None
         rep_level = tier["name"] if tier else "Unknown"
-        if tier is not None:
+        status["capped"] = capped
+        if capped:
+            status["reputation_level"] = rep_level
+            status["next_rep_level"] = None
+            status["goal_value"] = None
+            status["minutes_to_goal"] = None
+        elif tier is not None:
             next_tier = rep_dao.find_next_tier(high_limit)
             status["reputation_level"] = rep_level
             status["next_rep_level"] = next_tier["name"] if next_tier else None
@@ -304,8 +317,10 @@ class FactionsDAO:
             "avg_value_delta_per_minute": avg_rate,
         })
 
+        # ai: claude-opus-5-5 | 2026-11-07
         if tier is not None:
-            if avg_rate > 0 and high_limit is not None:
+            # A capped faction has no goal, so minutes_to_goal stays None.
+            if not capped and avg_rate > 0 and high_limit is not None:
                 goal_mins = round((high_limit - latest[0]) / avg_rate, 2)
                 status["minutes_to_goal"] = goal_mins
                 status["minutes"] = goal_mins

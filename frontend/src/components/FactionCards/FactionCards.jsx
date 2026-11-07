@@ -45,7 +45,9 @@ const FactionCards = ({factions, onSubmitEntry, onCaptureFaction, capturingFacti
                             };
                         }
 
-                        const progressPct = faction.status?.goal_value
+                        // ai: claude-opus-5-5 | 2026-11-07
+                        const capped = faction.status?.capped === true;
+                        const progressPct = capped ? 100 : faction.status?.goal_value
                             ? Math.min(100, Math.max(0, (faction.current_value / faction.status.goal_value) * 100))
                             : 0;
                         return (
@@ -81,7 +83,10 @@ const FactionCards = ({factions, onSubmitEntry, onCaptureFaction, capturingFacti
                                         <span className="stat-value">{Math.round(faction.status?.raw_value_delta_per_minute || 0)}/min</span>
                                         <span className="stat-label">Avg</span>
                                         <span className="stat-value">{Math.round(faction.status?.avg_value_delta_per_minute || 0)}/min</span>
-                                        {faction.status?.minutes_to_goal != null && (
+                                        {capped && ( // ai: claude-opus-5-5 | 2026-11-07
+                                            <span className="stat-goal">Capped at {faction.rep_level}</span>
+                                        )}
+                                        {!capped && faction.status?.minutes_to_goal != null && (
                                             <span className="stat-goal">
                                                 → {faction.status.next_rep_level || 'Goal'}
                                                 {faction.status.goal_value ? ` (${formatShort(faction.status.goal_value, 1)})` : ''}: {formatMinutes(faction.status.minutes_to_goal)}

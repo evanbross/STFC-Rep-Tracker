@@ -42,3 +42,9 @@ def find_next_tier(rows: Sequence[TierRow], current_high_limit: int | None) -> T
         if row["low_limit"] in (current_high_limit, current_high_limit + 1):
             return row
     return None
+
+
+# ai: claude-opus-5-5 | 2026-11-07
+def top_tier(rows: Sequence[TierRow]) -> TierRow | None:
+    """Return the tier with the highest low_limit, or None for an empty table."""
+    return max(rows, key=lambda row: row["low_limit"], default=None)
