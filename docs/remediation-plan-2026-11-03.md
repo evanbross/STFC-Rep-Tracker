@@ -598,7 +598,17 @@ next one starts.
     - Removed the unreachable "Territory Capture Calendar" results. Its button was removed in `cb43582`.
     - Every converted call site uses `errorMessage`, and several silent failures now say so.
     - **Browser check still open:** walk through each Dashboard section, Combat and System Targets.
-  - **Still open:** R12/R13.
+  - **R12/R13 done the same day:** `territory_parsing.py` and `system_targets_parsing.py` hold the pure logic. Their
+    tunables come in as arguments, not from settings. Template matching, OCR and clicks stay in the `process_*.py`
+    files. The extraction also removed duplicates: the territory row dict (3 copies), the confidence filter (3, now
+    `ocr_text.confident_tokens`), the approved-type and reachability loops (2 each), and the empty-measurements
+    dict (4).
+    - `Territory.jpg` became `tests/fixtures/territory_page.jpg`, which closes R14.
+    - `test_territory_fixture.py` runs real template matching on that fixture, without OCR. Lengthening the strip
+      formula fails it.
+    - Suite: 278 passed and 1 strict xfail (N-T2).
+    - **Not covered:** the OCR reads themselves (N-T5: needs EasyOCR in the suite) and N-T2's parser bug, which still
+      waits for real OCR crops as fixtures.
   - **Manual check still open:** a frozen build should keep an uploaded snippet across a reinstall.
 
 ### Deliberately not recommended

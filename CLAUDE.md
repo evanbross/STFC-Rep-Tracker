@@ -86,7 +86,11 @@ pip install -r requirements-dev.txt
 pytest
 ```
 
-- Pure-function tests (`tests/test_ocr_text.py`, `test_target_math.py`, `test_app_config.py`) need nothing.
+- Pure-function tests (`tests/test_ocr_text.py`, `test_target_math.py`, `test_territory_parsing.py`,
+  `test_system_targets_parsing.py`, `test_app_config.py`) need nothing.
+- `tests/test_territory_fixture.py` runs real template matching on `tests/fixtures/territory_page.jpg`, a real
+  capture, against the snippets in `app/screen_snippets`. If you re-capture a territory snippet, check it still
+  passes. It needs the Windows capture packages, but not OCR.
 - API contract tests (marked `db`) need `DATABASE_URL_TEST` in `.env`, pointing at a disposable **Neon branch**,
   never the live database. Each run creates its own empty schema in that branch, runs the real Flask app against
   it, and drops it afterwards. Without the variable those tests are skipped, and `-rs` prints why.
@@ -94,8 +98,13 @@ pytest
   on the same Neon endpoint as production, so pytest cannot reach the live DB.
 - `xfail(strict=True)` tests record known bugs scheduled in `docs/remediation-plan-2026-11-03.md`. When a fix
   lands they XPASS and fail the run. Remove the marker in the same change.
-- Pure OCR parsers live in `app/screen_processing/ocr_text.py` and target maths in `target_math.py`, so they can
-  be tested without importing EasyOCR/OpenCV.
+- Pure logic lives apart from the capture stack, so it can be tested without EasyOCR, OpenCV or pyautogui:
+  - `ocr_text.py`: text parsers and `confident_tokens`
+  - `target_math.py`: tracking, intercept and scoring
+  - `territory_parsing.py`: row strips and name/timer pairing
+  - `system_targets_parsing.py`: crop regions and candidate bookkeeping
+
+  New `*_parsing.py` functions take tunables as arguments; the `process_*.py` callers read `capture_cfg`.
 
 ## Architecture
 
