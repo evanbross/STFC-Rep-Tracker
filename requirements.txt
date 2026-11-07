@@ -20,6 +20,10 @@ cryptography==50.0.2
     # via
     #   google-auth
     #   stfc-rep-tracker
+cuda-bindings==13.5.0 ; python_full_version < '3.15' and sys_platform == 'linux'
+    # via torch
+cuda-pathfinder==1.8.6 ; python_full_version < '3.15' and sys_platform == 'linux'
+    # via cuda-bindings
 cuda-toolkit==13.2.2 ; sys_platform == 'linux'
     # via torch
 easyocr==1.7.2
@@ -250,7 +254,7 @@ rpds-py==2026.9.1
     #   referencing
 rubicon-objc==0.5.7 ; sys_platform == 'darwin'
     # via mouseinfo
-scikit-image==0.27.0rc1
+scikit-image==0.26.0
     # via easyocr
 scipy==1.18.1
     # via

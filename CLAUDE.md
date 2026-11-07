@@ -80,14 +80,16 @@ the project root.
   after saving; that wakes the pruner, which keeps the newest 30 files (subfolders like `debug/` are left alone).
 - Elevation and single-instance mutexes live in `app/win_process.py`, shared by `launcher.py` and `main.py`.
 
-**Dependencies**: Python 3.15 (`.python-version`, `requires-python`). `pyproject.toml` + `uv.lock` are the source of
-truth. After changing a dependency, run `uv lock`, then regenerate `requirements.txt` with the `uv export` command in
-its header. Never edit `requirements.txt` by hand. `requirements-docker.txt` is a hand-kept Linux subset (no capture
-stack) for the API image, so bump its pins to match the lock.
-- `[tool.uv] constraint-dependencies` allows `scikit-image` 0.27.0rc1, its first release with a 3.15 Windows wheel.
-  Remove the constraint once 0.27.0 final ships, then relock.
-- The Inno installer (`installer/`) still bundles embedded Python 3.12.9 and its own torch pin. It hasn't been moved
-  to 3.15 (see the remediation plan, N-T4).
+**Dependencies**: Python 3.14 (`.python-version`, `requires-python`, Docker base image). `pyproject.toml` + `uv.lock`
+are the source of truth. After changing a dependency, run `uv lock`, then regenerate `requirements.txt` with the
+`uv export` command in its header. Never edit `requirements.txt` by hand. `requirements-docker.txt` is a hand-kept
+Linux subset (no capture stack) for the API image, so bump its pins to match the lock.
+- Don't move to 3.15 yet: `scikit-image` (via easyocr) has no 3.15 Windows wheel before 0.27, and `pyyaml` /
+  `pyclipper` only build from source there.
+- Changing `.python-version` can make an IDE's uv integration rebuild `.venv` on its own. Close the IDE, or point
+  `UV_PROJECT_ENVIRONMENT` at a scratch folder, before trying a different version.
+- The Inno installer (`installer/`) still bundles embedded Python 3.12.9 and its own torch pin. It's behind
+  `requires-python` (see the remediation plan, N-T4).
 
 ## Running Tests
 

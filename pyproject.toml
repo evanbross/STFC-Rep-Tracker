@@ -1,7 +1,7 @@
 [project]
 name = "stfc-rep-tracker"
 version = "0.1.0"
-requires-python = ">=3.15"
+requires-python = ">=3.14"
 dependencies = [
     "cryptography>=44.0.0",
     "easyocr==1.7.2",
@@ -29,12 +29,6 @@ dependencies = [
 dev = [
     "pytest==9.2.0",
 ]
-
-[tool.uv]
-# scikit-image (via easyocr) has no Python 3.15 Windows wheel before 0.27, and
-# 0.26.0 fails to build from source on 3.15. Naming the RC here lets uv pick a
-# prerelease for this one package. Drop it once 0.27.0 final is on PyPI.
-constraint-dependencies = ["scikit-image>=0.27.0rc1"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
