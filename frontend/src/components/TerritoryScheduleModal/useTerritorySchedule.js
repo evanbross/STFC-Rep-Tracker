@@ -9,7 +9,7 @@
 // ai: claude-opus-5-5 | 2026-11-06
 // State and API calls behind the Territory Schedule modal, moved out of Dashboard.jsx.
 import {useEffect, useRef, useState} from 'react';
-import {api, errorMessage} from '../../api/client';
+import {api, errorMessage, INTERACTIVE_AUTH_TIMEOUT_MS} from '../../api/client';
 
 const EMPTY_FORM = {name: '', day_of_week: 0, event_time: ''};
 
@@ -42,7 +42,7 @@ const useTerritorySchedule = () => {
 
     const connectCalendar = async () => {
         try {
-            const res = await api.post('/api/calendar/auth');
+            const res = await api.post('/api/calendar/auth', null, {timeout: INTERACTIVE_AUTH_TIMEOUT_MS}); // ai: claude-opus-5-5 | 2026-11-07
             setCalendarAuthenticated(true);
             if (res.data.systems) setScheduleList(res.data.systems);
             return true;

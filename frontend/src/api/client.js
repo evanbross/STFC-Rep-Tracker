@@ -20,6 +20,10 @@ export const CAPTURE_PREFIX = '/api/capture-screen/';
 // instead of none, which means a wedged automation still surfaces as an error.
 const DEFAULT_TIMEOUT_MS = 30_000;
 const CAPTURE_TIMEOUT_MS = 10 * 60_000;
+// ai: claude-opus-5-5 | 2026-11-07
+// POST /api/calendar/auth answers only after the user finishes Google's consent
+// page, which routinely takes longer than the default ceiling.
+export const INTERACTIVE_AUTH_TIMEOUT_MS = 5 * 60_000;
 
 export const SERVER_UNREACHABLE = 'Cannot reach the server. Is the backend running?';
 const SERVER_TIMEOUT = 'The server took too long to respond.';
