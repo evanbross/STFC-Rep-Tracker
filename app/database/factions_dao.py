@@ -249,7 +249,7 @@ class FactionsDAO:
             return None
         return reputations_dao.ReputationsDAO.get_dao_by_table_name(reputation_table_name)
 
-    # ai: claude-opus-5-5 | 2026-11-06
+    # ai: claude-opus-5-5 | 2026-11-07
     @staticmethod
     def _compute_faction_status(
         entries: list[tuple[int, datetime]],
@@ -257,8 +257,9 @@ class FactionsDAO:
     ) -> tuple[dict[str, Any], str, int]:
         """Compute rate, rep level, and goal data from newest-first (value, timestamptz) entries.
 
-        Returns (status, rep_level, value_delta). Tier lookups read the DAO's
-        in-memory cache, so this makes no database calls.
+        The tier needs only the newest value; rates and the time to goal need two
+        entries a positive time apart. Returns (status, rep_level, value_delta).
+        Tier lookups read the DAO's in-memory cache, so this makes no database calls.
         """
         status: dict[str, Any] = {
             "time_delta": 0,
@@ -268,17 +269,26 @@ class FactionsDAO:
             "minutes_to_goal": 0.0,
             "reputation_level": "Unknown",
         }
-        if len(entries) < 2:
+        if not entries:
             return status, "Unknown", 0
 
-        latest, previous, oldest = entries[0], entries[1], entries[-1]
+        latest = entries[0]
         tier = rep_dao.find_tier(latest[0]) if rep_dao else None
         high_limit = tier.get("high_limit") if tier else None
+        rep_level = tier["name"] if tier else "Unknown"
+        if tier is not None:
+            next_tier = rep_dao.find_next_tier(high_limit)
+            status["reputation_level"] = rep_level
+            status["next_rep_level"] = next_tier["name"] if next_tier else None
+            status["goal_value"] = next_tier["low_limit"] if next_tier else None
 
+        if len(entries) < 2:
+            return status, rep_level, 0
+
+        previous, oldest = entries[1], entries[-1]
         t1, t2 = previous[1], latest[1]
         time_diff_mins = (t2 - t1).total_seconds() / 60
         value_delta = latest[0] - previous[0]
-        rep_level = tier["name"] if tier else "Unknown"
 
         if time_diff_mins <= 0:
             return status, rep_level, value_delta
@@ -295,10 +305,6 @@ class FactionsDAO:
         })
 
         if tier is not None:
-            next_tier = rep_dao.find_next_tier(high_limit)
-            status["reputation_level"] = tier["name"]
-            status["next_rep_level"] = next_tier["name"] if next_tier else None
-            status["goal_value"] = next_tier["low_limit"] if next_tier else None
             if avg_rate > 0 and high_limit is not None:
                 goal_mins = round((high_limit - latest[0]) / avg_rate, 2)
                 status["minutes_to_goal"] = goal_mins

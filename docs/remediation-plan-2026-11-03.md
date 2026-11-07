@@ -476,6 +476,11 @@ The rest predate the refactors:
 has fewer than 2 entries. The `time_diff_mins <= 0` branch returns the right `rep_level` but leaves
 `status.reputation_level` as "Unknown". A new faction with one value of 150,000 (Rogue tiers) showed "Unknown";
 after a second value it showed Accomplice.
+- **Fixed 2026-11-07:** the tier, next tier and goal come from the newest value whenever there is one. Rates
+  and time to goal still need two entries a positive time apart. Two contract tests (one entry, two entries at
+  the same timestamp) fail without the fix. Suite: 288 passed and 1 strict xfail (N-T2).
+- Not changed: with no rate yet, the card shows the next tier with an ETA of "0", as it already did for a
+  stalled faction.
 
 **N-B3 — Augment tiers stop at 1,000,500.** Augment at 13.9m shows "Unknown". The seed and production agree,
 so the tiers above "Ally, Capped" are missing data.
