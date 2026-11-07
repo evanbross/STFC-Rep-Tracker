@@ -447,8 +447,10 @@ N-S2 (atomic settings write).
     `uv export`, so the lock is the one source.
   - **3.15 was tried first and dropped.** `scikit-image` has no 3.15 Windows wheel before 0.27.0rc1 (0.26.0 won't
     compile), and `pyyaml` / `pyclipper` only build from source. Revisit once those ship 3.15 wheels.
-  - **Not moved:** the Inno installer still bundles embedded Python 3.12.9 and `torch==2.10.0+cpu`. It was already
-    behind `requires-python`. The PyInstaller build in `dist/` is still a 3.13 build until it's rebuilt.
+  - **Installer moved 2026-11-07:** the Inno installer bundles embedded Python 3.14.7 (it was 3.12.9). Its torch pin
+    was hardcoded (`torch==2.10.0+cpu`); `prepare.bat` now writes `requirements_torch.txt` from `requirements.txt`, so
+    it follows the lock (2.15.0 / torchvision 0.29.2, both with Windows CPU wheels). Not yet built or installed.
+  - The PyInstaller build in `dist/` is still a 3.13 build until it's rebuilt.
 
 **N-T5 — Test coverage gaps, deferred.**
 - `_extract_points` (needs EasyOCR and checked-in screen crops).

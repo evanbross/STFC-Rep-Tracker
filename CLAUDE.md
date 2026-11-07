@@ -88,8 +88,9 @@ Linux subset (no capture stack) for the API image, so bump its pins to match the
   `pyclipper` only build from source there.
 - Changing `.python-version` can make an IDE's uv integration rebuild `.venv` on its own. Close the IDE, or point
   `UV_PROJECT_ENVIRONMENT` at a scratch folder, before trying a different version.
-- The Inno installer (`installer/`) still bundles embedded Python 3.12.9 and its own torch pin. It's behind
-  `requires-python` (see the remediation plan, N-T4).
+- The Inno installer (`installer/`) bundles embedded Python 3.14.7. `PYTHON_VER` in `prepare.bat` and `PythonVer`
+  in `STFC_Rep_Tracker.iss` must match each other and `.python-version`'s major.minor. Its torch/torchvision pins
+  come from `requirements.txt` (`prepare.bat` writes `requirements_torch.txt` with the CPU builds).
 
 ## Running Tests
 

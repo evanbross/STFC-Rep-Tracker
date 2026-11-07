@@ -6,7 +6,9 @@
 :: ============================================================
 setlocal
 
-set PYTHON_VER=3.12.9
+:: ai: claude-opus-5-5 | 2026-11-07
+:: Keep in step with .python-version (the major.minor must match; use its latest patch).
+set PYTHON_VER=3.14.7
 set PYTHON_ZIP=python-%PYTHON_VER%-embed-amd64.zip
 set PYTHON_URL=https://www.python.org/ftp/python/%PYTHON_VER%/%PYTHON_ZIP%
 set GETPIP_URL=https://bootstrap.pypa.io/get-pip.py
@@ -45,6 +47,16 @@ echo Generating requirements_dist.txt...
 powershell -NoProfile -Command ^
   "Get-Content '..\requirements.txt' | Where-Object { $_ -notmatch '^torch==' -and $_ -notmatch '^torchvision==' } | Set-Content 'requirements_dist.txt'"
 echo requirements_dist.txt generated.
+
+:: ai: claude-opus-5-5 | 2026-11-07
+:: ── 5. Generate requirements_torch.txt (CPU builds of the locked torch pins) ─
+:: The torch/torchvision versions come from requirements.txt (generated from
+:: uv.lock), so the installer can't drift from the lock.
+echo Generating requirements_torch.txt...
+powershell -NoProfile -Command ^
+  "$pins = @(Get-Content '..\requirements.txt' | Where-Object { $_ -match '^(torch|torchvision)==' } | ForEach-Object { ($_ -split '\s*;')[0].Trim() + '+cpu' }); if ($pins.Count -ne 2) { Write-Error 'Expected torch and torchvision pins in requirements.txt'; exit 1 }; @('--index-url https://download.pytorch.org/whl/cpu') + $pins | Set-Content 'requirements_torch.txt'"
+if errorlevel 1 ( echo ERROR: Could not generate requirements_torch.txt. & exit /b 1 )
+echo requirements_torch.txt generated.
 
 echo.
 echo ============================================================
