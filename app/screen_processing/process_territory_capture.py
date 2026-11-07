@@ -14,7 +14,7 @@ import numpy as np
 
 from app.app_config import capture_cfg
 from app.google_calendar import check_events_exist
-from app.screen_processing.ocr_text import is_time_string, parse_time_remaining
+from app.screen_processing.ocr_text import confident_tokens
 from app.screen_processing.base_orchestrator import BaseOrchestrator
 from app.screen_processing.capture_errors import CaptureError, CaptureTargetNotFound
 from app.screen_processing.screen_capture import (
@@ -25,6 +25,16 @@ from app.screen_processing.screen_capture import (
     match_template,
     wait_and_click_any,
     wait_for_any_template,
+)
+from app.screen_processing.territory_parsing import (
+    Box,
+    TerritoryRow,
+    first_timer,
+    name_and_timer,
+    pair_full_image_results,
+    row_strip_regions,
+    territory_row,
+    timer_strip_rows,
 )
 
 logger = logging.getLogger(__name__)
@@ -52,26 +62,11 @@ _LOAD_READY_TEMPLATES = _NEXT_TAKEOVER_TEMPLATES + _GREEN_FLAG_TEMPLATES
 
 
 # ---------------------------------------------------------------------------
-# Image coordinate helpers
-# ---------------------------------------------------------------------------
-
-
-def _bbox_top_y(bbox) -> float:
-    """Return the y-coordinate of the top edge of an EasyOCR bounding box."""
-    # EasyOCR bbox: [[x1,y1],[x2,y1],[x2,y2],[x1,y2]]
-    return bbox[0][1]
-
-
-def _bbox_center_x(bbox) -> float:
-    return (bbox[0][0] + bbox[1][0]) / 2
-
-
-# ---------------------------------------------------------------------------
 # Zone Slots header detection (used to crop the top of the territory screen)
 # ---------------------------------------------------------------------------
 
 
-def _find_zone_slots_bottom(img: np.ndarray) -> int:
+def find_zone_slots_bottom(img: np.ndarray) -> int:
     """Return the y-coordinate of the bottom edge of the Zone Slots header in img.
 
     Tries each template in _ZONE_SLOTS_TEMPLATES.  Falls back to
@@ -110,7 +105,7 @@ def _find_zone_slots_bottom(img: np.ndarray) -> int:
 # ---------------------------------------------------------------------------
 
 
-def _find_row_strips(img: np.ndarray) -> list[tuple[np.ndarray, int]]:
+def find_row_strips(img: np.ndarray) -> list[tuple[np.ndarray, int]]:
     """Locate each territory row using portrait + Next Takeover label landmarks.
 
     For each portrait found, locates the matching Next Takeover label in the
@@ -134,7 +129,7 @@ def _find_row_strips(img: np.ndarray) -> list[tuple[np.ndarray, int]]:
         "territory", "name_timer_height_frac", default=0.50
     )
 
-    portraits: list[tuple[int, int, int, int]] = []
+    portraits: list[Box] = []
     for tmpl in _PORTRAIT_TEMPLATES:
         try:
             portraits.extend(find_all_template_matches(tmpl, img, threshold))
@@ -142,24 +137,11 @@ def _find_row_strips(img: np.ndarray) -> list[tuple[np.ndarray, int]]:
             logger.debug("Portrait template not found on disk: %s", tmpl)
     if not portraits:
         return []
-    portraits.sort(key=lambda m: m[1])
     logger.debug(
-        "Found %d portrait(s) at y=%s", len(portraits), [p[1] for p in portraits]
+        "Found %d portrait(s) at y=%s", len(portraits), sorted(p[1] for p in portraits)
     )
 
-    # Compute average row height from portrait spacing (resolution-independent fallback unit)
-    if len(portraits) >= 2:
-        spacings = [
-            portraits[i + 1][1] - portraits[i][1] for i in range(len(portraits) - 1)
-        ]
-        row_height = sum(spacings) / len(spacings)
-    else:
-        row_height = (
-            portraits[0][3] * 2
-        )  # single portrait — rough estimate from template height
-    logger.debug("Estimated row height from portrait spacing: %.0f px", row_height)
-
-    nt_matches: list[tuple[int, int, int, int]] = []
+    nt_matches: list[Box] = []
     for tmpl in _NEXT_TAKEOVER_TEMPLATES:
         try:
             found = find_all_template_matches(tmpl, img, nt_threshold)
@@ -172,43 +154,20 @@ def _find_row_strips(img: np.ndarray) -> list[tuple[np.ndarray, int]]:
             )
         except FileNotFoundError:
             logger.debug("Next Takeover template not found on disk: %s", tmpl)
-    nt_matches.sort(key=lambda m: m[1])
 
+    # ai: claude-opus-5-5 | 2026-11-06 — strip geometry lives in territory_parsing (R12)
     img_h, img_w = img.shape[:2]
-    strips: list[tuple[np.ndarray, int]] = []
-
-    for px, py, pw, ph in portraits:
-        nt = next(
-            (m for m in nt_matches if py <= m[1] < py + max_row_height_px),
-            None,
-        )
-
-        strip_x = px + pw
-        if nt is not None:
-            _, nty, _, nth = nt
-            strip_y2 = min(img_h, nty + nth + 4)
-            logger.debug(
-                "Row y=%d: using Next Takeover label at y=%d, strip_y2=%d",
-                py,
-                nty,
-                strip_y2,
-            )
-        else:
-            # Derive strip height from portrait spacing — catches name + timer, excludes badges
-            strip_y2 = min(img_h, py + int(row_height * name_timer_height_frac))
-            logger.debug(
-                "Row y=%d: Next Takeover not found, fallback strip_y2=%d (%.0f%% of %.0f px row height)",
-                py,
-                strip_y2,
-                name_timer_height_frac * 100,
-                row_height,
-            )
-
-        strip = img[py:strip_y2, strip_x:img_w]
-        if strip.size > 0:
-            strips.append((strip, py))
-
-    return strips
+    regions = row_strip_regions(
+        portraits,
+        nt_matches,
+        img_w,
+        img_h,
+        max_row_height_px=max_row_height_px,
+        name_timer_height_frac=name_timer_height_frac,
+    )
+    for row_y, (x1, y1, x2, y2) in regions:
+        logger.debug("Row y=%d: strip x=%d..%d y=%d..%d", row_y, x1, x2, y1, y2)
+    return [(img[y1:y2, x1:x2], row_y) for row_y, (x1, y1, x2, y2) in regions]
 
 
 # ---------------------------------------------------------------------------
@@ -216,7 +175,7 @@ def _find_row_strips(img: np.ndarray) -> list[tuple[np.ndarray, int]]:
 # ---------------------------------------------------------------------------
 
 
-def _ocr_strips(strips: list[tuple[np.ndarray, int]]) -> list[dict]:
+def _ocr_strips(strips: list[tuple[np.ndarray, int]]) -> list[TerritoryRow]:
     """OCR each row strip and extract (name, timer) pairs.
 
     Each strip is upscaled before OCR for better accuracy on small text.
@@ -228,7 +187,7 @@ def _ocr_strips(strips: list[tuple[np.ndarray, int]]) -> list[dict]:
     scale = capture_cfg("ocr", "scale_factor", default=3)
     min_conf = capture_cfg("territory", "ocr_min_confidence", default=0.2)
     now = datetime.now(UTC)
-    systems: list[dict] = []
+    systems: list[TerritoryRow] = []
 
     for strip, row_y in strips:
         sh, sw = strip.shape[:2]
@@ -245,17 +204,14 @@ def _ocr_strips(strips: list[tuple[np.ndarray, int]]) -> list[dict]:
             [(t, f"{c:.2f}") for _, t, c in raw],
         )
 
-        tokens = [t.strip() for _, t, c in raw if c >= min_conf and t.strip()]
-        name = next((t for t in tokens if not is_time_string(t)), None)
-        time_str = next((t for t in tokens if is_time_string(t)), None)
+        # ai: claude-opus-5-5 | 2026-11-06
+        tokens = confident_tokens(raw, min_conf)
+        name, time_str = name_and_timer(tokens)
 
         if name and time_str:
-            delta = parse_time_remaining(time_str)
-            event_time = (now + delta).strftime("%Y-%m-%d %H:%M") if delta else None
-            systems.append(
-                {"name": name, "time_remaining": time_str, "event_time": event_time}
-            )
-            logger.info("Territory system: '%s' — %s → %s", name, time_str, event_time)
+            row = territory_row(name, time_str, now)
+            systems.append(row)
+            logger.info("Territory system: '%s' — %s → %s", name, time_str, row["event_time"])
         else:
             logger.warning(
                 "Row y=%d: could not extract name/timer (tokens=%s)", row_y, tokens
@@ -269,7 +225,7 @@ def _ocr_strips(strips: list[tuple[np.ndarray, int]]) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 
-def _ocr_full_image(img: np.ndarray, img_height: int) -> list[dict]:
+def _ocr_full_image(img: np.ndarray, img_height: int) -> list[TerritoryRow]:
     """Full-image OCR fallback used when portrait landmarks are unavailable.
 
     Runs EasyOCR on the entire (already-cropped) territory screen, then
@@ -304,56 +260,17 @@ def _ocr_full_image(img: np.ndarray, img_height: int) -> list[dict]:
     filtered_out = [(t, f"{c:.2f}") for _, t, c in raw if c < min_conf or not t.strip()]
     if filtered_out:
         logger.info("Territory OCR filtered (conf < %.2f): %s", min_conf, filtered_out)
-    results = [
-        (bbox, text.strip(), conf)
-        for bbox, text, conf in raw
-        if conf >= min_conf and text.strip()
-    ]
-    results.sort(key=lambda r: _bbox_top_y(r[0]))
 
-    now = datetime.now(UTC)
-    systems: list[dict] = []
-    consumed: set[int] = set()
-
-    for i, (bbox, text, conf) in enumerate(results):
-        if i in consumed:
-            continue
-        if is_time_string(text):
-            continue
-
-        name_y = _bbox_top_y(bbox)
-        # Skip badge/emblem labels — they sit closely below their row's timer.
-        if any(
-            is_time_string(results[k][1])
-            and 0 < (name_y - _bbox_top_y(results[k][0])) <= emblem_skip_px
-            for k in range(i)
-        ):
-            logger.debug(
-                "Skipping '%s' — within %.0fpx (%.0f%%) below a timer (badge label)",
-                text,
-                emblem_skip_px,
-                emblem_skip_frac * 100,
-            )
-            continue
-
-        for j in range(i + 1, len(results)):
-            if j in consumed:
-                continue
-            j_bbox, j_text, _ = results[j]
-            j_y = _bbox_top_y(j_bbox)
-            if j_y - name_y > pair_max_gap_px:
-                break
-            if not is_time_string(j_text):
-                continue
-            delta = parse_time_remaining(j_text)
-            event_time = (now + delta).strftime("%Y-%m-%d %H:%M") if delta else None
-            systems.append(
-                {"name": text, "time_remaining": j_text, "event_time": event_time}
-            )
-            consumed.add(i)
-            consumed.add(j)
-            logger.info("Territory system: '%s' — %s → %s", text, j_text, event_time)
-            break
+    # ai: claude-opus-5-5 | 2026-11-06 — the pairing heuristic lives in territory_parsing (R12)
+    systems = pair_full_image_results(
+        raw,
+        datetime.now(UTC),
+        min_conf=min_conf,
+        pair_max_gap_px=pair_max_gap_px,
+        emblem_skip_px=emblem_skip_px,
+    )
+    for row in systems:
+        logger.info("Territory system: '%s' — %s → %s", row["name"], row["time_remaining"], row["event_time"])
 
     if not systems:
         logger.warning(
@@ -367,7 +284,7 @@ def _ocr_full_image(img: np.ndarray, img_height: int) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 
-def _extract_by_name_templates(img: np.ndarray) -> list[dict]:
+def _extract_by_name_templates(img: np.ndarray) -> list[TerritoryRow]:
     """Locate each system by its name snippet, then OCR only the timer line below it.
 
     For each system defined in territory.systems, finds the name template on
@@ -391,8 +308,8 @@ def _extract_by_name_templates(img: np.ndarray) -> list[dict]:
 
     reader = get_reader()
     now = datetime.now(UTC)
-    img_h, img_w = img.shape[:2]
-    systems: list[dict] = []
+    img_h = img.shape[0]
+    systems: list[TerritoryRow] = []
 
     for sys_cfg in systems_config:
         name: str = sys_cfg.get("name", "")
@@ -407,12 +324,11 @@ def _extract_by_name_templates(img: np.ndarray) -> list[dict]:
                 continue
 
             for nx, ny, nw, nh in matches:
-                # Timer line sits just below the name template.
-                # Use template height as the unit so this scales with resolution.
-                # Use full row width (x=0) — the timer label may not be
-                # horizontally aligned with the name template.
-                timer_y1 = ny + nh
-                timer_y2 = min(img_h, ny + int(nh * (1 + timer_strip_frac)))
+                # Timer line sits just below the name template, measured in
+                # name-template heights. Use the full row width: the timer
+                # label may not line up horizontally with the name.
+                # ai: claude-opus-5-5 | 2026-11-06
+                timer_y1, timer_y2 = timer_strip_rows((nx, ny, nw, nh), img_h, timer_strip_frac)
                 timer_strip = img[timer_y1:timer_y2, :]
 
                 if timer_strip.size == 0:
@@ -448,23 +364,15 @@ def _extract_by_name_templates(img: np.ndarray) -> list[dict]:
                     [(t, f"{c:.2f}") for _, t, c in raw],
                 )
 
-                tokens = [t.strip() for _, t, c in raw if c >= min_conf and t.strip()]
-                time_str = next((t for t in tokens if is_time_string(t)), None)
+                # ai: claude-opus-5-5 | 2026-11-06
+                tokens = confident_tokens(raw, min_conf)
+                time_str = first_timer(tokens)
 
                 if time_str:
-                    delta = parse_time_remaining(time_str)
-                    event_time = (
-                        (now + delta).strftime("%Y-%m-%d %H:%M") if delta else None
-                    )
-                    systems.append(
-                        {
-                            "name": name,
-                            "time_remaining": time_str,
-                            "event_time": event_time,
-                        }
-                    )
+                    row = territory_row(name, time_str, now)
+                    systems.append(row)
                     logger.info(
-                        "Territory system: '%s' — %s → %s", name, time_str, event_time
+                        "Territory system: '%s' — %s → %s", name, time_str, row["event_time"]
                     )
                     found = True
                     break
@@ -484,7 +392,7 @@ def _extract_by_name_templates(img: np.ndarray) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 
-def _extract_territory_systems(img: np.ndarray) -> list[dict]:
+def _extract_territory_systems(img: np.ndarray) -> list[TerritoryRow]:
     """Run OCR on the territory screen and return parsed system/timer pairs.
 
     Priority order:
@@ -499,7 +407,7 @@ def _extract_territory_systems(img: np.ndarray) -> list[dict]:
     Returns a list of dicts:
         [{"name": str, "time_remaining": str, "event_time": "YYYY-MM-DD HH:MM"}, ...]
     """
-    crop_y = _find_zone_slots_bottom(img)
+    crop_y = find_zone_slots_bottom(img)
     img = img[crop_y:, :]
     img_height = img.shape[0]
     logger.debug(
@@ -511,7 +419,7 @@ def _extract_territory_systems(img: np.ndarray) -> list[dict]:
         logger.info("Name-template extraction: found %d system(s)", len(systems))
         return systems
 
-    strips = _find_row_strips(img)
+    strips = find_row_strips(img)
     if strips:
         logger.info("Portrait-landmark OCR: %d row strip(s) found", len(strips))
         return _ocr_strips(strips)

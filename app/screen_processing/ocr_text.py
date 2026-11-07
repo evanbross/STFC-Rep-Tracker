@@ -15,6 +15,7 @@ they can be unit-tested without importing the screen-capture stack.
 import logging
 import re
 from datetime import timedelta
+from typing import Any
 
 from app.app_config import capture_cfg
 
@@ -91,6 +92,12 @@ def parse_time_remaining(text: str) -> timedelta | None:
     if days == 0 and hours == 0 and minutes == 0:
         return None
     return timedelta(days=days, hours=hours, minutes=minutes)
+
+
+# ai: claude-opus-5-5 | 2026-11-06
+def confident_tokens(raw: list[tuple[Any, str, float]], min_conf: float) -> list[str]:
+    """Stripped, non-empty texts from EasyOCR readtext(detail=1) at or above min_conf, in order."""
+    return [text.strip() for _, text, conf in raw if conf >= min_conf and text.strip()]
 
 
 def is_time_string(text: str) -> bool:

@@ -61,6 +61,13 @@ def test_is_time_string(raw: str, expected: bool) -> None:
     assert ocr_text.is_time_string(raw) is expected
 
 
+# ai: claude-opus-5-5 | 2026-11-06
+def test_confident_tokens_strips_and_drops_low_confidence() -> None:
+    box = [[0, 0], [1, 0], [1, 1], [0, 1]]
+    raw = [(box, " Saldeti ", 0.9), (box, "noise", 0.1), (box, "   ", 0.99), (box, "20h 03m", 0.2)]
+    assert ocr_text.confident_tokens(raw, 0.2) == ["Saldeti", "20h 03m"]
+
+
 @pytest.mark.parametrize(
     ("tokens", "expected"),
     [
