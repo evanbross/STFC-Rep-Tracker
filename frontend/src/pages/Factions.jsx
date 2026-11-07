@@ -461,13 +461,15 @@ const Factions = () => {
                                 />
                             </div>
                             <div className="form-group">
+                                {/* ai: claude-opus-5-5 | 2026-11-07 — every faction is in the chart legend; this picks its starting visibility (N-B4) */}
                                 <label>On Chart:</label>
                                 <select
                                     value={formData.on_chart}
                                     onChange={e => setFormData({...formData, on_chart: parseInt(e.target.value)})}
+                                    title="Whether the Dashboard chart shows this faction when it loads. Click its legend entry to show or hide it anytime."
                                 >
-                                    <option value={0}>No</option>
-                                    <option value={1}>Yes</option>
+                                    <option value={0}>Hidden at load</option>
+                                    <option value={1}>Shown at load</option>
                                 </select>
                             </div>
                         </div>
@@ -507,7 +509,7 @@ const Factions = () => {
                             </td>
                             <td>{f.reputation_table_name || '-'}</td>
                             <td className="text-right">{f.display_order ?? '-'}</td>
-                            <td className="text-right">{f.on_chart ?? 0}</td>
+                            <td className="text-right">{f.on_chart ? 'Shown' : 'Hidden'}</td>{/* ai: claude-opus-5-5 | 2026-11-07 */}
                             <td>
                                 <button className="action-btn edit-btn" onClick={() => handleEdit(f)}>Edit</button>
                                 <button className="action-btn" onClick={() => setSnippetFaction(f)} style={{ marginLeft: 6 }}>Snippets</button>

@@ -122,6 +122,7 @@ def add_faction():
             on_chart:
               type: integer
               default: 0
+              description: 1 shows the faction's history series when the Dashboard chart loads; 0 starts it hidden
             display_order:
               type: integer
             reputation_dao_name:
@@ -185,6 +186,7 @@ def update_faction(current_code):
               type: string
             on_chart:
               type: integer
+              description: 1 shows the faction's history series when the Dashboard chart loads; 0 starts it hidden
             display_order:
               type: integer
             reputation_dao_name:

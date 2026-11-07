@@ -491,6 +491,10 @@ null, and the card shows "Capped at <tier>" with a full progress bar. Augment at
 
 **N-B4 — `on_chart` doesn't hide anything.** It only seeds empty factions into the chart legend; every faction
 with data is charted. Ten factions have `on_chart = 0` and are charted anyway. Decide what it should mean.
+*Decision and fix 2026-11-07:* `on_chart` sets whether a faction's series is **shown when the chart loads**. Every
+faction is in the legend, and series with On Chart off (or nothing to draw) start hidden, one click away. Legend
+choices are now kept by faction name and survive reloads after a capture or quick entry; before, they were keyed by
+position and reset on every reload. The Factions form reads "Shown at load" / "Hidden at load".
 
 **N-B5 — Opening TC Schedule starts the OAuth flow.** If the token is missing, opening the modal POSTs
 `/api/calendar/auth`, which opens Google's consent page. It is the dedicated auth endpoint, but nobody clicked

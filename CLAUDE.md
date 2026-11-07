@@ -249,7 +249,8 @@ The `factions` table drives most dynamic behavior:
   `app/database/fkr_reputations_dao.py`); validated against the available implementations
 - `reputation_dao_name` — Class name of that implementation (e.g., `FKRReputationsDAO`); filled in by the API from the table
 - `display_order` — Controls order in UI
-- `on_chart` — Whether to include in the history chart
+- `on_chart` — Whether the faction's series is shown when the history chart loads. Every faction is in the legend
+  either way, and clicking an entry shows or hides it until the page reloads
 - `snippet_unselected` — Template filename for the faction's unselected sidebar button
 - `snippet_selected_button` — Template filename for the selected button state (legacy single-image field)
 

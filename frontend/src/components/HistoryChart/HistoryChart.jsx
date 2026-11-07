@@ -8,7 +8,7 @@
  */
 // ai: claude-opus-5-5 | 2026-11-06
 // Reputation history chart with its clickable legend, moved out of Dashboard.jsx.
-import React, {useRef} from 'react';
+import React, {useMemo} from 'react';
 import {
     CategoryScale,
     Chart as ChartJS,
@@ -99,9 +99,16 @@ const CHART_OPTIONS = {
  * captures and quick entries reload it).
  * factions: the current summary list, needed again when toggling the window.
  */
+// ai: claude-opus-5-5 | 2026-11-07
+// Visibility is plain state: each dataset's `hidden` is the user's legend
+// choice, or the default from useHistoryEntries. react-chartjs-2 matches
+// datasets by label, so a reload keeps those choices.
 const HistoryChart = ({history, factions}) => {
-    const {chartData, hiddenDatasets, setHiddenDatasets, historyDays, toggleFullHistory} = history;
-    const chartRef = useRef(null);
+    const {chartData, visibilityOverrides, toggleVisibility, historyDays, toggleFullHistory} = history;
+    const data = useMemo(() => ({
+        ...chartData,
+        datasets: chartData.datasets.map(ds => ({...ds, hidden: visibilityOverrides[ds.label] ?? ds.hidden})),
+    }), [chartData, visibilityOverrides]);
 
     return (
         <div className="chart-container">
@@ -112,19 +119,12 @@ const HistoryChart = ({history, factions}) => {
                 padding: '0.5rem 0.75rem',
                 marginBottom: '0.5rem'
             }}>
-                {chartData.datasets.map((ds, i) => {
-                    const isHidden = hiddenDatasets[i] ?? ds.hidden;
+                {data.datasets.map(ds => {
+                    const isHidden = ds.hidden;
                     return (
                         <div
                             key={ds.label}
-                            onClick={() => {
-                                const chart = chartRef.current;
-                                if (!chart) return;
-                                const next = !isHidden;
-                                chart.setDatasetVisibility(i, !next);
-                                chart.update();
-                                setHiddenDatasets(prev => ({...prev, [i]: next}));
-                            }}
+                            onClick={() => toggleVisibility(ds.label, isHidden)}
                             style={{
                                 display: 'flex', alignItems: 'center', gap: '0.4rem',
                                 cursor: 'pointer', opacity: isHidden ? 0.4 : 1,
@@ -152,7 +152,7 @@ const HistoryChart = ({history, factions}) => {
                     {historyDays ? 'Show all history' : `Last ${DEFAULT_HISTORY_DAYS} days`}
                 </button>
             </div>
-            <Line ref={chartRef} options={CHART_OPTIONS} data={chartData}/>
+            <Line options={CHART_OPTIONS} data={data}/>
         </div>
     );
 };
