@@ -76,7 +76,8 @@ the project root.
 - Resolve files with `runtime_path()` / `resource_path()`. Don't compute paths from `__file__` or the cwd.
 - Snippets go through `app/snippet_store.py`. Lookups check the user folder first, then the bundled one. New snippets
   are always written to the user folder (`new_snippet_path`), so upgrades don't wipe them.
-- Screenshots go to `app_config.screenshots_dir()`.
+- Screenshots go to `app_config.screenshots_dir()`. Any new writer there calls `screenshot_retention.notify_written()`
+  after saving; that wakes the pruner, which keeps the newest 30 files (subfolders like `debug/` are left alone).
 - Elevation and single-instance mutexes live in `app/win_process.py`, shared by `launcher.py` and `main.py`.
 
 ## Running Tests

@@ -21,6 +21,7 @@ import yaml
 from flask import Flask
 from werkzeug.serving import make_server
 
+from app import screenshot_retention
 from app.app_config import capture_cfg, screenshots_dir
 from app.paths import is_frozen, resource_path, runtime_path
 from app.request_guards import install_cross_origin_write_guard
@@ -35,25 +36,6 @@ try:
     load_dotenv()
 except ImportError:
     pass
-
-
-def _screenshots_cleanup_worker(folder: str, keep: int = 30, interval: int = 300) -> None:
-    """Background thread: every `interval` seconds, delete oldest files in `folder` beyond `keep`."""
-    while True:
-        try:
-            files = [
-                os.path.join(folder, f)
-                for f in os.listdir(folder)
-                if os.path.isfile(os.path.join(folder, f))
-            ]
-            if len(files) > keep:
-                files.sort(key=os.path.getmtime)
-                for path in files[:len(files) - keep]:
-                    os.remove(path)
-                    logger.debug(f"Screenshots cleanup: deleted {path}")
-        except Exception:
-            logger.exception("Screenshots cleanup thread encountered an error")
-        time.sleep(interval)
 
 
 def _check_env(app_settings: AppSettings) -> None:
@@ -325,8 +307,7 @@ def _serve() -> None:
 
     _check_env(app_settings)
     flask_app = create_app(app_settings)
-    # ai: claude-opus-5-5 | 2026-11-06
-    threading.Thread(target=_screenshots_cleanup_worker, args=(screenshots_dir(),), daemon=True).start()
+    screenshot_retention.start(screenshots_dir())  # ai: claude-opus-5-5 | 2026-11-06 — signalled by writers (R11)
 
     cert_path, key_path = _ensure_community_mod_cert(runtime_path("certs"))
     threading.Thread(target=_run_community_mod_https_server, args=(cert_path, key_path), daemon=True).start()

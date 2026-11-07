@@ -16,7 +16,7 @@ from typing import Any
 import cv2
 import numpy as np
 
-from app.app_config import capture_cfg
+from app.app_config import capture_cfg, screenshots_dir
 from app.domain_errors import NotFoundError
 from app.screen_processing.base_orchestrator import BaseOrchestrator
 from app.screen_processing.capture_errors import CaptureError, CaptureTargetNotFound
@@ -219,12 +219,14 @@ def _preprocess_for_ocr(region_bgr: np.ndarray) -> np.ndarray:
 def _save_debug_crop(
     region_bgr: np.ndarray, preprocessed: np.ndarray, label: str = "crop"
 ) -> None:
-    """Save raw and preprocessed crops to Screenshots/debug/ for OCR tuning."""
-    debug_dir = os.path.join(
-        os.path.dirname(__file__), "..", "..", "Screenshots", "debug"
-    )
+    """Save raw and preprocessed crops to <screenshots_dir>/debug/ for OCR tuning.
+
+    The pruner skips subfolders, so these are kept until deleted by hand.
+    """
+    # ai: claude-opus-5-5 | 2026-11-06 — was computed from __file__, ignoring the screenshots_dir setting
+    debug_dir = os.path.join(screenshots_dir(), "debug")
     os.makedirs(debug_dir, exist_ok=True)
-    ts = datetime.now(UTC).strftime("%H-%M-%S")
+    ts = datetime.now(UTC).strftime("%Y-%m-%d_%H-%M-%S_%f")
     cv2.imwrite(os.path.join(debug_dir, f"{ts}_{label}_raw.png"), region_bgr)
     cv2.imwrite(os.path.join(debug_dir, f"{ts}_{label}_preprocessed.png"), preprocessed)
 
@@ -281,7 +283,7 @@ def _extract_points(img: np.ndarray | None, faction_name: str = "") -> int | Non
 
     # No "Points:" label detected — save crops to aid diagnosis regardless of log level.
     _save_debug_crop(points_region, preprocessed, label="points_FAIL")
-    logger.info("'Points' label not found — saved debug crop to Screenshots/debug/")
+    logger.info("'Points' label not found — saved debug crop to <screenshots_dir>/debug/")
     return None
 
 

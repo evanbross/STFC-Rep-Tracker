@@ -20,6 +20,7 @@ import numpy as np
 import pyautogui
 import pygetwindow as gw
 
+from app import screenshot_retention
 from app.app_config import capture_cfg, screenshots_dir
 from app.screen_processing.capture_errors import CaptureError, GameWindowNotFound
 from app.snippet_store import find_snippet
@@ -88,6 +89,7 @@ def _write_worker(q: queue.Queue) -> None:
         img_bgr, filepath = item
         try:
             cv2.imwrite(filepath, img_bgr)
+            screenshot_retention.notify_written()  # ai: claude-opus-5-5 | 2026-11-06
         except Exception as e:
             logger.warning(f"write-behind: failed to save {filepath}: {e}")
         finally:
@@ -648,6 +650,7 @@ class ScreenCapture:
             time.sleep(delay)
         screenshot = pyautogui.screenshot(region=(left, top, width, height))
         screenshot.save(filepath)
+        screenshot_retention.notify_written()  # ai: claude-opus-5-5 | 2026-11-06
         logger.debug(f"Screenshot saved to {filepath}")
         return filepath
 

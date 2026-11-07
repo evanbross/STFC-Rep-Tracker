@@ -610,6 +610,13 @@ next one starts.
     - **Not covered:** the OCR reads themselves (N-T5: needs EasyOCR in the suite) and N-T2's parser bug, which still
       waits for real OCR crops as fixtures.
   - **Manual check still open:** a frozen build should keep an uploaded snippet across a reinstall.
+  - **R11 done the same day:** `app/screenshot_retention.py` replaces main's 5-minute polling loop. Both screenshot
+    writers (`capture_window` and the write-behind worker) call `notify_written()`, which only sets an Event. The
+    pruner thread wakes on it, keeps the newest 30 files, and sweeps every 30 minutes as a backstop. `stop()` ends it.
+    - Found along the way: `_save_debug_crop` built its folder from `__file__`, ignoring the `screenshots_dir`
+      setting, and its second-resolution names overwrote each other. It now uses `screenshots_dir()/debug` with
+      microsecond names. The pruner leaves subfolders alone, as before.
+    - Turning the signal into a no-op fails 3 tests. Suite: 286 passed and 1 strict xfail (N-T2).
 
 ### Deliberately not recommended
 - **A full auth system.** It's only worth building if LAN or remote access becomes a goal.
