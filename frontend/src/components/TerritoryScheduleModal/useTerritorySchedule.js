@@ -15,8 +15,9 @@ const EMPTY_FORM = {name: '', day_of_week: 0, event_time: ''};
 
 /**
  * Everything the modal shows and does. Call it from a component that mounts
- * only while the modal is open: mounting loads the schedule, connects Google
- * Calendar if needed, and checks each row against the calendar.
+ * only while the modal is open: mounting loads the schedule and, when Google
+ * Calendar is already connected, checks each row against it. Connecting is
+ * left to connectCalendar, which only an explicit user click should call (N-B5).
  */
 const useTerritorySchedule = () => {
     const [scheduleList, setScheduleList] = useState([]);
@@ -26,8 +27,8 @@ const useTerritorySchedule = () => {
     const [availableCalendars, setAvailableCalendars] = useState(null);
     const [calPickerSelectedId, setCalPickerSelectedId] = useState('primary');
     const [scheduleStatus, setScheduleStatus] = useState(null); // null = idle, string = current step label
-    // Opening can POST /api/calendar/auth (the OAuth flow); StrictMode must not run it twice.
-    const openedRef = useRef(false);
+    // Opening POSTs check-calendar (Google API calls); StrictMode must not run it twice.
+    const openedRef = useRef(false); // ai: claude-opus-5-5 | 2026-11-07
 
     const checkCalendar = async () => {
         const res = await api.post('/api/territory/systems/check-calendar');
@@ -40,15 +41,21 @@ const useTerritorySchedule = () => {
         if (res.data.length > 0) setCalPickerSelectedId(res.data[0].id);
     };
 
+    // ai: claude-opus-5-5 | 2026-11-07
+    // Starts Google's consent flow, so only the Connect button calls it (N-B5).
+    // The auth response already carries every row checked against the calendar.
     const connectCalendar = async () => {
+        setScheduleStatus('Waiting for Google sign-in');
         try {
-            const res = await api.post('/api/calendar/auth', null, {timeout: INTERACTIVE_AUTH_TIMEOUT_MS}); // ai: claude-opus-5-5 | 2026-11-07
+            const res = await api.post('/api/calendar/auth', null, {timeout: INTERACTIVE_AUTH_TIMEOUT_MS});
             setCalendarAuthenticated(true);
             if (res.data.systems) setScheduleList(res.data.systems);
-            return true;
+            setScheduleStatus('Loading calendars');
+            await loadCalendars();
         } catch (error) {
-            alert(`Google Calendar auth failed:\n\n${errorMessage(error)}`);
-            return false;
+            alert(`Google Calendar connection failed:\n\n${errorMessage(error)}`);
+        } finally {
+            setScheduleStatus(null);
         }
     };
 
@@ -64,14 +71,11 @@ const useTerritorySchedule = () => {
 
                 // Asked on every open, so a token that expired since page load is noticed.
                 const statusRes = await api.get('/api/calendar/status');
-                let isAuth = statusRes.data.authenticated;
+                const isAuth = statusRes.data.authenticated;
                 setCalendarAuthenticated(isAuth);
-
-                if (!isAuth) {
-                    setScheduleStatus('Connecting to Google Calendar');
-                    isAuth = await connectCalendar();
-                    if (!isAuth) return; // alert already shown; leave the modal open
-                }
+                // ai: claude-opus-5-5 | 2026-11-07
+                // Not connected: show the schedule and the Connect button; never start OAuth here (N-B5).
+                if (!isAuth) return;
 
                 setScheduleStatus('Scanning calendar');
                 await Promise.all([loadCalendars(), checkCalendar()]);
@@ -167,6 +171,7 @@ const useTerritorySchedule = () => {
         calPickerSelectedId,
         setCalPickerSelectedId,
         scheduleStatus,
+        connectCalendar,
         runCalendarCheck,
         addToCalendar,
         startEdit,

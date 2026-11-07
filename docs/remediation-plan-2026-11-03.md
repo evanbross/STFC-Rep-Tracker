@@ -495,6 +495,10 @@ with data is charted. Ten factions have `on_chart = 0` and are charted anyway. D
 **N-B5 — Opening TC Schedule starts the OAuth flow.** If the token is missing, opening the modal POSTs
 `/api/calendar/auth`, which opens Google's consent page. It is the dedicated auth endpoint, but nobody clicked
 "connect". An explicit button would match the auth rule in `CLAUDE.md`.
+*Fixed 2026-11-07:* opening the modal only loads the schedule and, when a token exists, checks the calendar. Without
+one it shows "Not connected" with a **Connect Google Calendar** button, and only that click POSTs
+`/api/calendar/auth`. The backend already kept OAuth out of the data endpoints; two comments in
+`google_calendar.py` that said otherwise were corrected.
 
 ---
 

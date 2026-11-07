@@ -8,7 +8,8 @@
  */
 // ai: claude-opus-5-5 | 2026-11-06
 // Territory Schedule modal, moved out of Dashboard.jsx. Render it only while
-// open: mounting it loads the schedule and checks Google Calendar.
+// open: mounting it loads the schedule and, if Google Calendar is connected,
+// checks it. Connecting needs the user's click. // ai: claude-opus-5-5 | 2026-11-07
 import React from 'react';
 import useTerritorySchedule from './useTerritorySchedule';
 
@@ -33,6 +34,7 @@ const TerritoryScheduleModal = ({onClose}) => {
         calPickerSelectedId,
         setCalPickerSelectedId,
         scheduleStatus,
+        connectCalendar,
         runCalendarCheck,
         addToCalendar,
         startEdit,
@@ -106,7 +108,23 @@ const TerritoryScheduleModal = ({onClose}) => {
                             </button>
                         </>
                     ) : (
-                        <span style={{fontSize: '0.8rem', color: '#e57373'}}>Not connected</span>
+                        // ai: claude-opus-5-5 | 2026-11-07
+                        // Google sign-in starts only from this click, never on open (N-B5).
+                        <>
+                            <span style={{fontSize: '0.8rem', color: '#e57373', flex: 1}}>Not connected</span>
+                            <button
+                                onClick={connectCalendar}
+                                title="Opens Google's sign-in page in your browser"
+                                style={{
+                                    padding: '0.2rem 0.6rem', fontSize: '0.78rem',
+                                    backgroundColor: '#1a73e8', color: 'white',
+                                    border: 'none', borderRadius: '3px', cursor: 'pointer',
+                                    whiteSpace: 'nowrap',
+                                }}
+                            >
+                                Connect Google Calendar
+                            </button>
+                        </>
                     )}
                 </div>
 

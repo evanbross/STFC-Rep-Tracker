@@ -45,11 +45,12 @@ def _token_path() -> str:
 
 
 def _build_service():
+    # ai: claude-opus-5-5 | 2026-11-07
     """Return an authenticated Google Calendar service.
 
-    If no token exists or the token is unusable (expired scope, revoked, etc.),
-    the OAuth2 browser flow is run automatically to obtain a fresh token.
-    Raises if the credentials file is missing or the flow fails.
+    Refreshes an expired token when it can. Never starts the OAuth flow: with no
+    usable token (missing, revoked, scope mismatch) it raises RuntimeError, and
+    the user reconnects through POST /api/calendar/auth.
     """
     from google.auth.exceptions import GoogleAuthError
     from google.auth.transport.requests import Request
@@ -68,8 +69,10 @@ def _build_service():
             with open(token_file, "w") as f:
                 f.write(creds.to_json())
         except GoogleAuthError as e:
-            # Stale token (scope mismatch, revocation, etc.) — delete and re-auth.
-            logger.warning("Token refresh failed (%s) — running auth flow.", e)
+            # ai: claude-opus-5-5 | 2026-11-07
+            # Stale token (scope mismatch, revocation, etc.): delete it, then report not authenticated.
+            # Reconnecting is the user's click on "Connect Google Calendar", never this call.
+            logger.warning("Token refresh failed (%s); the user must reconnect Google Calendar.", e)
             try:
                 os.remove(token_file)
             except OSError:
