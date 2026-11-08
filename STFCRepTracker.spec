@@ -8,7 +8,10 @@ hiddenimports += collect_submodules('app.database')
 a = Analysis(
     ['launcher.py'],
     pathex=['.venv\\Lib\\site-packages', '.venv\\Lib\\site-packages\\win32', '.venv\\Lib\\site-packages\\win32\\lib', '.venv\\Lib\\site-packages\\Pythonwin'],
-    binaries=[('.venv\\Lib\\site-packages\\psycopg2_binary.libs\\libpq-29b01d8382d5824098bc0b4861813b70.dll', '.'), ('.venv\\Lib\\site-packages\\psycopg2_binary.libs\\libcrypto-3-x64-e57e1a41cc5d7f9b741c935f04fe4f2f.dll', '.'), ('.venv\\Lib\\site-packages\\psycopg2_binary.libs\\libssl-3-x64-6b7807fd98efdd91c677351cd0a9f2d8.dll', '.')],
+    # ai: claude-opus-5-5 | 2026-11-07
+    # psycopg2's bundled DLLs (psycopg2_binary.libs) are found by PyInstaller's own hooks;
+    # listing them here pinned hashed file names that change with every psycopg2 release.
+    binaries=[],
     datas=[('logging.yaml', '.'), ('.env.example', '.'), ('settings.yaml.example', '.'), ('frontend\\dist', 'frontend\\dist'), ('app\\screen_snippets', 'app\\screen_snippets')],
     hiddenimports=hiddenimports,
     hookspath=[],
