@@ -4,7 +4,9 @@
 **Inputs:** `docs/full-project-review-2026-11-03.md`, plus a fresh pass over `main.py`, `config.py`,
 `app/database/*`, `app/views/*`, `app/screen_processing/*`, `app/google_calendar.py`,
 `app/app_config.py`, `launcher.py`, and the React pages.
-**Status:** plan only. No code has been changed.
+**Status (2026-11-09):** Phases 0–5 are done, and so are the browser-check fixes N-B1 to N-B5. Still open:
+building and installing the Inno installer on 3.14, then the snippet-across-reinstall check (Phase 5). Deferred:
+N-T2 (a strict xfail that needs real OCR crops) and the N-T5 coverage gaps.
 
 This document has three parts:
 
@@ -449,8 +451,19 @@ N-S2 (atomic settings write).
     compile), and `pyyaml` / `pyclipper` only build from source. Revisit once those ship 3.15 wheels.
   - **Installer moved 2026-11-07:** the Inno installer bundles embedded Python 3.14.7 (it was 3.12.9). Its torch pin
     was hardcoded (`torch==2.10.0+cpu`); `prepare.bat` now writes `requirements_torch.txt` from `requirements.txt`, so
-    it follows the lock (2.15.0 / torchvision 0.29.2, both with Windows CPU wheels). Not yet built or installed.
-  - The PyInstaller build in `dist/` is still a 3.13 build until it's rebuilt.
+    it follows the lock (2.15.0 / torchvision 0.29.2, both with Windows CPU wheels). Not yet built or installed
+    (see below).
+  - **PyInstaller build moved 2026-11-08/09:** PyInstaller wasn't in any manifest, so the 3.14 venv didn't have it.
+    It's now a pinned dev dependency (6.22.3). The spec's hardcoded psycopg2 DLL list named hashed files from an
+    older psycopg2 and broke the build; PyInstaller's psycopg2 hook collects `psycopg2_binary.libs` on its own
+    (`be1e2bc`). Rebuilt 2026-11-09 with a fresh frontend build. `dist/STFCRepTracker` bundles `python314.dll`,
+    and the bundle is 835 MB (the 3.13 build was 1.1 GB). The build passes, but the exe hasn't been started.
+    - The first rebuild failed: PyInstaller couldn't delete the old `dist` folder because some directories were
+      flagged read-only, which Windows refuses to delete. The build copied the flag from `app/screen_snippets`,
+      `app/screen_snippets/Attic` and `frontend/dist`, which have since been cleared with `attrib -R`. Git doesn't
+      track that flag, so a fresh clone is unaffected, but it can come back locally. If a rebuild fails with
+      `PermissionError` while removing `dist`, run `attrib -R dist\STFCRepTracker\* /S /D` and build again.
+    - **Still open:** build and run the Inno installer on 3.14, then do the Phase 5 snippet-across-reinstall check.
 
 **N-T5 — Test coverage gaps, deferred.**
 - `_extract_points` (needs EasyOCR and checked-in screen crops).
