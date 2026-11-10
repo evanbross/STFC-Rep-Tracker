@@ -18,11 +18,18 @@ from app.screen_processing import ocr_text
 @pytest.mark.parametrize(
     ("raw", "expected"),
     [
-        ("ISh", "15h"),            # multi-char garble before a unit
+        ("ISh 30m", "15h 30m"),    # multi-char garble before a unit
         ("2d 4h 3Om", "2d 4h 30m"),
         ("Fh", "Fh"),              # unmapped character is left alone
         ("SOS", "SOS"),            # lookalikes with no time unit are left alone
         ("12h 5m", "12h 5m"),
+        # ai: claude-opus-5-5 | 2026-11-10
+        # N-T2: lookalikes inside or as ordinary words stay letters.
+        ("no time here", "no time here"),   # 'i' + 'm' mid-word
+        ("Tim", "Tim"),                     # whole word of lookalikes, no real time
+        ("ISh", "ISh"),                     # same, with nothing genuine to anchor it
+        ("Ohms 4h", "Ohms 4h"),             # unit followed by more letters
+        ("Item 4h", "Item 4h"),
     ],
 )
 def test_normalize_ocr_digits(raw: str, expected: str) -> None:
@@ -35,18 +42,14 @@ def test_normalize_ocr_digits(raw: str, expected: str) -> None:
         ("2d 4h 30m", timedelta(days=2, hours=4, minutes=30)),
         ("4h 6m", timedelta(hours=4, minutes=6)),
         ("45m", timedelta(minutes=45)),
-        ("ISh", timedelta(hours=15)),
+        ("ISh 30m", timedelta(hours=15, minutes=30)),
         ("1D 2H", timedelta(days=1, hours=2)),
         ("", None),
         ("500ms", None),           # milliseconds are not minutes
-        pytest.param(
-            "no time here", None,
-            marks=pytest.mark.xfail(
-                strict=True,
-                reason="lookalike map turns the 'i' in 'time' into '1m'; callers "
-                       "pre-filter with is_time_string, so not user-visible yet",
-            ),
-        ),
+        # ai: claude-opus-5-5 | 2026-11-10
+        ("no time here", None),    # N-T2: was 1 minute
+        ("Tim", None),
+        ("Item 4h", timedelta(hours=4)),
     ],
 )
 def test_parse_time_remaining(raw: str, expected: timedelta | None) -> None:

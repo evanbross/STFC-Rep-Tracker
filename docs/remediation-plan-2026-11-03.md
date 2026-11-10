@@ -4,9 +4,9 @@
 **Inputs:** `docs/full-project-review-2026-11-03.md`, plus a fresh pass over `main.py`, `config.py`,
 `app/database/*`, `app/views/*`, `app/screen_processing/*`, `app/google_calendar.py`,
 `app/app_config.py`, `launcher.py`, and the React pages.
-**Status (2026-11-09):** Phases 0–5 are done, and so are the browser-check fixes N-B1 to N-B5. Still open:
+**Status (2026-11-10):** Phases 0–5 are done, and so are the browser-check fixes N-B1 to N-B5 and N-T2. Still open:
 building and installing the Inno installer on 3.14, then the snippet-across-reinstall check (Phase 5). Deferred:
-N-T2 (a strict xfail that needs real OCR crops) and the remaining N-T5 coverage gaps (snippet upload done 2026-11-10).
+the remaining N-T5 coverage gaps (snippet upload done 2026-11-10).
 
 This document has three parts:
 
@@ -430,6 +430,13 @@ becomes the source of truth again.
 the "i" in "time" as "1", so `"no time here"` parses as one minute. Callers currently filter
 with `is_time_string()` first, so users don't see it. Fix this when real OCR crops are
 checked in as fixtures. It's recorded as a strict xfail in `tests/test_ocr_text.py`.
+- **Fixed 2026-11-10 without crops:** the bug is in text handling, so synthetic strings pin it down.
+  `normalize_ocr_digits` converts a lookalike run only when it starts a word and its unit ends one. A run with
+  no real digit (`ISh`) also needs a genuine component elsewhere in the text (`ISh 30m`). Territory timers are
+  picked with `is_time_string`, so they always have one, and garbles like `ISh 30m` / `2d 4h 3Om` still parse.
+  `"no time here"`, `Tim` and `Item 4h` no longer turn words into minutes. Six new cases fail on the old code,
+  and the xfail is gone. Suite: 311 passed. A real garble that breaks the word rule (e.g. a stray letter glued
+  to the number) would now fall back to unparsed; check it if real crops are ever added.
 
 **N-T3 — `settings.yaml` is read and written without `encoding="utf-8"`.** On Windows that
 means cp1252, and the file contains non-ASCII characters such as "×". Fix this together with

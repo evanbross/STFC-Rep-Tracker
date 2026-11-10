@@ -40,6 +40,7 @@ OCR_DIGIT_MAP: dict[str, str] = {
 }
 
 
+# ai: claude-opus-5-5 | 2026-11-10
 def normalize_ocr_digits(text: str) -> str:
     """Replace OCR lookalike characters with digits in numeric sequences.
 
@@ -49,9 +50,17 @@ def normalize_ocr_digits(text: str) -> str:
     (where the old per-character regex approach failed because neither I nor S
     was adjacent to a digit when checked individually).
 
+    A run is converted only when it reads as a whole time component (N-T2):
+
+    - it starts a word and its unit ends one, so the 'i' in 'time' stays a letter;
+    - a run with no real digit ('ISh') also needs a genuine component elsewhere
+      in the text ('ISh 30m'), so a lookalike-only word like 'Tim' stays a word.
+      Territory timers always have one: they are picked with is_time_string.
+
     Characters not in OCR_DIGIT_MAP (e.g. 'F') are left as-is — they produce
     no digit match and the time component will be treated as absent.
     """
+    has_genuine_time = is_time_string(text)
     result: list[str] = []
     i = 0
     while i < len(text):
@@ -60,8 +69,18 @@ def normalize_ocr_digits(text: str) -> str:
             j = i
             while j < len(text) and (text[j] in OCR_DIGIT_MAP or text[j].isdigit()):
                 j += 1
-            if j < len(text) and text[j].lower() in "dhm":
-                result.extend(OCR_DIGIT_MAP.get(c, c) for c in text[i:j])
+            run = text[i:j]
+            starts_word = i == 0 or not text[i - 1].isalpha()
+            unit_ends_word = j + 1 >= len(text) or not text[j + 1].isalpha()
+            has_digit = any(c.isdigit() for c in run)
+            if (
+                j < len(text)
+                and text[j].lower() in "dhm"
+                and starts_word
+                and unit_ends_word
+                and (has_digit or has_genuine_time)
+            ):
+                result.extend(OCR_DIGIT_MAP.get(c, c) for c in run)
                 i = j
                 continue
         result.append(ch)
