@@ -64,11 +64,16 @@ def add_selected_snippet(faction_code):
     dest = new_snippet_path(filename)
     file.save(dest)
 
+    # ai: claude-opus-5-5 | 2026-11-10
+    # Any failed insert removes the saved file; a leftover would make the retry a 409.
     try:
         new_id = db.selected_snippets.add_snippet(faction_code, filename, snippet_type)
     except psycopg2.errors.ForeignKeyViolation:
         os.remove(dest)
         return jsonify({"error": f"Faction '{faction_code}' not found"}), 404
+    except psycopg2.Error:
+        os.remove(dest)
+        raise
 
     return jsonify({"id": new_id, "faction_id": faction_code, "filename": filename, "snippet_type": snippet_type}), 201
 

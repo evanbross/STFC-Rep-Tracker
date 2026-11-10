@@ -6,7 +6,7 @@
 `app/app_config.py`, `launcher.py`, and the React pages.
 **Status (2026-11-09):** Phases 0–5 are done, and so are the browser-check fixes N-B1 to N-B5. Still open:
 building and installing the Inno installer on 3.14, then the snippet-across-reinstall check (Phase 5). Deferred:
-N-T2 (a strict xfail that needs real OCR crops) and the N-T5 coverage gaps.
+N-T2 (a strict xfail that needs real OCR crops) and the remaining N-T5 coverage gaps (snippet upload done 2026-11-10).
 
 This document has three parts:
 
@@ -467,8 +467,12 @@ N-S2 (atomic settings write).
 
 **N-T5 — Test coverage gaps, deferred.**
 - `_extract_points` (needs EasyOCR and checked-in screen crops).
-- Snippet upload (writes into the real snippets directory, so it needs a configurable path
-  first).
+- ~~Snippet upload~~ **Done 2026-11-10:** `snippet_store` (N-O1) made the folder patchable, so
+  `tests/test_snippet_files.py` now uploads into temp user/bundled folders. It covers the saved file and row,
+  the filename fallback, `secure_filename` stripping `../`, 409 on a name in either folder, 400/404 writing
+  nothing, and delete keeping the file (as the Factions page says). One bug found: only a foreign-key failure
+  removed the saved file, so any other insert error left an orphan that made every retry a 409. Any
+  `psycopg2.Error` now removes it; the test fails without the fix. Suite: 303 passed and 1 strict xfail (N-T2).
 - A `windows` marker for UI-automation smoke tests.
 - Extracting `create_app()` out of `main.py`, so tests stop importing the entry point.
 
