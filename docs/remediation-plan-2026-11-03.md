@@ -6,7 +6,8 @@
 `app/app_config.py`, `launcher.py`, and the React pages.
 **Status (2026-11-10):** Phases 0–5 are done, and so are the browser-check fixes N-B1 to N-B5 and N-T2. Still open:
 building and installing the Inno installer on 3.14, then the snippet-across-reinstall check (Phase 5). Deferred:
-the remaining N-T5 coverage gaps (snippet upload done 2026-11-10).
+the remaining N-T5 coverage gaps, `_extract_points` and a `windows` marker (snippet upload and the `create_app` item
+done).
 
 This document has three parts:
 
@@ -481,7 +482,12 @@ N-S2 (atomic settings write).
   removed the saved file, so any other insert error left an orphan that made every retry a 409. Any
   `psycopg2.Error` now removes it; the test fails without the fix. Suite: 303 passed and 1 strict xfail (N-T2).
 - A `windows` marker for UI-automation smoke tests.
-- Extracting `create_app()` out of `main.py`, so tests stop importing the entry point.
+- ~~Extracting `create_app()` out of `main.py`, so tests stop importing the entry point.~~ **Done in substance
+  (Phase 5, 2026-11-06), confirmed 2026-11-10:** the goal was a safe import, and that's met another way.
+  `create_app(settings)` and the `create_wsgi_app()` factory stay in `main.py`, but importing it only configures
+  logging and builds an unacquired `SingleInstanceLock`. The lock, elevation, schema init, pool and listeners all
+  start in `_serve()` or when an app is built. `conftest.py` still imports `main`, but only to call the factory
+  (the same `main:create_wsgi_app()` entry Gunicorn uses). Moving the factory into its own module isn't worth it.
 
 ### F. Found in the browser checks (2026-11-07)
 
