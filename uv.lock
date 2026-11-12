@@ -1933,6 +1933,7 @@ dependencies = [
 dev = [
     { name = "pyinstaller" },
     { name = "pytest" },
+    { name = "zt-devkit" },
 ]
 
 [package.metadata]
@@ -1963,6 +1964,7 @@ requires-dist = [
 dev = [
     { name = "pyinstaller", specifier = "==6.22.3" },
     { name = "pytest", specifier = "==9.2.0" },
+    { name = "zt-devkit", editable = "../infra/devkit" },
 ]
 
 [[package]]
@@ -2107,3 +2109,13 @@ sdist = { url = "https://files.pythonhosted.org/packages/61/f1/ee81806690a87dab5
 wheels = [
     { url = "https://files.pythonhosted.org/packages/4d/ec/d58832f89ede95652fd01f4f24236af7d32b70cab2196dfcc2d2fd13c5c2/werkzeug-3.1.6-py3-none-any.whl", hash = "sha256:7ddf3357bb9564e407607f988f683d72038551200c704012bb9a4c523d42f131", size = 225166, upload-time = "2026-02-19T15:17:17.475Z" },
 ]
+
+[[package]]
+name = "zt-devkit"
+version = "0.1.0"
+source = { editable = "../infra/devkit" }
+
+[package.metadata]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pytest", specifier = ">=8" }]

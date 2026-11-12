@@ -27,6 +27,9 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    # Shared dev-runner + dev-Caddy helpers from ../infra (local dev only; Docker
+    # builds and exported requirements use --no-dev, so they never need ../infra).
+    "zt-devkit",
     "pyinstaller==6.22.3",
     "pytest==9.2.0",
 ]
@@ -41,3 +44,6 @@ addopts = "-rs"
 markers = [
     "db: needs a disposable Postgres via DATABASE_URL_TEST (Neon branch)",
 ]
+
+[tool.uv.sources]
+zt-devkit = { path = "../infra/devkit", editable = true }

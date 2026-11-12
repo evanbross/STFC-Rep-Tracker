@@ -35,8 +35,10 @@ python main.py
 Normally the backend is started via `launcher.py` instead of `main.py` directly. The launcher picks
 a free port starting at 7300 and registers it with the shared `../infra` Caddy instance as
 `http://stfc.localhost` (app name `"stfc"`, overridable via `CADDY_APP_NAME`) — see `launcher.py`
-and `../infra/caddy_registry.py`. If Caddy isn't running, the launcher falls back to opening
-`http://localhost:<port>` directly.
+and `zt_devkit.caddy_registry`. That comes from the `zt-devkit` package (`../infra/devkit`), an
+editable uv **dev** dependency. It's optional: if it isn't installed (the shipped app exports with
+`--no-dev`) or Caddy isn't running, the launcher falls back to opening `http://localhost:<port>`
+directly.
 
 **Frontend dev server** (proxies `/api` to Flask):
 
