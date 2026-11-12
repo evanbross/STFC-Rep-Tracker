@@ -55,6 +55,13 @@ class ConnectionPool:
         self._idle_check_seconds = idle_check_seconds
         self._returned_at: dict[int, float] = {}
         self._returned_at_lock = threading.Lock()
+        # ai: claude-opus-5-5 | 2026-11-12
+        # ThreadedConnectionPool opens a connection up front. Pass it through
+        # _checkin so it gets an idle timestamp too: _checkout reads "no
+        # timestamp" as "just opened" and skips the liveness check, so without
+        # this the first request after a long idle start-up gets a connection
+        # Neon has already dropped.
+        self._checkin(self._pool.getconn())
 
     @contextmanager
     def lease(self) -> Iterator[PgConnection]:

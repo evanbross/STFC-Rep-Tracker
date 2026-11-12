@@ -57,6 +57,36 @@ def test_connection_dropped_while_idle_is_replaced(pool: ConnectionPool, db: Dat
         assert _backend_pid(conn) != dropped
 
 
+# ai: claude-opus-5-5 | 2026-11-12
+def test_startup_connection_dropped_before_first_lease_is_replaced(db: Database) -> None:
+    """The connection opened when the pool is built must be checked like any idle one.
+
+    Regression: it had no idle timestamp, so it skipped the check and the first
+    Dashboard request after an idle start-up failed with "SSL connection has
+    been closed unexpectedly".
+    """
+    with db.connect() as admin, admin.cursor() as cursor:
+        cursor.execute("SELECT clock_timestamp()")
+        started = cursor.fetchone()[0]
+
+    fresh_pool = ConnectionPool(db.db_url, max_size=2, idle_check_seconds=0)
+    try:
+        with db.connect() as admin, admin.cursor() as cursor:
+            cursor.execute(
+                "SELECT pg_terminate_backend(pid) FROM pg_stat_activity"
+                " WHERE usename = current_user AND pid <> pg_backend_pid() AND backend_start >= %s",
+                (started,),
+            )
+            assert cursor.rowcount >= 1, "the pool's startup connection was not found to terminate"
+
+        with fresh_pool.lease() as conn, conn.cursor() as cursor:
+            cursor.execute("SELECT 1")
+            assert cursor.fetchone()[0] == 1
+            conn.rollback()
+    finally:
+        fresh_pool.close()
+
+
 def test_failed_block_rolls_back_and_pool_recovers(db: Database) -> None:
     with pytest.raises(psycopg2.errors.UndefinedTable):
         with db.connect() as conn, conn.cursor() as cursor:
