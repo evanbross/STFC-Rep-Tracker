@@ -6,21 +6,28 @@
 #
 # Licensing inquiries: license@zombietech.biz
 # =============================================================================
-# ai: claude-opus-5-5 | 2026-11-06
+# ai: claude-opus-5-5 | 2026-11-12
 """A small blocking pool of reusable Postgres connections (N-P1).
 
 Each new connection to Neon costs a TCP + TLS handshake, which takes far
-longer than a typical query here. The pool keeps up to `max_size` connections
-open and lends them out.
+longer than a typical query here. The pool keeps every connection it opens,
+up to `max_size`, and lends them out again.
 
-Two problems a plain psycopg2 pool has, and how this one handles them:
+Why not psycopg2's ThreadedConnectionPool:
 
-- ThreadedConnectionPool raises PoolError once every connection is lent out.
-  A semaphore makes the extra caller wait for a free connection instead.
-- Neon suspends idle computes and drops their connections. A connection that
-  has been idle longer than `idle_check_seconds` is checked with `SELECT 1`
-  before it is lent out, and replaced if the check fails. Busy connections
-  skip the check, so a burst of Dashboard requests costs no extra round trips.
+- It raises PoolError once every connection is lent out. A semaphore here
+  makes the extra caller wait for a free connection instead.
+- It keeps only `minconn` connections idle and closes the rest when they are
+  returned, so every burst of Dashboard requests re-opened connections.
+
+Neon suspends idle computes and drops their connections. A connection that
+has been idle longer than `idle_check_seconds` is checked with `SELECT 1`
+before it is lent out, and replaced if the check fails. Busy connections
+skip the check, so a burst of requests costs no extra round trips.
+
+Connections are opened on first use, never at construction, so every idle
+connection has a known idle time. Idle connections are reused last-in,
+first-out: the most recently used one is the most likely to still be alive.
 
 The pool holds no session state: `Database.connect()` always ends the
 transaction before a connection comes back, so any caller can take any connection.
@@ -33,7 +40,7 @@ from contextlib import contextmanager
 
 import psycopg2
 from psycopg2.extensions import connection as PgConnection
-from psycopg2.pool import ThreadedConnectionPool
+from psycopg2.pool import PoolError
 
 logger = logging.getLogger(__name__)
 
@@ -50,18 +57,15 @@ class ConnectionPool:
         max_size: int = DEFAULT_MAX_SIZE,
         idle_check_seconds: float = DEFAULT_IDLE_CHECK_SECONDS,
     ) -> None:
-        self._pool = ThreadedConnectionPool(1, max_size, dsn)
+        self._dsn = dsn
+        # Bounds leased connections. A connection is only opened when no idle
+        # one is left, so the open total never exceeds max_size either.
         self._slots = threading.BoundedSemaphore(max_size)
         self._idle_check_seconds = idle_check_seconds
-        self._returned_at: dict[int, float] = {}
-        self._returned_at_lock = threading.Lock()
-        # ai: claude-opus-5-5 | 2026-11-12
-        # ThreadedConnectionPool opens a connection up front. Pass it through
-        # _checkin so it gets an idle timestamp too: _checkout reads "no
-        # timestamp" as "just opened" and skips the liveness check, so without
-        # this the first request after a long idle start-up gets a connection
-        # Neon has already dropped.
-        self._checkin(self._pool.getconn())
+        # (connection, monotonic time it was returned), newest last.
+        self._idle: list[tuple[PgConnection, float]] = []
+        self._idle_lock = threading.Lock()
+        self._closed = False
 
     @contextmanager
     def lease(self) -> Iterator[PgConnection]:
@@ -79,27 +83,37 @@ class ConnectionPool:
                 self._checkin(conn)
 
     def close(self) -> None:
-        """Close every connection; the pool cannot be used afterwards."""
-        self._pool.closeall()
+        """Close every idle connection; leased ones are closed when returned.
+
+        The pool cannot be used afterwards.
+        """
+        with self._idle_lock:
+            self._closed = True
+            idle, self._idle = self._idle, []
+        for conn, _ in idle:
+            conn.close()
 
     def _checkout(self) -> PgConnection:
-        conn = self._pool.getconn()
-        with self._returned_at_lock:
-            returned_at = self._returned_at.pop(id(conn), None)
-        if returned_at is None or time.monotonic() - returned_at < self._idle_check_seconds:
-            return conn
-        if self._is_alive(conn):
-            return conn
-        logger.info("Pooled DB connection was dropped while idle; opening a new one")
-        self._pool.putconn(conn, close=True)
-        return self._pool.getconn()
+        while True:
+            with self._idle_lock:
+                if self._closed:
+                    raise PoolError("connection pool is closed")
+                if not self._idle:
+                    break
+                conn, returned_at = self._idle.pop()
+            if time.monotonic() - returned_at < self._idle_check_seconds or self._is_alive(conn):
+                return conn
+            logger.info("Pooled DB connection was dropped while idle; discarding it")
+            conn.close()
+        return psycopg2.connect(self._dsn)
 
     def _checkin(self, conn: PgConnection) -> None:
         broken = bool(conn.closed) or conn.get_transaction_status() != psycopg2.extensions.TRANSACTION_STATUS_IDLE
-        if not broken:
-            with self._returned_at_lock:
-                self._returned_at[id(conn)] = time.monotonic()
-        self._pool.putconn(conn, close=broken)
+        with self._idle_lock:
+            if not broken and not self._closed:
+                self._idle.append((conn, time.monotonic()))
+                return
+        conn.close()
 
     @staticmethod
     def _is_alive(conn: PgConnection) -> bool:

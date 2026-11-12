@@ -14,6 +14,7 @@ from collections.abc import Iterator
 
 import psycopg2
 import pytest
+from psycopg2.pool import PoolError
 
 from app.database.connection_pool import ConnectionPool
 from app.database.database import Database
@@ -58,33 +59,62 @@ def test_connection_dropped_while_idle_is_replaced(pool: ConnectionPool, db: Dat
 
 
 # ai: claude-opus-5-5 | 2026-11-12
-def test_startup_connection_dropped_before_first_lease_is_replaced(db: Database) -> None:
-    """The connection opened when the pool is built must be checked like any idle one.
+def _lease_concurrently(pool: ConnectionPool, count: int) -> set[int]:
+    """Hold `count` leases at once and return their backend pids."""
+    barrier = threading.Barrier(count, timeout=30)
+    pids: list[int] = []
+    errors: list[BaseException] = []
 
-    Regression: it had no idle timestamp, so it skipped the check and the first
-    Dashboard request after an idle start-up failed with "SSL connection has
-    been closed unexpectedly".
-    """
+    def hold() -> None:
+        try:
+            with pool.lease() as conn:
+                pids.append(_backend_pid(conn))
+                barrier.wait()    # every lease is out at the same time
+        except BaseException as exc:  # collected and asserted on the main thread
+            errors.append(exc)
+
+    threads = [threading.Thread(target=hold) for _ in range(count)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=30)
+    assert errors == []
+    assert len(pids) == count
+    return set(pids)
+
+
+# ai: claude-opus-5-5 | 2026-11-12
+def test_concurrent_connections_stay_idle_for_reuse(pool: ConnectionPool) -> None:
+    """Regression: ThreadedConnectionPool kept only one idle connection and closed the rest."""
+    first_burst = _lease_concurrently(pool, 2)
+    second_burst = _lease_concurrently(pool, 2)
+
+    assert len(first_burst) == 2
+    assert second_burst == first_burst
+
+
+# ai: claude-opus-5-5 | 2026-11-12
+def test_all_idle_connections_dropped_are_replaced(pool: ConnectionPool, db: Database) -> None:
+    """A Neon suspend drops every idle connection at once; the next lease must still work."""
+    dropped = _lease_concurrently(pool, 2)
     with db.connect() as admin, admin.cursor() as cursor:
-        cursor.execute("SELECT clock_timestamp()")
-        started = cursor.fetchone()[0]
+        for pid in dropped:
+            cursor.execute("SELECT pg_terminate_backend(%s)", (pid,))
 
-    fresh_pool = ConnectionPool(db.db_url, max_size=2, idle_check_seconds=0)
-    try:
-        with db.connect() as admin, admin.cursor() as cursor:
-            cursor.execute(
-                "SELECT pg_terminate_backend(pid) FROM pg_stat_activity"
-                " WHERE usename = current_user AND pid <> pg_backend_pid() AND backend_start >= %s",
-                (started,),
-            )
-            assert cursor.rowcount >= 1, "the pool's startup connection was not found to terminate"
+    with pool.lease() as conn:
+        assert _backend_pid(conn) not in dropped
 
-        with fresh_pool.lease() as conn, conn.cursor() as cursor:
-            cursor.execute("SELECT 1")
-            assert cursor.fetchone()[0] == 1
-            conn.rollback()
-    finally:
-        fresh_pool.close()
+
+# ai: claude-opus-5-5 | 2026-11-12
+def test_closed_pool_refuses_leases(db: Database) -> None:
+    closed_pool = ConnectionPool(db.db_url, max_size=1)
+    with closed_pool.lease() as conn:
+        _backend_pid(conn)
+    closed_pool.close()
+
+    with pytest.raises(PoolError):
+        with closed_pool.lease():
+            pass
 
 
 def test_failed_block_rolls_back_and_pool_recovers(db: Database) -> None:
