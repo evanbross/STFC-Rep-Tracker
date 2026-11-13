@@ -2,3 +2,6 @@
 #   pip install -r requirements.txt -r requirements-dev.txt
 pyinstaller==6.22.3
 pytest==9.2.0
+# Shared dev-Caddy client (launcher.py). Matches the uv dev group's editable source in
+# pyproject.toml. The path is relative to the repo root, so run pip from there; needs ../infra.
+-e ../infra/devkit
