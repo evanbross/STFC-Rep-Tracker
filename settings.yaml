@@ -5,6 +5,9 @@ stfc_config:
   screen_wait_retries: 8
   # Seconds between each poll attempt
   screen_wait_delay: 0.25
+  # Pixels a button may shift between two captures and still count as settled.
+  # Used before clicking buttons on panels that animate in (e.g. Away Teams AUTO).
+  stable_click_tolerance_px: 2
 
 
   # Directory containing template snippet images

@@ -16,8 +16,8 @@ from app.screen_processing.screen_capture import (
     click_button_if_visible,
     click_template_match_at,
     match_template,
-    wait_and_click,
     wait_and_click_any,
+    wait_and_click_stable,
     wait_for_any_template,
 )
 
@@ -273,10 +273,12 @@ class AwayTeamOrchestrator(BaseOrchestrator):  # ai: claude-opus-5-5 | 2026-11-0
                 break
             logger.info("clicked START (opening expedition setup)")
 
-            if not wait_and_click(
+            # The expedition panel animates in; clicking on the first match can land
+            # below AUTO on the officer slot, so wait for the button to stop moving.
+            if not wait_and_click_stable(  # ai: claude-opus-5-5 | 2026-11-17
                 "Away Teams Auto.jpg", self.sc, window, screen_offset
             ):
-                logger.warning("AUTO button not detected, stopping")
+                logger.warning("AUTO button not detected (or never settled), stopping")
                 break
             logger.info("clicked AUTO")
 
