@@ -13,6 +13,7 @@ import React, {useEffect, useState} from 'react';
 import CaptureToolbar, {useCaptures} from '../components/CaptureToolbar';
 import FactionCards, {useFactionSummaries} from '../components/FactionCards';
 import HistoryChart, {useHistoryEntries} from '../components/HistoryChart';
+import SpocksClubImport from '../components/SpocksClubImport'; // ai: claude-opus-5-5 | 2026-11-17
 import TerritoryScheduleModal from '../components/TerritoryScheduleModal';
 
 const Dashboard = () => {
@@ -57,6 +58,11 @@ const Dashboard = () => {
                     disabled={captures.anyCaptureRunning}
                     onOpenSchedule={() => setShowTerritorySchedule(true)}
                 />
+
+                {/* ai: claude-opus-5-5 | 2026-11-17 — reads every faction at once from an export, no game automation */}
+                <div style={{marginTop: '1rem'}}>
+                    <SpocksClubImport onSaved={refreshAll}/>
+                </div>
 
                 {showTerritorySchedule && (
                     <TerritoryScheduleModal onClose={() => setShowTerritorySchedule(false)}/>

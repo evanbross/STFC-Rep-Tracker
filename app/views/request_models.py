@@ -15,9 +15,10 @@ strings such as "3" are accepted, as the old int(...) calls did. Unknown keys
 are ignored (the Factions form sends an `id` alias, for example).
 """
 import math
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, StrictInt, model_validator
+from pydantic import AwareDatetime, BaseModel, BeforeValidator, ConfigDict, Field, StrictInt, model_validator
 
 from app.app_config import TemplateKind
 from app.database.reputations_dao import ReputationsDAO
@@ -28,6 +29,13 @@ _PG_BIGINT_MAX = 2**63 - 1
 
 BigInt = Annotated[int, Field(ge=_PG_BIGINT_MIN, le=_PG_BIGINT_MAX)]
 """Integer that fits a PostgreSQL BIGINT column."""
+
+# ai: claude-opus-5-5 | 2026-11-17
+# Largest epoch-millisecond value datetime can represent (year 9999).
+_MAX_EPOCH_MS = 253_402_300_799_000
+# How far ahead of the server clock an import timestamp may be: the browser's
+# clock (and so a file's lastModified) can run a little fast.
+_CLOCK_SKEW = timedelta(minutes=5)
 
 
 def _blank_to_none(value: Any) -> Any:
@@ -80,6 +88,10 @@ class FactionIn(RequestModel):
     reputation_dao_name: OptionalStr = None
     snippet_selected_button: str | None = None
     snippet_unselected: str | None = None
+    # ai: claude-opus-5-5 | 2026-11-17 — the resource row a Spock's Club export stores this faction's reputation in
+    spocks_resource_id: Annotated[
+        Annotated[int, Field(ge=0, le=_PG_BIGINT_MAX)] | None, BeforeValidator(_blank_to_none)
+    ] = None
 
     # ai: claude-opus-5-5 | 2026-11-06
     @model_validator(mode="after")
@@ -108,6 +120,40 @@ class StatusEntryIn(RequestModel):
 
     faction: NonBlankStr
     value: BigInt
+
+
+# ai: claude-opus-5-5 | 2026-11-17
+class SpocksClubPreviewForm(RequestModel):
+    """Text fields of POST /api/spocks-club/preview (the export itself is the `file` part).
+
+    last_modified is the browser's File.lastModified (ms since the epoch), used as
+    the reading time when the filename carries no export time.
+    """
+
+    last_modified: Annotated[
+        Annotated[int, Field(ge=0, le=_MAX_EPOCH_MS)] | None, BeforeValidator(_blank_to_none)
+    ] = None
+
+
+class SpocksClubReadingIn(RequestModel):
+    faction_code: NonBlankStr
+    value: BigInt
+
+
+class SpocksClubImportIn(RequestModel):
+    """Body of POST /api/spocks-club/import: the previewed readings, all saved at exported_at."""
+
+    exported_at: AwareDatetime
+    readings: list[SpocksClubReadingIn] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _one_reading_per_faction_and_not_future(self) -> "SpocksClubImportIn":
+        codes = [reading.faction_code for reading in self.readings]
+        if len(codes) != len(set(codes)):
+            raise ValueError("Each faction may appear only once")
+        if self.exported_at > datetime.now(UTC) + _CLOCK_SKEW:
+            raise ValueError("exported_at is in the future")
+        return self
 
 
 class ReputationRowPatch(RequestModel):

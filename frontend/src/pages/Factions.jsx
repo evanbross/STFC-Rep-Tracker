@@ -309,7 +309,8 @@ const SnippetsModal = ({ faction, onClose }) => {
 const EMPTY_FORM_DATA = {
     id: null, name: '', code: '', color: '',
     reputation_table_name: '', on_chart: 0, display_order: '',
-    reputation_dao_name: '', snippet_selected_button: '', snippet_unselected: ''
+    reputation_dao_name: '', snippet_selected_button: '', snippet_unselected: '',
+    spocks_resource_id: '' // ai: claude-opus-5-5 | 2026-11-17
 };
 
 const Factions = () => {
@@ -348,7 +349,8 @@ const Factions = () => {
             display_order: faction.display_order ?? '',
             reputation_dao_name: faction.reputation_dao_name || '',
             snippet_selected_button: faction.snippet_selected_button || '',
-            snippet_unselected: faction.snippet_unselected || ''
+            snippet_unselected: faction.snippet_unselected || '',
+            spocks_resource_id: faction.spocks_resource_id ?? '' // ai: claude-opus-5-5 | 2026-11-17
         });
         setShowForm(true);
     };
@@ -472,6 +474,19 @@ const Factions = () => {
                                     <option value={1}>Shown at load</option>
                                 </select>
                             </div>
+                        </div>
+                        {/* ai: claude-opus-5-5 | 2026-11-17 — matched by ID: names repeat in the export */}
+                        <div className="form-group">
+                            <label>Spock's Club Resource ID:</label>
+                            <input
+                                type="text"
+                                inputMode="numeric"
+                                pattern="[0-9]*"
+                                value={formData.spocks_resource_id}
+                                onChange={e => setFormData({...formData, spocks_resource_id: e.target.value.trim()})}
+                                placeholder="e.g. 970475396 (Federation Points); blank to skip in imports"
+                                title="The EntityId of this faction's reputation resource in a Spock's Club export"
+                            />
                         </div>
                         <button type="submit">Save Faction</button>
                         <button type="button" className="cancel" onClick={() => setShowForm(false)}>Cancel</button>

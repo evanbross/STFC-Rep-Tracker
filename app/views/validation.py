@@ -70,6 +70,15 @@ def parse_query(model: type[ModelT]) -> ModelT:
         raise InvalidRequestError(_field_errors(exc)) from exc
 
 
+# ai: claude-opus-5-5 | 2026-11-17
+def parse_form(model: type[ModelT]) -> ModelT:
+    """Validate a multipart/urlencoded form's text fields against `model` (uploaded files are not included)."""
+    try:
+        return model.model_validate(request.form.to_dict())
+    except ValidationError as exc:
+        raise InvalidRequestError(_field_errors(exc)) from exc
+
+
 def register_error_handlers(flask_app: Flask) -> None:
     """Map the expected exception types to JSON responses app-wide."""
 

@@ -221,6 +221,7 @@ def create_app(app_settings: AppSettings):
     from app.views.calendar_view import calendar_bp
     from app.views.factions_view import factions_bp
     from app.views.reputations_view import reputations_bp
+    from app.views.spocks_club_view import spocks_club_bp  # ai: claude-opus-5-5 | 2026-11-17
     from app.views.status_entries_view import status_entries_bp
     from app.views.target_types_view import target_types_bp
     from app.views.territory_view import territory_bp
@@ -251,6 +252,7 @@ def create_app(app_settings: AppSettings):
     flask_app.register_blueprint(status_entries_bp, url_prefix="/api/status_entries")
     flask_app.register_blueprint(factions_bp, url_prefix="/api/factions")
     flask_app.register_blueprint(reputations_bp, url_prefix="/api/reputations")
+    flask_app.register_blueprint(spocks_club_bp, url_prefix="/api/spocks-club")  # ai: claude-opus-5-5 | 2026-11-17
     flask_app.register_blueprint(target_types_bp, url_prefix="/api/target-types")
     flask_app.register_blueprint(territory_bp, url_prefix="/api/territory")
 

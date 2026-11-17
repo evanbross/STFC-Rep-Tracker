@@ -136,6 +136,9 @@ def add_faction():
               type: string
             snippet_unselected:
               type: string
+            spocks_resource_id:
+              type: integer
+              description: Resource ID of this faction's reputation in a Spock's Club export (blank for none)
     responses:
       201:
         description: Faction created successfully
@@ -156,6 +159,7 @@ def add_faction():
         body.reputation_dao_name,
         body.snippet_selected_button,
         body.snippet_unselected,
+        body.spocks_resource_id,  # ai: claude-opus-5-5 | 2026-11-17
     )
     return jsonify(result), 201
 
@@ -200,6 +204,9 @@ def update_faction(current_code):
               type: string
             snippet_unselected:
               type: string
+            spocks_resource_id:
+              type: integer
+              description: Resource ID of this faction's reputation in a Spock's Club export (blank for none)
     responses:
       200:
         description: Faction updated successfully
@@ -223,6 +230,7 @@ def update_faction(current_code):
         body.reputation_dao_name,
         body.snippet_selected_button,
         body.snippet_unselected,
+        body.spocks_resource_id,  # ai: claude-opus-5-5 | 2026-11-17
     )
     return jsonify(result), 200
 

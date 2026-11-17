@@ -102,7 +102,7 @@ pytest
 ```
 
 - Pure-function tests (`tests/test_ocr_text.py`, `test_target_math.py`, `test_territory_parsing.py`,
-  `test_system_targets_parsing.py`, `test_app_config.py`) need nothing.
+  `test_system_targets_parsing.py`, `test_spocks_club_parsing.py`, `test_app_config.py`) need nothing.
 - `tests/test_territory_fixture.py` runs real template matching on `tests/fixtures/territory_page.jpg`, a real
   capture, against the snippets in `app/screen_snippets`. If you re-capture a territory snippet, check it still
   passes. It needs the Windows capture packages, but not OCR.
@@ -118,6 +118,7 @@ pytest
   - `target_math.py`: tracking, intercept and scoring
   - `territory_parsing.py`: row strips and name/timer pairing
   - `system_targets_parsing.py`: crop regions and candidate bookkeeping
+  - `app/spocks_club_parsing.py`: reading a Spock's Club export (no capture stack at all)
 
   New `*_parsing.py` functions take tunables as arguments; the `process_*.py` callers read `capture_cfg`.
 
@@ -185,6 +186,7 @@ registered in `main.py` with URL prefixes:
 | `territory_view.py`      | `/api/territory`      |
 | `calendar_view.py`       | `/api/calendar`       |
 | `community_mod_view.py`  | `/api/community-mod`  |
+| `spocks_club_view.py`    | `/api/spocks-club`    |
 
 Key endpoints:
 
@@ -199,6 +201,10 @@ Key endpoints:
 - `POST /api/capture-screen/identify-faction` — identify which faction is currently highlighted
 - `GET  /api/reputations/all` — all reputation tiers grouped by table
 - `GET  /api/reputations/by-table/<table_name>`
+- `POST /api/spocks-club/preview` — read an uploaded Spock's Club export (multipart: `file`, optional
+  `last_modified` ms) and return each mapped faction's value, unmatched factions, and the reading time
+- `POST /api/spocks-club/import` — save previewed readings at one `exported_at`; a faction that already has a
+  reading at that exact instant is skipped, so re-importing a file adds nothing
 
 API docs (Flasgger/Swagger UI) available at `/apidocs`.
 
@@ -255,6 +261,9 @@ The `factions` table drives most dynamic behavior:
   either way, and clicking an entry shows or hides it until the page reloads
 - `snippet_unselected` — Template filename for the faction's unselected sidebar button
 - `snippet_selected_button` — Template filename for the selected button state (legacy single-image field)
+- `spocks_resource_id` — `EntityId` of the faction's reputation resource in a Spock's Club export (e.g.
+  970475396 = "Federation Points"). Matched by ID because names repeat in the export. Unique when set; NULL means
+  the faction is skipped by imports (Maverick has no resource in the export)
 
 The `faction_selected_snippets` table maps each faction to multiple template images:
 

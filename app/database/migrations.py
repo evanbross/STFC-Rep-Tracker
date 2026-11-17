@@ -172,10 +172,42 @@ _V3_TIMESTAMPTZ = _sql(
     'CREATE INDEX IF NOT EXISTS status_entries_faction_time_idx ON status_entries (faction_code, "timestamp" DESC)',
 )
 
+# ai: claude-opus-5-5 | 2026-11-17
+# v4: the Spock's Club resource each faction's reputation is exported as, so an
+# export can be imported instead of captured. Unique where set: two factions
+# reading one resource would be a mapping mistake. The backfill uses the game's
+# resource IDs for the factions that existed when this shipped; a database
+# without those codes updates nothing.
+_V4_SPOCKS_RESOURCE_ID = _sql(
+    "ALTER TABLE factions ADD COLUMN IF NOT EXISTS spocks_resource_id BIGINT",
+    """
+    CREATE UNIQUE INDEX IF NOT EXISTS factions_spocks_resource_id_key
+        ON factions (spocks_resource_id) WHERE spocks_resource_id IS NOT NULL
+    """,
+    """
+    UPDATE factions f
+    SET spocks_resource_id = known.resource_id
+    FROM (VALUES
+        ('FED', 970475396),   -- Federation Points
+        ('KLI', 156323681),   -- Klingon Points
+        ('ROM', 4135751670),  -- Romulan Points
+        ('AUG', 598150761),   -- Augment Points
+        ('ROG', 850817193),   -- Rogue Reputation
+        ('BAJ', 1148260134),  -- Bajoran Reputation
+        ('EXB', 129835460),   -- Ex-Borg Reputation
+        ('S31', 1229289341),  -- Section 31 Reputation
+        ('TER', 1547205906),  -- Terran Reputation
+        ('DTI', 2800518458)   -- DTI Reputation
+    ) AS known (code, resource_id)
+    WHERE f.code = known.code AND f.spocks_resource_id IS NULL
+    """,
+)
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(1, "baseline schema", _V1_BASELINE),
     Migration(2, "reconcile pre-migration drift", _V2_RECONCILE),
     Migration(3, "status_entries.timestamp as timestamptz, indexed", _V3_TIMESTAMPTZ),
+    Migration(4, "factions.spocks_resource_id for Spock's Club imports", _V4_SPOCKS_RESOURCE_ID),
 )
 
 HEAD_VERSION = MIGRATIONS[-1].version

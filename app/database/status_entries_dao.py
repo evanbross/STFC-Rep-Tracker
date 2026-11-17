@@ -9,7 +9,14 @@
 from datetime import UTC, datetime
 from typing import Any
 
+import psycopg2.errors
+
 from app.domain_errors import NotFoundError
+
+# ai: claude-opus-5-5 | 2026-11-17
+# Transaction-level advisory lock taken by add_entries_at. The value is arbitrary;
+# it only has to differ from the init lock in database.py.
+_IMPORT_ADVISORY_LOCK_ID = 0x5B0C_1A9F
 
 
 # ai: claude-opus-5-5 | 2026-11-06
@@ -52,6 +59,42 @@ class StatusEntriesDAO:
             )
 
             return {"faction_code": faction_code, "timestamp": iso_utc(timestamp), "value": value}
+
+    # ai: claude-opus-5-5 | 2026-11-17
+    def add_entries_at(
+        self, timestamp: datetime, values_by_code: dict[str, int]
+    ) -> tuple[list[dict[str, Any]], list[str]]:
+        """Insert one entry per faction code, all at `timestamp`, in one transaction.
+
+        A faction that already has an entry at exactly that instant is skipped, so
+        importing the same export twice adds nothing. Returns (saved entries,
+        skipped codes). Raises NotFoundError, and saves nothing, if a code is unknown.
+        """
+        saved: list[dict[str, Any]] = []
+        skipped: list[str] = []
+        with self.db.connect() as conn, conn.cursor() as cursor:
+            # Serialises imports, so two overlapping requests can't both pass the
+            # NOT EXISTS check below for the same reading. Released at commit.
+            cursor.execute("SELECT pg_advisory_xact_lock(%s)", (_IMPORT_ADVISORY_LOCK_ID,))
+            for code, value in values_by_code.items():
+                try:
+                    cursor.execute(
+                        """
+                        INSERT INTO status_entries (faction_code, timestamp, value)
+                        SELECT %(code)s, %(ts)s, %(value)s
+                        WHERE NOT EXISTS (
+                            SELECT 1 FROM status_entries WHERE faction_code = %(code)s AND timestamp = %(ts)s
+                        )
+                        """,
+                        {"code": code, "ts": timestamp, "value": value},
+                    )
+                except psycopg2.errors.ForeignKeyViolation as exc:
+                    raise NotFoundError(f"Faction '{code}' not found") from exc
+                if cursor.rowcount:
+                    saved.append({"faction_code": code, "timestamp": iso_utc(timestamp), "value": value})
+                else:
+                    skipped.append(code)
+        return saved, skipped
 
     def get_faction_entries(self, faction_name: str) -> list[dict[str, Any]]:
         """Get all stat entries for a specific faction"""

@@ -27,17 +27,26 @@ def default_unselected_snippet(code: str) -> str:
     return f"RepButton{code[:1].upper()}{code[1:].lower()}.jpg"
 
 
+# ai: claude-opus-5-5 | 2026-11-17
+def _duplicate_faction_message(name: str, code: str, spocks_resource_id: int | None) -> str:
+    """The 409 text for a unique violation on factions; any of these columns can be the one."""
+    taken = f"name '{name}' or code '{code}'"
+    if spocks_resource_id is not None:
+        taken = f"name '{name}', code '{code}' or Spock's Club resource ID {spocks_resource_id}"
+    return f"Another faction already has that {taken}"
+
+
 class FactionsDAO:
     def __init__(self, db) -> None:
         self.db = db
 
     @staticmethod
     def _row_to_dict(row, selected_snippets) -> dict[str, Any]:
-        """Convert a factions SELECT row (9-column tuple) to a faction dict.
+        """Convert a factions SELECT row (10-column tuple) to a faction dict.
 
         Column order: code, name, on_chart, color, reputation_table_name,
                       display_order, reputation_dao_name, snippet_selected_button,
-                      snippet_unselected
+                      snippet_unselected, spocks_resource_id
         """
         code = row[0]
         return {
@@ -51,6 +60,7 @@ class FactionsDAO:
             "reputation_dao_name": row[6],
             "snippet_selected_button": row[7],
             "snippet_unselected": row[8],
+            "spocks_resource_id": row[9],  # ai: claude-opus-5-5 | 2026-11-17
             "faction_type": code,
             "selected_snippets": selected_snippets,
         }
@@ -58,7 +68,7 @@ class FactionsDAO:
     @staticmethod
     def _params_to_dict(code, name, color, reputation_table_name, on_chart,
                         display_order, reputation_dao_name, snippet_selected_button,
-                        snippet_unselected) -> dict[str, Any]:
+                        snippet_unselected, spocks_resource_id) -> dict[str, Any]:
         """Build a faction response dict from individual field values."""
         return {
             "id": code,   # backward-compat alias
@@ -71,12 +81,13 @@ class FactionsDAO:
             "reputation_dao_name": reputation_dao_name,
             "snippet_selected_button": snippet_selected_button,
             "snippet_unselected": snippet_unselected,
+            "spocks_resource_id": spocks_resource_id,  # ai: claude-opus-5-5 | 2026-11-17
         }
 
     def get_all_factions_with_cursor(self, cursor: Any) -> list[dict[str, Any]]:
         """Get list of all factions with their selected snippets using an existing cursor."""
         cursor.execute("""
-                       SELECT f.code, f.name, f.on_chart, f.color, f.reputation_table_name, f.display_order, f.reputation_dao_name, f.snippet_selected_button, f.snippet_unselected
+                       SELECT f.code, f.name, f.on_chart, f.color, f.reputation_table_name, f.display_order, f.reputation_dao_name, f.snippet_selected_button, f.snippet_unselected, f.spocks_resource_id
                        FROM factions f
                        ORDER BY f.display_order
                        """)
@@ -112,16 +123,18 @@ class FactionsDAO:
         reputation_dao_name=None,
         snippet_selected_button=None,
         snippet_unselected=None,
+        spocks_resource_id: int | None = None,
     ):
         """Add a new faction"""
         snippet_unselected = snippet_unselected or default_unselected_snippet(code)  # ai: claude-opus-5-5 | 2026-11-06
         with self.db.connect() as conn:
             cursor = conn.cursor()
+            # ai: claude-opus-5-5 | 2026-11-17
             try:
                 cursor.execute(
                     """
-                               INSERT INTO factions (code, name, color, reputation_table_name, on_chart, display_order, reputation_dao_name, snippet_selected_button, snippet_unselected)
-                               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                               INSERT INTO factions (code, name, color, reputation_table_name, on_chart, display_order, reputation_dao_name, snippet_selected_button, snippet_unselected, spocks_resource_id)
+                               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                                """,
                     (
                         code,
@@ -133,14 +146,16 @@ class FactionsDAO:
                         reputation_dao_name,
                         snippet_selected_button,
                         snippet_unselected,
+                        spocks_resource_id,
                     ),
                 )
             except psycopg2.errors.UniqueViolation as exc:
-                raise ConflictError(f"Faction with name '{name}' or code '{code}' already exists") from exc  # ai: claude-opus-5-5 | 2026-11-06
+                raise ConflictError(_duplicate_faction_message(name, code, spocks_resource_id)) from exc
 
             return self._params_to_dict(
                 code, name, color, reputation_table_name, on_chart,
                 display_order, reputation_dao_name, snippet_selected_button, snippet_unselected,
+                spocks_resource_id,
             )
 
     def update_faction(
@@ -155,6 +170,7 @@ class FactionsDAO:
         reputation_dao_name=None,
         snippet_selected_button=None,
         snippet_unselected=None,
+        spocks_resource_id: int | None = None,
     ):
         """Update an existing faction identified by current_code."""
         snippet_unselected = snippet_unselected or default_unselected_snippet(new_code)  # ai: claude-opus-5-5 | 2026-11-06
@@ -165,6 +181,7 @@ class FactionsDAO:
             if not cursor.fetchone():
                 raise NotFoundError(f"Faction with code '{current_code}' not found")  # ai: claude-opus-5-5 | 2026-11-06
 
+            # ai: claude-opus-5-5 | 2026-11-17
             try:
                 cursor.execute(
                     """
@@ -177,7 +194,8 @@ class FactionsDAO:
                                    display_order         = %s,
                                    reputation_dao_name   = %s,
                                    snippet_selected_button      = %s,
-                                   snippet_unselected    = %s
+                                   snippet_unselected    = %s,
+                                   spocks_resource_id    = %s
                                WHERE code = %s
                                """,
                     (
@@ -190,15 +208,17 @@ class FactionsDAO:
                         reputation_dao_name,
                         snippet_selected_button,
                         snippet_unselected,
+                        spocks_resource_id,
                         current_code,
                     ),
                 )
             except psycopg2.errors.UniqueViolation as exc:
-                raise ConflictError(f"Faction with name '{name}' or code '{new_code}' already exists") from exc  # ai: claude-opus-5-5 | 2026-11-06
+                raise ConflictError(_duplicate_faction_message(name, new_code, spocks_resource_id)) from exc
 
             return self._params_to_dict(
                 new_code, name, color, reputation_table_name, on_chart,
                 display_order, reputation_dao_name, snippet_selected_button, snippet_unselected,
+                spocks_resource_id,
             )
 
     def get_faction_by_code(self, faction_code: str):
@@ -206,7 +226,7 @@ class FactionsDAO:
         with self.db.connect() as conn:
             cursor = conn.cursor()
             cursor.execute("""
-                SELECT f.code, f.name, f.on_chart, f.color, f.reputation_table_name, f.display_order, f.reputation_dao_name, f.snippet_selected_button, f.snippet_unselected
+                SELECT f.code, f.name, f.on_chart, f.color, f.reputation_table_name, f.display_order, f.reputation_dao_name, f.snippet_selected_button, f.snippet_unselected, f.spocks_resource_id
                 FROM factions f
                 WHERE f.code = %s
             """, (faction_code,))

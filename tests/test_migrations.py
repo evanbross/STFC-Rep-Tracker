@@ -103,6 +103,25 @@ def test_v3_reads_every_stored_timestamp_form_as_the_same_instant(scratch_cursor
     assert [row[0] for row in scratch_cursor.fetchall()] == [datetime(2026, 1, 1, 13, tzinfo=UTC)]
 
 
+# ai: claude-opus-5-5 | 2026-11-17
+def test_v4_maps_known_factions_to_their_spocks_club_resource(scratch_cursor) -> None:
+    migrations.migrate(scratch_cursor, target=3)
+    scratch_cursor.execute(
+        "INSERT INTO factions (code, name) VALUES ('FED', 'Federation'), ('MAV', 'Maverick')"
+    )
+
+    migrations.migrate(scratch_cursor)
+
+    scratch_cursor.execute("SELECT code, spocks_resource_id FROM factions ORDER BY code")
+    assert scratch_cursor.fetchall() == [("FED", 970475396), ("MAV", None)]
+    # Unique where set, so two factions can't read the same resource; unset repeats freely.
+    scratch_cursor.execute("INSERT INTO factions (code, name) VALUES ('NEW', 'New')")
+    with pytest.raises(psycopg2.errors.UniqueViolation):
+        scratch_cursor.execute(
+            "INSERT INTO factions (code, name, spocks_resource_id) VALUES ('DUP', 'Dup', 970475396)"
+        )
+
+
 def test_failed_migration_leaves_no_trace(scratch_schema: str) -> None:
     def broken(cursor) -> None:
         cursor.execute("CREATE TABLE half_done (id INT)")

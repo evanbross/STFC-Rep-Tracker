@@ -25,6 +25,7 @@ def create_faction(
     reputation_table_name: str | None = None,
     reputation_dao_name: str | None = None,
     display_order: int = 1,
+    spocks_resource_id: int | None = None,
 ) -> dict:
     """POST a faction and return the response JSON, asserting it was created."""
     response = client.post(
@@ -36,6 +37,7 @@ def create_faction(
             "display_order": display_order,
             "reputation_table_name": reputation_table_name,
             "reputation_dao_name": reputation_dao_name,
+            "spocks_resource_id": spocks_resource_id,  # ai: claude-opus-5-5 | 2026-11-17
         },
     )
     assert response.status_code == 201, response.get_json()
