@@ -97,7 +97,8 @@ def test_v3_reads_every_stored_timestamp_form_as_the_same_instant(scratch_cursor
             "INSERT INTO status_entries (faction_code, timestamp, value) VALUES ('FED', %s, 1)", (text,)
         )
 
-    migrations.migrate(scratch_cursor)
+    # Stop at v3: these three rows are one instant, which v5's unique constraint forbids.
+    migrations.migrate(scratch_cursor, target=3)  # ai: claude-opus-5-5 | 2026-11-17
 
     scratch_cursor.execute("SELECT DISTINCT timestamp FROM status_entries")
     assert [row[0] for row in scratch_cursor.fetchall()] == [datetime(2026, 1, 1, 13, tzinfo=UTC)]
@@ -120,6 +121,18 @@ def test_v4_maps_known_factions_to_their_spocks_club_resource(scratch_cursor) ->
         scratch_cursor.execute(
             "INSERT INTO factions (code, name, spocks_resource_id) VALUES ('DUP', 'Dup', 970475396)"
         )
+
+
+# ai: claude-opus-5-5 | 2026-11-17
+def test_v5_allows_one_reading_per_faction_per_instant(scratch_cursor) -> None:
+    migrations.migrate(scratch_cursor)
+    scratch_cursor.execute("INSERT INTO factions (code, name) VALUES ('FED', 'Federation'), ('ROM', 'Romulan')")
+    insert = "INSERT INTO status_entries (faction_code, timestamp, value) VALUES (%s, '2026-01-01T13:00:00Z', 1)"
+    scratch_cursor.execute(insert, ("FED",))
+    scratch_cursor.execute(insert, ("ROM",))  # same instant, other faction: fine
+
+    with pytest.raises(psycopg2.errors.UniqueViolation):
+        scratch_cursor.execute(insert, ("FED",))
 
 
 def test_failed_migration_leaves_no_trace(scratch_schema: str) -> None:

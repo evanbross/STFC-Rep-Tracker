@@ -203,11 +203,25 @@ _V4_SPOCKS_RESOURCE_ID = _sql(
     """,
 )
 
+# ai: claude-opus-5-5 | 2026-11-17
+# v5: at most one reading per faction per instant, so an import can use ON CONFLICT
+# instead of a lock to skip readings it already saved. Production had no
+# duplicates when this shipped (770 rows checked). The constraint's index covers
+# the same columns as v3's, which is dropped; Postgres reads it backwards for DESC.
+_V5_UNIQUE_READING = _sql(
+    """
+    ALTER TABLE status_entries
+        ADD CONSTRAINT status_entries_faction_time_key UNIQUE (faction_code, "timestamp")
+    """,
+    "DROP INDEX IF EXISTS status_entries_faction_time_idx",
+)
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(1, "baseline schema", _V1_BASELINE),
     Migration(2, "reconcile pre-migration drift", _V2_RECONCILE),
     Migration(3, "status_entries.timestamp as timestamptz, indexed", _V3_TIMESTAMPTZ),
     Migration(4, "factions.spocks_resource_id for Spock's Club imports", _V4_SPOCKS_RESOURCE_ID),
+    Migration(5, "one status entry per faction per instant", _V5_UNIQUE_READING),
 )
 
 HEAD_VERSION = MIGRATIONS[-1].version

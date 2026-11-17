@@ -11,12 +11,7 @@ from typing import Any
 
 import psycopg2.errors
 
-from app.domain_errors import NotFoundError
-
-# ai: claude-opus-5-5 | 2026-11-17
-# Transaction-level advisory lock taken by add_entries_at. The value is arbitrary;
-# it only has to differ from the init lock in database.py.
-_IMPORT_ADVISORY_LOCK_ID = 0x5B0C_1A9F
+from app.domain_errors import ConflictError, NotFoundError
 
 
 # ai: claude-opus-5-5 | 2026-11-06
@@ -50,13 +45,19 @@ class StatusEntriesDAO:
             faction_code = result[0]
 
             timestamp = datetime.now(UTC)  # ai: claude-opus-5-5 | 2026-11-06
-            cursor.execute(
-                """
-                           INSERT INTO status_entries (faction_code, timestamp, value)
-                           VALUES (%s, %s, %s)
-                           """,
-                (faction_code, timestamp, value),
-            )
+            # ai: claude-opus-5-5 | 2026-11-17
+            try:
+                cursor.execute(
+                    """
+                               INSERT INTO status_entries (faction_code, timestamp, value)
+                               VALUES (%s, %s, %s)
+                               """,
+                    (faction_code, timestamp, value),
+                )
+            except psycopg2.errors.UniqueViolation as exc:
+                raise ConflictError(
+                    f"'{faction_name}' already has a reading at {iso_utc(timestamp)}"
+                ) from exc
 
             return {"faction_code": faction_code, "timestamp": iso_utc(timestamp), "value": value}
 
@@ -73,20 +74,18 @@ class StatusEntriesDAO:
         saved: list[dict[str, Any]] = []
         skipped: list[str] = []
         with self.db.connect() as conn, conn.cursor() as cursor:
-            # Serialises imports, so two overlapping requests can't both pass the
-            # NOT EXISTS check below for the same reading. Released at commit.
-            cursor.execute("SELECT pg_advisory_xact_lock(%s)", (_IMPORT_ADVISORY_LOCK_ID,))
             for code, value in values_by_code.items():
                 try:
+                    # The unique (faction_code, timestamp) constraint (migration v5)
+                    # makes this safe under overlapping imports: the second waits on
+                    # the first's row, then skips it.
                     cursor.execute(
                         """
                         INSERT INTO status_entries (faction_code, timestamp, value)
-                        SELECT %(code)s, %(ts)s, %(value)s
-                        WHERE NOT EXISTS (
-                            SELECT 1 FROM status_entries WHERE faction_code = %(code)s AND timestamp = %(ts)s
-                        )
+                        VALUES (%s, %s, %s)
+                        ON CONFLICT (faction_code, timestamp) DO NOTHING
                         """,
-                        {"code": code, "ts": timestamp, "value": value},
+                        (code, timestamp, value),
                     )
                 except psycopg2.errors.ForeignKeyViolation as exc:
                     raise NotFoundError(f"Faction '{code}' not found") from exc

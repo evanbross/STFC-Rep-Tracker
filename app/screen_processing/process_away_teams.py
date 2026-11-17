@@ -282,13 +282,14 @@ class AwayTeamOrchestrator(BaseOrchestrator):  # ai: claude-opus-5-5 | 2026-11-0
                 break
             logger.info("clicked AUTO")
 
-            if not wait_and_click_any(
+            # Same panel as AUTO, so the same settle-before-click wait.
+            if not wait_and_click_stable(  # ai: claude-opus-5-5 | 2026-11-17
                 ["Away Teams Start Green.jpg", "Away Teams Start Charts.jpg"],
                 self.sc,
                 window,
                 screen_offset,
             ):
-                logger.warning("Green START button not detected, stopping")
+                logger.warning("Green START button not detected (or never settled), stopping")
                 break
             logger.info("clicked START (confirming expedition)")
 

@@ -497,37 +497,43 @@ def wait_and_click(
 
 # ai: claude-opus-5-5 | 2026-11-17
 def wait_and_click_stable(
-    filename: str,
+    filenames: str | list[str],
     sc: "ScreenCapture",
     window: _Window,
     screen_offset: tuple[int, int] = (0, 0),
     max_retries: int | None = None,
     delay: float | None = None,
     tolerance_px: int | None = None,
-) -> bool:
-    """Wait until filename is visible at the same spot in two captures in a row, then click it.
+) -> str | None:
+    """Wait until a template is visible at the same spot in two captures in a row, then click it.
 
     Use for buttons on panels that animate into place. wait_and_click clicks the first
     frame that matches, which can be mid-animation: the button keeps moving after the
-    match and the click lands beside it. Returns True if clicked.
+    match and the click lands beside it.
+
+    filenames may be one filename or a list; each capture uses the first one visible,
+    and the same template must match in both captures. Returns the filename clicked,
+    or None if nothing settled within max_retries captures.
     """
+    if isinstance(filenames, str):
+        filenames = [filenames]
     if max_retries is None:
         max_retries = capture_cfg("screen_wait_retries", default=8)
     if delay is None:
         delay = capture_cfg("screen_wait_delay", default=0.25)
     if tolerance_px is None:
         tolerance_px = capture_cfg("stable_click_tolerance_px", default=2)
-    previous_loc: tuple[int, int] | None = None
+    previous: tuple[str, tuple[int, int]] | None = None  # (filename, match location)
     for _ in range(max_retries):
         img = sc.capture(window, delay=delay)
-        match = is_button_visible(filename, img) if img is not None else None
-        if match is None:
-            previous_loc = None
+        found = _first_visible(filenames, img) if img is not None else None
+        if found is None:
+            previous = None
             continue
-        template, max_val, max_loc = match
-        if previous_loc is not None and (
-            abs(max_loc[0] - previous_loc[0]) <= tolerance_px
-            and abs(max_loc[1] - previous_loc[1]) <= tolerance_px
+        filename, (template, max_val, max_loc) = found
+        if previous is not None and previous[0] == filename and (
+            abs(max_loc[0] - previous[1][0]) <= tolerance_px
+            and abs(max_loc[1] - previous[1][1]) <= tolerance_px
         ):
             th, tw = template.shape[:2]
             center_x = screen_offset[0] + max_loc[0] + tw // 2
@@ -536,12 +542,24 @@ def wait_and_click_stable(
                 f"Clicking settled {filename} at {center_x}, {center_y}, match % {max_val:.2f}"
             )
             pyautogui.click(center_x, center_y)
-            return True
-        if previous_loc is not None:
-            logger.debug(f"'{filename}' still moving: {previous_loc} -> {max_loc}")
-        previous_loc = max_loc
-    logger.warning(f"'{filename}' did not settle after {max_retries} attempts")
-    return False
+            return filename
+        if previous is not None:
+            logger.debug(f"still moving: {previous[0]} {previous[1]} -> {filename} {max_loc}")
+        previous = (filename, max_loc)
+    logger.warning(f"None of {filenames!r} settled after {max_retries} attempts")
+    return None
+
+
+# ai: claude-opus-5-5 | 2026-11-17
+def _first_visible(
+    filenames: list[str], img: np.ndarray
+) -> tuple[str, tuple[np.ndarray, float, tuple[int, int]]] | None:
+    """(filename, (template, max_val, max_loc)) for the first of filenames visible in img, or None."""
+    for filename in filenames:
+        match = is_button_visible(filename, img)
+        if match is not None:
+            return filename, match
+    return None
 
 
 def wait_and_click_any(

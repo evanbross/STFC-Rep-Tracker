@@ -153,20 +153,6 @@ def test_summary_single_entry_resolves_tier(client: FlaskClient, db: Database) -
 
 
 # ai: claude-opus-5-5 | 2026-11-07
-def test_summary_same_timestamp_entries_keep_tier_in_status(client: FlaskClient, db: Database) -> None:
-    """N-B2: two readings with no time between them still report the tier in both places."""
-    create_fkr_faction(client, "FED", "Federation")
-    insert_entries(db, "FED", {0: 1000})
-    insert_entries(db, "FED", {0: 2000})
-
-    [summary] = client.get("/api/factions/summary").get_json()
-
-    assert summary["rep_level"] == "Tolerated"
-    assert summary["status"]["reputation_level"] == "Tolerated"
-    assert summary["status"]["raw_value_delta_per_minute"] == 0.0
-
-
-# ai: claude-opus-5-5 | 2026-11-07
 @pytest.mark.parametrize(
     "value",
     [500_000_000_100, 600_000_000_000],   # inside the FKR top tier, and past its high_limit
