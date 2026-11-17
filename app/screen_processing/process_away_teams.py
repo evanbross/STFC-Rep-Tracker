@@ -140,6 +140,12 @@ class AwayTeamOrchestrator(BaseOrchestrator):  # ai: claude-opus-5-5 | 2026-11-0
     # "Away Teams List Indicator.jpg" only appears when missions are in-progress;
     # "Away Teams Refresh.jpg" is always present regardless of mission state.
     _LIST_READY_TEMPLATES = ["Away Teams List Indicator.jpg", "Away Teams Refresh.jpg"]
+    # ai: claude-opus-5-5 | 2026-11-17
+    _NEXT_TEMPLATE = "next.jpg"
+    _COLLECT_TEMPLATE = "collect.jpg"
+    # Order matters: when both buttons are on screen, NEXT wins, because it collects
+    # this mission and opens the next finished one without going back to the list.
+    _REPORT_BUTTON_TEMPLATES = [_NEXT_TEMPLATE, _COLLECT_TEMPLATE]
 
     def _collect_reports(self, window, screen_offset):
         """Click REPORT → COLLECT for all completed missions. Returns (reports_clicked, collected)."""
@@ -178,32 +184,63 @@ class AwayTeamOrchestrator(BaseOrchestrator):  # ai: claude-opus-5-5 | 2026-11-0
             reports_clicked += 1
             logger.info(f"clicked REPORT ({reports_clicked})")
 
-            collect_first_delay = capture_cfg(
-                "away_teams", "collect_first_delay", default=0.5
-            )
-            collect_retries = capture_cfg("away_teams", "collect_retries", default=16)
-            collect_delay = capture_cfg("away_teams", "collect_delay", default=0.25)
-            time.sleep(collect_first_delay)
-            if not wait_and_click(
-                "collect.jpg",
+            report_collected = self._collect_open_report(window, screen_offset)
+            if report_collected == 0:
+                logger.warning(
+                    "neither NEXT nor COLLECT found after REPORT click — stopping"
+                )
+                break
+            collected += report_collected
+            # Loop back — list indicator wait at the top handles the remaining transition
+
+        logger.info(f"{reports_clicked} report(s), {collected} collected")
+        return reports_clicked, collected
+
+    # ai: claude-opus-5-5 | 2026-11-17
+    def _collect_open_report(self, window, screen_offset) -> int:
+        """Collect from the open report panel, following NEXT through each finished mission.
+
+        The panel shows COLLECT, or a green NEXT that collects this mission and opens the
+        next finished one. Keeps clicking NEXT until only COLLECT is left, then clicks it,
+        which returns to the list. Returns how many missions were collected (0 if no
+        button appeared at all).
+        """
+        collect_first_delay = capture_cfg(
+            "away_teams", "collect_first_delay", default=0.5
+        )
+        collect_retries = capture_cfg("away_teams", "collect_retries", default=16)
+        collect_delay = capture_cfg("away_teams", "collect_delay", default=0.25)
+        post_next_delay = capture_cfg("away_teams", "post_next_delay", default=1.0)
+        post_collect_delay = capture_cfg(
+            "away_teams", "post_collect_delay", default=2.0
+        )
+
+        collected = 0
+        time.sleep(collect_first_delay)
+        while True:
+            clicked = wait_and_click_any(
+                self._REPORT_BUTTON_TEMPLATES,
                 self.sc,
                 window,
                 screen_offset,
                 max_retries=collect_retries,
                 delay=collect_delay,
-            ):
-                logger.warning("COLLECT button not found after REPORT click — stopping")
-                break
-            collected += 1
-            logger.info(f"clicked COLLECT ({collected})")
-            post_collect_delay = capture_cfg(
-                "away_teams", "post_collect_delay", default=2.0
             )
-            time.sleep(post_collect_delay)
-            # Loop back — list indicator wait at the top handles the remaining transition
-
-        logger.info(f"{reports_clicked} report(s), {collected} collected")
-        return reports_clicked, collected
+            if clicked is None:
+                if collected:
+                    # After a NEXT the game may have gone straight back to the list;
+                    # the caller's list wait copes with either state.
+                    logger.info("no NEXT/COLLECT after NEXT — returning to the list")
+                return collected
+            collected += 1
+            if clicked == self._COLLECT_TEMPLATE:
+                logger.info(f"clicked COLLECT ({collected} from this report)")
+                time.sleep(post_collect_delay)
+                return collected
+            logger.info(f"clicked NEXT ({collected} from this report)")
+            # Let the next mission's panel replace this one, so the old NEXT button
+            # isn't matched (and clicked) again.
+            time.sleep(post_next_delay)
 
     def _start_expeditions(self, window, screen_offset):
         """Start new expeditions via START → AUTO → START. Returns expeditions_started count."""

@@ -54,6 +54,9 @@ stfc_config:
     collect_first_delay: 0.5
     collect_retries: 16
     collect_delay: 0.25
+    # Seconds to wait after clicking the green NEXT button (collects this mission and
+    # opens the next finished one) before looking for NEXT/COLLECT again.
+    post_next_delay: 1.0
     # Seconds to wait after clicking COLLECT before checking for the next REPORT.
     # The game shows a reward panel that must dismiss before the list is interactive again.
     post_collect_delay: 2.0
