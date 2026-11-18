@@ -104,11 +104,11 @@ const CHART_OPTIONS = {
 // choice, or the default from useHistoryEntries. react-chartjs-2 matches
 // datasets by label, so a reload keeps those choices.
 const HistoryChart = ({history, factions}) => {
-    const {chartData, visibilityOverrides, toggleVisibility, historyDays, toggleFullHistory} = history;
+    const {chartData, hiddenOverrides, toggleVisibility, historyDays, toggleFullHistory} = history;
     const data = useMemo(() => ({
         ...chartData,
-        datasets: chartData.datasets.map(ds => ({...ds, hidden: visibilityOverrides[ds.label] ?? ds.hidden})),
-    }), [chartData, visibilityOverrides]);
+        datasets: chartData.datasets.map(ds => ({...ds, hidden: hiddenOverrides[ds.label] ?? ds.hidden})),
+    }), [chartData, hiddenOverrides]);
 
     return (
         <div className="chart-container">

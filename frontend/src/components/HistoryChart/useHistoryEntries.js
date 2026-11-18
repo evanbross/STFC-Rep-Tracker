@@ -48,20 +48,20 @@ const buildDatasets = (grouped, colors, onChart) => Object.entries(grouped).map(
 });
 
 /**
- * Returns {chartData, visibilityOverrides, toggleVisibility, historyDays, reload, toggleFullHistory}.
+ * Returns {chartData, hiddenOverrides, toggleVisibility, historyDays, reload, toggleFullHistory}.
  *
  * reload(factions) takes the faction list instead of reading it from state,
  * so one summary fetch serves both the cards and the chart colors (N-P3).
- * visibilityOverrides maps a faction name to the visibility the user picked in
+ * hiddenOverrides maps a faction name to whether the user hid it (true) or showed it (false) in
  * the legend. It survives reloads, so a capture doesn't undo the user's choice.
  */
 const useHistoryEntries = () => {
     const [chartData, setChartData] = useState({datasets: []});
-    const [visibilityOverrides, setVisibilityOverrides] = useState({});
+    const [hiddenOverrides, setHiddenOverrides] = useState({}); // ai: claude-opus-5-5 | 2026-11-18
     const [historyDays, setHistoryDays] = useState(DEFAULT_HISTORY_DAYS);
 
     const toggleVisibility = (label, currentlyHidden) => {
-        setVisibilityOverrides(prev => ({...prev, [label]: !currentlyHidden}));
+        setHiddenOverrides(prev => ({...prev, [label]: !currentlyHidden}));
     };
 
     const reload = async (factions, days = historyDays) => {
@@ -94,7 +94,7 @@ const useHistoryEntries = () => {
         reload(factions, nextDays);
     };
 
-    return {chartData, visibilityOverrides, toggleVisibility, historyDays, reload, toggleFullHistory}; // ai: claude-opus-5-5 | 2026-11-07
+    return {chartData, hiddenOverrides, toggleVisibility, historyDays, reload, toggleFullHistory}; // ai: claude-opus-5-5 | 2026-11-18
 };
 
 export default useHistoryEntries;

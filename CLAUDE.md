@@ -246,6 +246,10 @@ Conventions:
 - One folder per component under `src/components/` (jsx, its hook, helpers, `index.js`); import from the folder.
 - `npm run lint` (ESLint 10 + React Hooks rules) must report no errors; it catches undefined names on runtime-only
   branches that `npm run build` misses. No `React` default import: the JSX runtime is automatic.
+- `npm test` (Vitest + Testing Library, jsdom) runs `*.test.js(x)` next to the code they cover. HTTP goes through
+  `fakeApi()` in `src/test/fakeApi.js`, which swaps the shared instance's adapter so the real interceptors (capture
+  timeout, `useCaptureBusy`) still run. Don't mock `api.get`/`api.post` directly. These tests check frontend logic
+  against the response shapes it expects; the backend's `db` contract tests check those shapes against Flask.
 
 During development, Vite proxies `/api/*` to the port in `.backend-port` (written by `main.py` on startup in a source
 checkout; 7300 if absent). It reads the file once, so restart `npm run dev` if the backend moves ports. In production, Flask serves

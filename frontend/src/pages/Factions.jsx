@@ -395,9 +395,11 @@ const Factions = () => {
                 <div className="container">
                     <h2>{formData.id ? 'Edit Faction' : 'Add New Faction'}</h2>
                     <form onSubmit={handleSubmit}>
+                        {/* ai: claude-opus-5-5 | 2026-11-18 — every label names its control (htmlFor/id) */}
                         <div className="form-group">
-                            <label>Faction Name:</label>
+                            <label htmlFor="faction-name">Faction Name:</label>
                             <input
+                                id="faction-name"
                                 type="text"
                                 value={formData.name}
                                 onChange={e => setFormData({...formData, name: e.target.value})}
@@ -406,8 +408,9 @@ const Factions = () => {
                         </div>
                         <div className="form-row">
                             <div className="form-group">
-                                <label>Code:</label>
+                                <label htmlFor="faction-code">Code:</label>
                                 <input
+                                    id="faction-code"
                                     type="text"
                                     value={formData.code}
                                     onChange={e => setFormData({...formData, code: e.target.value})}
@@ -416,8 +419,9 @@ const Factions = () => {
                                 />
                             </div>
                             <div className="form-group">
-                                <label>Color:</label>
+                                <label htmlFor="faction-color">Color:</label>
                                 <input
+                                    id="faction-color"
                                     type="text"
                                     value={formData.color}
                                     onChange={e => setFormData({...formData, color: e.target.value})}
@@ -427,8 +431,9 @@ const Factions = () => {
                         </div>
                         {/* ai: claude-opus-5-5 | 2026-11-06 — one choice per *_reputations_dao.py (R5); the DAO name follows */}
                         <div className="form-group">
-                            <label>Reputation Type:</label>
+                            <label htmlFor="faction-reputation-type">Reputation Type:</label>
                             <select
+                                id="faction-reputation-type"
                                 value={formData.reputation_table_name}
                                 onChange={e => {
                                     const chosen = reputationTypes.find(t => t.table_name === e.target.value);
@@ -447,8 +452,9 @@ const Factions = () => {
                         </div>
                         <div className="form-row">
                             <div className="form-group">
-                                <label>Selected Button Snippet:</label>
+                                <label htmlFor="faction-snippet-selected">Selected Button Snippet:</label>
                                 <input
+                                    id="faction-snippet-selected"
                                     type="text"
                                     value={formData.snippet_selected_button}
                                     onChange={e => setFormData({...formData, snippet_selected_button: e.target.value})}
@@ -456,8 +462,9 @@ const Factions = () => {
                                 />
                             </div>
                             <div className="form-group">
-                                <label>Unselected Button Snippet:</label>
+                                <label htmlFor="faction-snippet-unselected">Unselected Button Snippet:</label>
                                 <input
+                                    id="faction-snippet-unselected"
                                     type="text"
                                     value={formData.snippet_unselected}
                                     onChange={e => setFormData({...formData, snippet_unselected: e.target.value})}
@@ -467,8 +474,9 @@ const Factions = () => {
                         </div>
                         <div className="form-row">
                             <div className="form-group">
-                                <label>Display Order:</label>
+                                <label htmlFor="faction-display-order">Display Order:</label>
                                 <input
+                                    id="faction-display-order"
                                     type="number"
                                     value={formData.display_order}
                                     onChange={e => setFormData({...formData, display_order: e.target.value})}
@@ -476,8 +484,9 @@ const Factions = () => {
                             </div>
                             <div className="form-group">
                                 {/* ai: claude-opus-5-5 | 2026-11-07 — every faction is in the chart legend; this picks its starting visibility (N-B4) */}
-                                <label>On Chart:</label>
+                                <label htmlFor="faction-on-chart">On Chart:</label>
                                 <select
+                                    id="faction-on-chart"
                                     value={formData.on_chart}
                                     onChange={e => setFormData({...formData, on_chart: parseInt(e.target.value)})}
                                     title="Whether the Dashboard chart shows this faction when it loads. Click its legend entry to show or hide it anytime."
@@ -489,8 +498,9 @@ const Factions = () => {
                         </div>
                         {/* ai: claude-opus-5-5 | 2026-11-17 — matched by ID: names repeat in the export */}
                         <div className="form-group">
-                            <label>Spock's Club Resource ID:</label>
+                            <label htmlFor="faction-spocks-resource-id">Spock's Club Resource ID:</label>
                             <input
+                                id="faction-spocks-resource-id"
                                 type="text"
                                 inputMode="numeric"
                                 pattern="[0-9]*"

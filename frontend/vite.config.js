@@ -37,5 +37,12 @@ export default defineConfig({
         changeOrigin: true,
       }
     }
-  }
+  },
+  // ai: claude-opus-5-5 | 2026-11-18
+  // `npm test`: hooks and components run in jsdom. HTTP goes through a fake
+  // axios adapter (src/test/fakeApi.js), so the real interceptors still run.
+  test: {
+    environment: 'jsdom',
+    setupFiles: ['./src/test/setup.js'],
+  },
 })
