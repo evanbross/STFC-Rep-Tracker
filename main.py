@@ -221,7 +221,7 @@ def create_app(app_settings: AppSettings):
     from app.views.calendar_view import calendar_bp
     from app.views.factions_view import factions_bp
     from app.views.reputations_view import reputations_bp
-    from app.views.spocks_club_view import spocks_club_bp  # ai: claude-opus-5-5 | 2026-11-17
+    from app.views.spocks_club_view import MAX_EXPORT_BYTES, spocks_club_bp  # ai: claude-opus-5-5 | 2026-11-18
     from app.views.status_entries_view import status_entries_bp
     from app.views.target_types_view import target_types_bp
     from app.views.territory_view import territory_bp
@@ -233,6 +233,10 @@ def create_app(app_settings: AppSettings):
         static_url_path="/static",
     )
     flask_app.config.from_mapping(app_settings.flask_config())  # ai: claude-opus-5-5 | 2026-11-06
+    # ai: claude-opus-5-5 | 2026-11-18
+    # Whole-request ceiling: the largest upload (a Spock's Club export) plus room
+    # for multipart framing. Routes cap their own uploads lower where they can.
+    flask_app.config["MAX_CONTENT_LENGTH"] = MAX_EXPORT_BYTES + 1024 * 1024
     CORS(flask_app, origins=flask_app.config["CORS_ORIGINS"])
     install_cross_origin_write_guard(flask_app, flask_app.config["CORS_ORIGINS"])  # ai: claude-opus-5-5 | 2026-11-06
     register_error_handlers(flask_app)  # ai: claude-opus-5-5 | 2026-11-06

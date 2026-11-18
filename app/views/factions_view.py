@@ -9,13 +9,13 @@
 import logging
 import os
 
-import psycopg2.errors
 from flask import Blueprint, jsonify, request, current_app
+from flask.typing import ResponseReturnValue
 from werkzeug.utils import secure_filename
 
-from app.snippet_store import new_snippet_path, snippet_exists
+from app.snippet_store import new_snippet_path, remove_user_snippet, snippet_exists
 from app.views.request_models import FactionIn
-from app.views.snippet_files import is_snippet_image, send_snippet_image
+from app.views.snippet_files import content_matches_extension, is_snippet_image, send_snippet_image
 from app.views.validation import parse_body
 
 logger = logging.getLogger(__name__)
@@ -23,6 +23,10 @@ logger = logging.getLogger(__name__)
 factions_bp = Blueprint("factions", __name__)
 
 _ALLOWED_SNIPPET_TYPES = {"button", "desc", None}
+
+# ai: claude-opus-5-5 | 2026-11-18
+# Template snippets are small crops (tens of KB); a full 4K screenshot PNG is under 5 MB.
+MAX_SNIPPET_BYTES = 5 * 1024 * 1024
 
 
 @factions_bp.route("/<string:faction_code>/selected-snippets", methods=["GET"])
@@ -61,30 +65,53 @@ def add_selected_snippet(faction_code):
     if snippet_exists(filename):
         return jsonify({"error": f"Snippet file '{filename}' already exists"}), 409
 
-    dest = new_snippet_path(filename)
-    file.save(dest)
+    # ai: claude-opus-5-5 | 2026-11-18
+    # Read one byte past the cap: a chunked body has no Content-Length to reject up front.
+    data = file.read(MAX_SNIPPET_BYTES + 1)
+    if len(data) > MAX_SNIPPET_BYTES:
+        return jsonify({"error": f"Snippet images must be under {MAX_SNIPPET_BYTES // (1024 * 1024)} MB."}), 413
+    if not content_matches_extension(filename, data):
+        return jsonify({"error": f"'{filename}' isn't a valid {os.path.splitext(filename)[1]} image."}), 400
 
-    # ai: claude-opus-5-5 | 2026-11-10
-    # Any failed insert removes the saved file; a leftover would make the retry a 409.
+    # Exclusive create: an upload of the same name that won the race since the
+    # check above gets a 409 instead of being overwritten.
+    dest = new_snippet_path(filename)
     try:
-        new_id = db.selected_snippets.add_snippet(faction_code, filename, snippet_type)
-    except psycopg2.errors.ForeignKeyViolation:
-        os.remove(dest)
-        return jsonify({"error": f"Faction '{faction_code}' not found"}), 404
-    except psycopg2.Error:
-        os.remove(dest)
-        raise
+        out = open(dest, "xb")
+    except FileExistsError:
+        return jsonify({"error": f"Snippet file '{filename}' already exists"}), 409
+
+    # From here this request owns `dest`. A failed write or insert (unknown
+    # faction: NotFoundError -> 404) removes it, so a retry isn't refused as a duplicate.
+    saved = False
+    try:
+        with out:
+            out.write(data)
+        new_id = db.selected_snippets.add_snippet(faction_code, filename, snippet_type, uploaded=True)
+        saved = True
+    finally:
+        if not saved:
+            os.remove(dest)
 
     return jsonify({"id": new_id, "faction_id": faction_code, "filename": filename, "snippet_type": snippet_type}), 201
 
 
+# ai: claude-opus-5-5 | 2026-11-18
 @factions_bp.route("/selected-snippets/<int:snippet_id>", methods=["DELETE"])
-def delete_selected_snippet(snippet_id):
+def delete_selected_snippet(snippet_id: int) -> ResponseReturnValue:
+    """Delete a snippet row, and its image when it was uploaded and nothing else uses it."""
     db = current_app.config["DATABASE"]
     deleted = db.selected_snippets.delete_snippet(snippet_id)
-    if not deleted:
+    if deleted is None:
         return jsonify({"error": "Snippet not found"}), 404
-    return jsonify({"deleted": snippet_id}), 200
+    file_removed = False
+    if deleted.remove_file:
+        try:
+            file_removed = remove_user_snippet(deleted.filename)
+        except OSError:
+            # The row is gone either way; a locked file only costs a 409 on re-upload.
+            logger.warning("Could not delete snippet file %s", deleted.filename, exc_info=True)
+    return jsonify({"deleted": snippet_id, "file_removed": file_removed}), 200
 
 
 @factions_bp.route("/snippet-image/<path:filename>", methods=["GET"])

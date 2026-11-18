@@ -141,10 +141,15 @@ const SnippetsModal = ({ faction, onClose }) => {
         }
     };
 
-    const handleDelete = async (snippetId) => {
-        if (!window.confirm('Delete this snippet record? (The image file is kept.)')) return;
+    // ai: claude-opus-5-5 | 2026-11-18
+    // The server deletes an uploaded image with its record unless something else still uses it.
+    const handleDelete = async (snippet) => {
+        const fileNote = snippet.uploaded
+            ? 'The uploaded image is deleted too, unless another snippet or faction still uses it.'
+            : 'The image file is kept.';
+        if (!window.confirm(`Delete this snippet record? ${fileNote}`)) return;
         try {
-            await api.delete(`/api/factions/selected-snippets/${snippetId}`);
+            await api.delete(`/api/factions/selected-snippets/${snippet.id}`);
             loadSnippets();
         } catch (err) {
             console.error('Delete failed:', err);
@@ -197,7 +202,7 @@ const SnippetsModal = ({ faction, onClose }) => {
                                     />
                                     <div style={{ fontSize: 10, color: '#888', wordBreak: 'break-all', lineHeight: 1.3 }}>{s.filename}</div>
                                     <button
-                                        onClick={() => handleDelete(s.id)}
+                                        onClick={() => handleDelete(s)}
                                         style={{ fontSize: 11, padding: '2px 10px', background: '#5a1a1a', border: '1px solid #8b2020', borderRadius: 4, color: '#f88', cursor: 'pointer' }}
                                     >Delete</button>
                                 </div>

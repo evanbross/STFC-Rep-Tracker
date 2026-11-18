@@ -216,12 +216,22 @@ _V5_UNIQUE_READING = _sql(
     "DROP INDEX IF EXISTS status_entries_faction_time_idx",
 )
 
+# ai: claude-opus-5-5 | 2026-11-18
+# v6: whether a selected snippet's image was uploaded through the API (and so
+# lives in the user snippet folder and may be deleted with its row). Existing
+# rows are FALSE: some were seeded from bundled images, and nothing recorded
+# which of the rest were uploads, so their files are kept as before.
+_V6_SNIPPET_UPLOADED = _sql(
+    "ALTER TABLE faction_selected_snippets ADD COLUMN IF NOT EXISTS uploaded BOOLEAN NOT NULL DEFAULT FALSE",
+)
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(1, "baseline schema", _V1_BASELINE),
     Migration(2, "reconcile pre-migration drift", _V2_RECONCILE),
     Migration(3, "status_entries.timestamp as timestamptz, indexed", _V3_TIMESTAMPTZ),
     Migration(4, "factions.spocks_resource_id for Spock's Club imports", _V4_SPOCKS_RESOURCE_ID),
     Migration(5, "one status entry per faction per instant", _V5_UNIQUE_READING),
+    Migration(6, "faction_selected_snippets.uploaded", _V6_SNIPPET_UPLOADED),
 )
 
 HEAD_VERSION = MIGRATIONS[-1].version

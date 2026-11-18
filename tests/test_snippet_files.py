@@ -21,7 +21,7 @@ from werkzeug.test import TestResponse
 
 from app import snippet_store
 from app.database.database import Database
-from app.views import snippet_files
+from app.views import factions_view, snippet_files
 from tests.api_helpers import create_faction
 
 pytestmark = pytest.mark.db
@@ -115,7 +115,9 @@ def test_upload_saves_to_the_user_folder_and_registers_it(
                     "snippet_type": "button"}
     assert (user / "Selected-button-FED-1.png").read_bytes() == _PNG
     assert not (bundled / "Selected-button-FED-1.png").exists()
-    assert _rows(client) == [{"id": body["id"], "filename": "Selected-button-FED-1.png", "snippet_type": "button"}]
+    assert _rows(client) == [
+        {"id": body["id"], "filename": "Selected-button-FED-1.png", "snippet_type": "button", "uploaded": True}
+    ]
     assert client.get("/api/factions/snippet-image/Selected-button-FED-1.png").data == _PNG
 
 
@@ -201,7 +203,7 @@ def test_failed_insert_removes_the_saved_file(
     """Without the cleanup, the orphaned file turns every retry into a 409."""
     user, _ = split_snippets
 
-    def _fail(*_args: object) -> int:
+    def _fail(*_args: object, **_kwargs: object) -> int:
         raise psycopg2.OperationalError("connection lost")
 
     monkeypatch.setattr(db.selected_snippets, "add_snippet", _fail)
@@ -210,14 +212,111 @@ def test_failed_insert_removes_the_saved_file(
     assert list(user.iterdir()) == []
 
 
-def test_delete_removes_the_row_but_keeps_the_file(
+# ai: claude-opus-5-5 | 2026-11-18
+@pytest.mark.parametrize(
+    ("upload_name", "content"),
+    [("upload.png", b"just some text"), ("upload.png", b"\xff\xd8\xff\xe0jpeg"), ("upload.jpg", _PNG)],
+)
+def test_content_that_does_not_match_the_extension_is_400(
+    client: FlaskClient, split_snippets: tuple[Path, Path], fed: None, upload_name: str, content: bytes
+) -> None:
+    user, _ = split_snippets
+
+    response = client.post(
+        _UPLOAD_URL, data={"file": (BytesIO(content), upload_name)}, content_type="multipart/form-data"
+    )
+
+    assert response.status_code == 400
+    assert list(user.iterdir()) == []
+    assert _rows(client) == []
+
+
+def test_oversized_upload_is_413_and_writes_nothing(
+    client: FlaskClient, split_snippets: tuple[Path, Path], fed: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    user, _ = split_snippets
+    monkeypatch.setattr(factions_view, "MAX_SNIPPET_BYTES", len(_PNG) - 1)
+
+    response = _upload(client)
+
+    assert response.status_code == 413
+    assert "MB" in response.get_json()["error"]
+    assert list(user.iterdir()) == []
+
+
+@pytest.mark.parametrize(
+    ("name", "data", "expected"),
+    [
+        ("a.png", _PNG, True),
+        ("a.PNG", _PNG, True),
+        ("a.jpg", b"\xff\xd8\xff\xdb", True),
+        ("a.jpeg", b"\xff\xd8\xff\xe1", True),
+        ("a.jpg", _PNG, False),
+        ("a.png", b"", False),
+        ("a.zip", b"PK\x03\x04", False),
+    ],
+)
+def test_content_matches_extension(name: str, data: bytes, expected: bool) -> None:
+    assert snippet_files.content_matches_extension(name, data) is expected
+
+
+# ai: claude-opus-5-5 | 2026-11-18
+# ── delete: DELETE /api/factions/selected-snippets/<id> ──────────────────────
+
+def _delete(client: FlaskClient, snippet_id: int) -> TestResponse:
+    return client.delete(f"/api/factions/selected-snippets/{snippet_id}")
+
+
+def test_delete_removes_an_uploaded_file_so_the_name_can_be_reused(
     client: FlaskClient, split_snippets: tuple[Path, Path], fed: None
 ) -> None:
-    """The Factions page promises "The image file is kept." on delete."""
+    """Before, the file outlived its row and every re-upload of the name was a 409."""
     user, _ = split_snippets
     snippet_id = _upload(client).get_json()["id"]
 
-    assert client.delete(f"/api/factions/selected-snippets/{snippet_id}").status_code == 200
-    assert client.delete(f"/api/factions/selected-snippets/{snippet_id}").status_code == 404
+    response = _delete(client, snippet_id)
+
+    assert response.status_code == 200
+    assert response.get_json() == {"deleted": snippet_id, "file_removed": True}
     assert _rows(client) == []
+    assert not (user / "upload.png").exists()
+    assert _upload(client).status_code == 201
+    assert _delete(client, snippet_id).status_code == 404
+
+
+def test_delete_keeps_a_file_another_row_still_uses(
+    client: FlaskClient, db: Database, split_snippets: tuple[Path, Path], fed: None
+) -> None:
+    user, _ = split_snippets
+    snippet_id = _upload(client).get_json()["id"]
+    db.selected_snippets.add_snippet("FED", "upload.png", "desc", uploaded=True)
+
+    assert _delete(client, snippet_id).get_json()["file_removed"] is False
     assert (user / "upload.png").is_file()
+
+
+def test_delete_keeps_a_file_a_faction_column_names(
+    client: FlaskClient, split_snippets: tuple[Path, Path], fed: None
+) -> None:
+    user, _ = split_snippets
+    snippet_id = _upload(client).get_json()["id"]
+    put = client.put("/api/factions/FED", json={"name": "Federation", "code": "FED", "snippet_unselected": "upload.png"})
+    assert put.status_code == 200
+
+    assert _delete(client, snippet_id).get_json()["file_removed"] is False
+    assert (user / "upload.png").is_file()
+
+
+def test_delete_never_removes_a_file_that_was_not_uploaded(
+    client: FlaskClient, db: Database, split_snippets: tuple[Path, Path], fed: None
+) -> None:
+    """Rows from before v6 (some seeded from bundled images) keep their files."""
+    user, bundled = split_snippets
+    (user / "legacy.png").write_bytes(_PNG)
+    legacy_id = db.selected_snippets.add_snippet("FED", "legacy.png", "button")
+    bundled_id = db.selected_snippets.add_snippet("FED", "Selected-Desc-FED.png", "desc")
+
+    assert _delete(client, legacy_id).get_json()["file_removed"] is False
+    assert _delete(client, bundled_id).get_json()["file_removed"] is False
+    assert (user / "legacy.png").is_file()
+    assert (bundled / "Selected-Desc-FED.png").is_file()

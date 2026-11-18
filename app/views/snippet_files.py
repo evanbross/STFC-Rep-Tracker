@@ -27,6 +27,27 @@ def is_snippet_image(filename: str) -> bool:
     return os.path.splitext(filename)[1].lower() in SNIPPET_IMAGE_EXTENSIONS
 
 
+# ai: claude-opus-5-5 | 2026-11-18
+# Leading bytes of each format, keyed by every extension in SNIPPET_IMAGE_EXTENSIONS.
+_SIGNATURES: dict[str, bytes] = {
+    ".png": b"\x89PNG\r\n\x1a\n",
+    ".jpg": b"\xff\xd8\xff",
+    ".jpeg": b"\xff\xd8\xff",
+}
+if _SIGNATURES.keys() != SNIPPET_IMAGE_EXTENSIONS:
+    raise RuntimeError("Every snippet image extension needs a signature in _SIGNATURES")
+
+
+def content_matches_extension(filename: str, data: bytes) -> bool:
+    """True if `data` starts with the image signature its extension promises.
+
+    A text file renamed to .png would otherwise be saved and only fail later,
+    as a confusing template-matching error during a capture.
+    """
+    signature = _SIGNATURES.get(os.path.splitext(filename)[1].lower())
+    return signature is not None and data.startswith(signature)
+
+
 def send_snippet_image(filename: str) -> Response:
     """Serve an image from the snippets folders; anything else is a 404."""
     if not is_snippet_image(filename):

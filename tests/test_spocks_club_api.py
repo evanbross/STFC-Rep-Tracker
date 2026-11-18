@@ -12,8 +12,10 @@ import io
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from flask import Flask
 from flask.testing import FlaskClient
 
+from app.views.spocks_club_view import MAX_EXPORT_BYTES
 from tests.api_helpers import create_faction
 
 pytestmark = pytest.mark.db
@@ -177,3 +179,23 @@ def test_import_rejects_bad_bodies(client: FlaskClient, body: dict) -> None:
     _mapped_factions(client)
 
     assert client.post("/api/spocks-club/import", json=body).status_code == 400
+
+
+# ai: claude-opus-5-5 | 2026-11-18
+def test_global_request_cap_leaves_room_for_a_full_size_export(flask_app: Flask) -> None:
+    """The app-wide MAX_CONTENT_LENGTH must never be what rejects a valid export."""
+    assert flask_app.config["MAX_CONTENT_LENGTH"] > MAX_EXPORT_BYTES
+
+
+def test_request_over_the_global_cap_is_a_json_413(client: FlaskClient, flask_app: Flask) -> None:
+    oversized = io.BytesIO(b"x" * (flask_app.config["MAX_CONTENT_LENGTH"] + 1))
+
+    response = client.post(
+        "/api/spocks-club/preview",
+        data={"file": (oversized, EXPORT_NAME)},
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 413
+    assert response.is_json
+    assert response.get_json()["error"]

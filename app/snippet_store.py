@@ -69,6 +69,24 @@ def snippet_exists(filename: str) -> bool:
     return find_snippet(filename) is not None
 
 
+# ai: claude-opus-5-5 | 2026-11-18
+def remove_user_snippet(filename: str) -> bool:
+    """Delete a snippet from the user folder; True if a file was removed.
+
+    Only the user folder is touched, so a bundled image of the same name is
+    never deleted. Callers decide ownership first (an uploaded, unreferenced
+    file); an already-missing file is not an error.
+    """
+    candidate = safe_join(user_snippets_dir(), filename)
+    if candidate is None:
+        return False
+    try:
+        os.remove(candidate)
+    except FileNotFoundError:
+        return False
+    return True
+
+
 def new_snippet_path(filename: str) -> str:
     """Path in the user folder to write a new snippet to, creating its parent folder.
 
