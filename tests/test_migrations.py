@@ -179,6 +179,28 @@ def test_v5_stops_on_conflicting_duplicates_without_changing_anything(scratch_cu
     assert scratch_cursor.fetchone()[0] == 2
 
 
+# ai: claude-opus-5-5 | 2026-11-18
+def test_v7_renames_the_snippet_faction_column_keeping_rows_and_cascade(scratch_cursor) -> None:
+    migrations.migrate(scratch_cursor, target=6)
+    scratch_cursor.execute("INSERT INTO factions (code, name) VALUES ('FED', 'Federation')")
+    scratch_cursor.execute(
+        "INSERT INTO faction_selected_snippets (faction_id, filename, snippet_type) "
+        "VALUES ('FED', 'Selected-Button-Fed.jpg', 'button')"
+    )
+
+    migrations.migrate(scratch_cursor)
+
+    assert _column_type(scratch_cursor, "faction_selected_snippets", "faction_id") is None
+    scratch_cursor.execute(
+        "SELECT conname FROM pg_constraint WHERE conrelid = 'faction_selected_snippets'::regclass AND contype = 'f'"
+    )
+    assert [row[0] for row in scratch_cursor.fetchall()] == ["faction_selected_snippets_faction_code_fkey"]
+    # A code rename still reaches the snippet row through the renamed FK.
+    scratch_cursor.execute("UPDATE factions SET code = 'UFP' WHERE code = 'FED'")
+    scratch_cursor.execute("SELECT faction_code, filename FROM faction_selected_snippets")
+    assert scratch_cursor.fetchall() == [("UFP", "Selected-Button-Fed.jpg")]
+
+
 def test_failed_migration_leaves_no_trace(scratch_schema: str) -> None:
     def broken(cursor) -> None:
         cursor.execute("CREATE TABLE half_done (id INT)")
@@ -215,6 +237,7 @@ def test_production_copy_migrates_in_place(test_branch_url: str) -> None:
             assert _column_type(cursor, "status_entries", "timestamp") == "timestamp with time zone"
             for table in ("status_entries", "faction_selected_snippets"):
                 assert all("ON UPDATE CASCADE" in fk for fk in _foreign_keys(cursor, table)), table
+            assert _column_type(cursor, "faction_selected_snippets", "faction_code") == "text"  # ai: claude-opus-5-5 | 2026-11-18
             # A code rename now cascades; production used to reject it.
             cursor.execute("UPDATE factions SET code = 'ZZ_RENAMED' WHERE code = %s", (code,))
             cursor.execute("SELECT count(*) FROM status_entries WHERE faction_code = %s", (code,))

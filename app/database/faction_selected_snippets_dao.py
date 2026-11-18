@@ -32,21 +32,21 @@ class FactionSelectedSnippetsDAO:
         self.db = db
 
     # ai: claude-opus-5-5 | 2026-11-18
-    def get_snippets_for_faction(self, faction_id: str, snippet_type: str | None = None) -> list[dict[str, Any]]:
+    def get_snippets_for_faction(self, faction_code: str, snippet_type: str | None = None) -> list[dict[str, Any]]:
         """Return a faction's snippet rows, optionally filtered by type."""
         with self.db.connect() as conn:
             cursor = conn.cursor()
             if snippet_type:
                 cursor.execute(
                     "SELECT id, filename, snippet_type, uploaded FROM faction_selected_snippets "
-                    "WHERE faction_id = %s AND snippet_type = %s",
-                    (faction_id, snippet_type),
+                    "WHERE faction_code = %s AND snippet_type = %s",
+                    (faction_code, snippet_type),
                 )
             else:
                 cursor.execute(
                     "SELECT id, filename, snippet_type, uploaded FROM faction_selected_snippets "
-                    "WHERE faction_id = %s",
-                    (faction_id,),
+                    "WHERE faction_code = %s",
+                    (faction_code,),
                 )
             return [
                 {"id": r[0], "filename": r[1], "snippet_type": r[2], "uploaded": r[3]}
@@ -55,7 +55,7 @@ class FactionSelectedSnippetsDAO:
 
     # ai: claude-opus-5-5 | 2026-11-18
     def add_snippet(
-        self, faction_id: str, filename: str, snippet_type: str | None = None, *, uploaded: bool = False
+        self, faction_code: str, filename: str, snippet_type: str | None = None, *, uploaded: bool = False
     ) -> int:
         """Add a snippet filename for a faction and return the new row id.
 
@@ -66,12 +66,12 @@ class FactionSelectedSnippetsDAO:
             cursor = conn.cursor()
             try:
                 cursor.execute(
-                    "INSERT INTO faction_selected_snippets (faction_id, filename, snippet_type, uploaded) "
+                    "INSERT INTO faction_selected_snippets (faction_code, filename, snippet_type, uploaded) "
                     "VALUES (%s, %s, %s, %s) RETURNING id",
-                    (faction_id, filename, snippet_type, uploaded),
+                    (faction_code, filename, snippet_type, uploaded),
                 )
             except psycopg2.errors.ForeignKeyViolation as exc:
-                raise NotFoundError(f"Faction '{faction_id}' not found") from exc
+                raise NotFoundError(f"Faction '{faction_code}' not found") from exc
             return cursor.fetchone()[0]
 
     # ai: claude-opus-5-5 | 2026-11-18

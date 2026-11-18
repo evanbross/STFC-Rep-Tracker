@@ -91,9 +91,9 @@ class FactionsDAO:
         rows = cursor.fetchall()
 
         cursor.execute("""
-                       SELECT faction_id, id, filename, snippet_type
+                       SELECT faction_code, id, filename, snippet_type
                        FROM faction_selected_snippets
-                       ORDER BY faction_id, snippet_type, filename
+                       ORDER BY faction_code, snippet_type, filename
                        """)
         snippets_by_faction: dict[str, list] = {}
         for row in cursor.fetchall():
@@ -233,7 +233,7 @@ class FactionsDAO:
             cursor.execute("""
                 SELECT id, filename, snippet_type
                 FROM faction_selected_snippets
-                WHERE faction_id = %s
+                WHERE faction_code = %s
                 ORDER BY snippet_type, filename
             """, (faction_code,))
             snippets = [{"id": r[0], "filename": r[1], "snippet_type": r[2]} for r in cursor.fetchall()]

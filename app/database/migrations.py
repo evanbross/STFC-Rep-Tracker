@@ -272,6 +272,20 @@ _V6_SNIPPET_UPLOADED = _sql(
     "ALTER TABLE faction_selected_snippets ADD COLUMN IF NOT EXISTS uploaded BOOLEAN NOT NULL DEFAULT FALSE",
 )
 
+# ai: claude-opus-5-5 | 2026-11-18
+# v7: faction_selected_snippets.faction_id holds a faction code (factions.code
+# is the key; there is no numeric faction id), so name it for what it holds,
+# like status_entries.faction_code. A rename keeps the data, the FK and its
+# ON UPDATE CASCADE. v2 gave the constraint this name on every database, so
+# it is renamed by name to match.
+_V7_SNIPPET_FACTION_CODE = _sql(
+    "ALTER TABLE faction_selected_snippets RENAME COLUMN faction_id TO faction_code",
+    """
+    ALTER TABLE faction_selected_snippets
+        RENAME CONSTRAINT faction_selected_snippets_faction_id_fkey TO faction_selected_snippets_faction_code_fkey
+    """,
+)
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(1, "baseline schema", _V1_BASELINE),
     Migration(2, "reconcile pre-migration drift", _V2_RECONCILE),
@@ -279,6 +293,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(4, "factions.spocks_resource_id for Spock's Club imports", _V4_SPOCKS_RESOURCE_ID),
     Migration(5, "one status entry per faction per instant", _v5_unique_reading),
     Migration(6, "faction_selected_snippets.uploaded", _V6_SNIPPET_UPLOADED),
+    Migration(7, "faction_selected_snippets.faction_id renamed to faction_code", _V7_SNIPPET_FACTION_CODE),
 )
 
 HEAD_VERSION = MIGRATIONS[-1].version
