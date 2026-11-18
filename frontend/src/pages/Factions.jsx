@@ -368,10 +368,12 @@ const Factions = () => {
     const handleSubmit = async (e) => {
         e.preventDefault();
         try {
-            if (formData.id) {
-                await api.put(`/api/factions/${formData.id}`, formData);
+            // ai: claude-opus-5-5 | 2026-11-18 — id names the faction in the URL; the API rejects unknown body keys
+            const {id, ...body} = formData;
+            if (id) {
+                await api.put(`/api/factions/${id}`, body);
             } else {
-                await api.post('/api/factions', formData);
+                await api.post('/api/factions', body);
             }
             setShowForm(false);
             setFormData(EMPTY_FORM_DATA);

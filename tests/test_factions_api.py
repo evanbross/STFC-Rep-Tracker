@@ -215,6 +215,17 @@ def test_invalid_body_lists_fields_without_echoing_input(client: FlaskClient) ->
     assert "secret-ish" not in response.get_data(as_text=True)
 
 
+# ai: claude-opus-5-5 | 2026-11-18
+def test_unknown_body_key_is_400_and_changes_nothing(client: FlaskClient) -> None:
+    create_faction(client, "FED", "Federation")
+
+    response = client.put("/api/factions/FED", json={"code": "FED", "name": "Renamed", "colour": "#fff"})
+
+    assert response.status_code == 400
+    assert [f["field"] for f in response.get_json()["fields"]] == ["colour"]
+    assert client.get("/api/factions/").get_json()[0]["name"] == "Federation"
+
+
 def test_unexpected_error_is_500_without_details(
     client: FlaskClient, db: Database, monkeypatch: pytest.MonkeyPatch
 ) -> None:

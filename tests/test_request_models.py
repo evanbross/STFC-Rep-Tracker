@@ -14,6 +14,7 @@ from pydantic import ValidationError
 from app.database.target_types_dao import TARGET_PREFERENCES
 from app.views.request_models import (
     AttackIn,
+    RequestModel,
     RefreshTargetsIn,
     StatusEntryIn,
     TargetPreferenceIn,
@@ -79,3 +80,14 @@ def test_territory_time_rejects(event_time: str) -> None:
 def test_preference_values_come_from_the_dao() -> None:
     for preference in TARGET_PREFERENCES:
         assert TargetPreferenceIn.model_validate({"preference": preference}).preference == preference
+
+
+# ai: claude-opus-5-5 | 2026-11-18
+@pytest.mark.parametrize("model", RequestModel.__subclasses__(), ids=lambda m: m.__name__)
+def test_every_request_model_rejects_unknown_keys(model: type[RequestModel]) -> None:
+    with pytest.raises(ValidationError) as caught:
+        model.model_validate({"not_a_field": 1})
+
+    assert {"type": "extra_forbidden", "loc": ("not_a_field",)} in [
+        {"type": err["type"], "loc": err["loc"]} for err in caught.value.errors()
+    ]

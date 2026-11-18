@@ -59,10 +59,15 @@ NonBlankStr = Annotated[str, Field(min_length=1)]
 OptionalStr = Annotated[str | None, BeforeValidator(_blank_to_none)]  # ai: claude-opus-5-5 | 2026-11-06
 
 
+# ai: claude-opus-5-5 | 2026-11-18
 class RequestModel(BaseModel):
-    """Shared settings: trim string whitespace, ignore unknown keys."""
+    """Shared settings: trim string whitespace, reject unknown keys.
 
-    model_config = ConfigDict(str_strip_whitespace=True, extra="ignore")
+    A misspelled or obsolete field is a 400 naming it, rather than a success
+    that quietly dropped what the client meant to change.
+    """
+
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
 
 
 # ai: claude-opus-5-5 | 2026-11-06

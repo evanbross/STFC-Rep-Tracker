@@ -58,7 +58,8 @@ const RepTable = ({ title, tableName, data, onSaved }) => {
           const orig = original[idx];
           return Object.keys(row).some(k => String(row[k]) !== String(orig[k]));
         })
-        .map(row => api.put(`/api/reputations/by-table/${tableName}/${row.id}`, row));
+        // ai: claude-opus-5-5 | 2026-11-18 — id is in the URL; the API rejects unknown body keys
+        .map(({id, ...fields}) => api.put(`/api/reputations/by-table/${tableName}/${id}`, fields));
 
       await Promise.all(promises);
       setEditing(false);

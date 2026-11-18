@@ -60,6 +60,19 @@ def test_update_row_round_trip(fkr_client: FlaskClient) -> None:
         fkr_client.put(url, json={"high_limit": neutral["high_limit"]})
 
 
+# ai: claude-opus-5-5 | 2026-11-18
+def test_update_row_rejects_unknown_keys(fkr_client: FlaskClient) -> None:
+    """The Reputations page sends a tier row without its id, which is in the URL."""
+    neutral = next(
+        t for t in fkr_client.get(f"/api/reputations/by-table/{FKR_TABLE}").get_json() if t["name"] == "Neutral"
+    )
+
+    response = fkr_client.put(f"/api/reputations/by-table/{FKR_TABLE}/{neutral['id']}", json=neutral)
+
+    assert response.status_code == 400
+    assert [f["field"] for f in response.get_json()["fields"]] == ["id"]
+
+
 # ai: claude-opus-5-5 | 2026-11-06
 def test_update_reads_columns_of_the_active_schema(fkr_client: FlaskClient, db: Database) -> None:
     """The PUT handler must inspect the table it writes, not a same-named one in 'public'.
