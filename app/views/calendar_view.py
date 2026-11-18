@@ -9,6 +9,7 @@
 import logging
 
 from flask import Blueprint, current_app, jsonify
+from flask.typing import ResponseReturnValue
 
 from app.google_calendar import check_territory_systems, is_authenticated, run_auth_flow
 
@@ -18,7 +19,7 @@ calendar_bp = Blueprint("calendar", __name__)
 
 
 @calendar_bp.route("/status", methods=["GET"])
-def google_calendar_status():
+def google_calendar_status() -> ResponseReturnValue:
     """
     Return whether a valid Google Calendar token is present.
     ---
@@ -36,7 +37,7 @@ def google_calendar_status():
 
 
 @calendar_bp.route("/auth", methods=["POST"])
-def google_calendar_auth():
+def google_calendar_auth() -> ResponseReturnValue:
     """
     Run the Google Calendar OAuth2 browser consent flow and save the token.
     Only needs to be called once (or after the token expires and cannot be refreshed).

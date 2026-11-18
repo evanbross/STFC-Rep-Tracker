@@ -13,6 +13,7 @@ import threading
 from datetime import datetime, UTC
 
 from flask import Blueprint, jsonify, request
+from flask.typing import ResponseReturnValue
 from werkzeug.exceptions import RequestEntityTooLarge
 
 from app.app_config import capture_cfg
@@ -38,7 +39,7 @@ _SENSITIVE_HEADERS = {"authorization", "cookie", "x-api-key", "x-auth-token", "s
 
 
 @community_mod_bp.route("/", methods=["POST"])
-def receive_payload():
+def receive_payload() -> ResponseReturnValue:
     """
     Receive and capture a JSON payload from the STFC community mod.
     ---

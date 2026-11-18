@@ -17,6 +17,7 @@ import logging
 from datetime import UTC, datetime
 
 from flask import Blueprint, current_app, jsonify, request
+from flask.typing import ResponseReturnValue
 
 from app.spocks_club_parsing import (
     SpocksClubFormatError,
@@ -46,7 +47,7 @@ def _export_time(filename: str | None, last_modified_ms: int | None) -> tuple[da
 
 
 @spocks_club_bp.route("/preview", methods=["POST"])
-def preview_import():
+def preview_import() -> ResponseReturnValue:
     """
     Read a Spock's Club export and show the reputation it holds for each faction
     ---
@@ -116,7 +117,7 @@ def preview_import():
 
 
 @spocks_club_bp.route("/import", methods=["POST"])
-def import_readings():
+def import_readings() -> ResponseReturnValue:
     """
     Save previewed Spock's Club readings as status entries
     ---

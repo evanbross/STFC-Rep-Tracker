@@ -9,7 +9,9 @@
 import logging
 
 from flask import Blueprint, jsonify, current_app
+from flask.typing import ResponseReturnValue
 
+from app.database.database import Database
 from app.views.request_models import TargetPreferenceIn
 from app.views.snippet_files import send_snippet_image
 from app.views.validation import parse_body
@@ -19,12 +21,12 @@ logger = logging.getLogger(__name__)
 target_types_bp = Blueprint("target_types", __name__)
 
 
-def _get_db():
+def _get_db() -> Database:
     return current_app.config["DATABASE"]
 
 
 @target_types_bp.route("/system/<path:system_name>", methods=["GET"])
-def get_target_types(system_name):
+def get_target_types(system_name: str) -> ResponseReturnValue:
     """
     List every hostile ship type seen in a system, with its target/avoid preference
     ---
@@ -43,7 +45,7 @@ def get_target_types(system_name):
 
 
 @target_types_bp.route("/<int:type_id>", methods=["PUT"])
-def update_target_type(type_id):
+def update_target_type(type_id: int) -> ResponseReturnValue:
     """
     Set a target type's target/avoid/unknown preference, and optionally rename it
     ---
@@ -82,7 +84,7 @@ def update_target_type(type_id):
 
 
 @target_types_bp.route("/sample-image/<path:filename>", methods=["GET"])
-def get_sample_image(filename):
+def get_sample_image(filename: str) -> ResponseReturnValue:
     """
     Serve a saved example-target crop image
     ---

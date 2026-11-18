@@ -30,14 +30,14 @@ MAX_SNIPPET_BYTES = 5 * 1024 * 1024
 
 
 @factions_bp.route("/<string:faction_code>/selected-snippets", methods=["GET"])
-def get_selected_snippets(faction_code):
+def get_selected_snippets(faction_code: str) -> ResponseReturnValue:
     db = current_app.config["DATABASE"]
     snippets = db.selected_snippets.get_snippets_for_faction(faction_code)
     return jsonify(snippets)
 
 
 @factions_bp.route("/<string:faction_code>/selected-snippets", methods=["POST"])
-def add_selected_snippet(faction_code):
+def add_selected_snippet(faction_code: str) -> ResponseReturnValue:
     """Upload an image file and register it as a selected snippet for a faction."""
     db = current_app.config["DATABASE"]
     if "file" not in request.files:
@@ -115,19 +115,19 @@ def delete_selected_snippet(snippet_id: int) -> ResponseReturnValue:
 
 
 @factions_bp.route("/snippet-image/<path:filename>", methods=["GET"])
-def get_snippet_image(filename):
+def get_snippet_image(filename: str) -> ResponseReturnValue:
     return send_snippet_image(filename)  # ai: claude-opus-5-5 | 2026-11-06
 
 
 @factions_bp.route("/", methods=["GET"])
-def get_factions():
+def get_factions() -> ResponseReturnValue:
     db = current_app.config["DATABASE"]
     result = db.factions.get_all_factions()
     return jsonify(result)
 
 
 @factions_bp.route("/", methods=["POST"])
-def add_faction():
+def add_faction() -> ResponseReturnValue:
     """
     Add a new faction
     ---
@@ -192,7 +192,7 @@ def add_faction():
 
 
 @factions_bp.route("/<string:current_code>", methods=["PUT"])
-def update_faction(current_code):
+def update_faction(current_code: str) -> ResponseReturnValue:
     """
     Update an existing faction
     ---
@@ -263,7 +263,7 @@ def update_faction(current_code):
 
 
 @factions_bp.route("/summary", methods=["GET"])
-def get_faction_summary():
+def get_faction_summary() -> ResponseReturnValue:
     """
     Get summary data for all factions
     ---

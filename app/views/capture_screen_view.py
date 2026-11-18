@@ -14,6 +14,7 @@ from typing import Any, TypeVar
 from flask import Blueprint, jsonify, current_app, request
 from flask.typing import ResponseReturnValue
 
+from app.database.database import Database
 from app.domain_errors import DomainError
 from app.screen_processing.capture_errors import CaptureError
 from app.screen_processing.process_away_teams import AwayTeamOrchestrator
@@ -36,7 +37,7 @@ capture_bp = Blueprint("capture", __name__)
 OrchestratorT = TypeVar("OrchestratorT")  # the orchestrator type a route builds and then calls
 
 
-def _get_db():
+def _get_db() -> Database:
     return current_app.config["DATABASE"]
 
 
@@ -86,7 +87,7 @@ def _run_capture(
 
 
 @capture_bp.route("/reputations", methods=["POST"])
-def capture_reputations():
+def capture_reputations() -> ResponseReturnValue:
     """
     Navigate to the Faction Store and capture reputation points for all factions
     ---
@@ -109,7 +110,7 @@ def capture_reputations():
 
 
 @capture_bp.route("/reputations/<string:faction_code>", methods=["POST"])
-def capture_single_faction_reputation(faction_code):
+def capture_single_faction_reputation(faction_code: str) -> ResponseReturnValue:
     """
     Navigate to the Faction Store and capture reputation points for a single faction
     ---
@@ -137,7 +138,7 @@ def capture_single_faction_reputation(faction_code):
 
 
 @capture_bp.route("/identify-faction", methods=["POST"])
-def identify_faction():
+def identify_faction() -> ResponseReturnValue:
     """
     Capture the current Faction Store screen and identify which faction is highlighted
     ---
@@ -161,7 +162,7 @@ def identify_faction():
 
 
 @capture_bp.route("/away-team-collect", methods=["POST"])
-def capture_away_team_collect():
+def capture_away_team_collect() -> ResponseReturnValue:
     """
     Navigate to the Away Team screen and collect completed missions only (no new starts)
     ---
@@ -184,7 +185,7 @@ def capture_away_team_collect():
 
 
 @capture_bp.route("/away-team", methods=["POST"])
-def capture_away_team():
+def capture_away_team() -> ResponseReturnValue:
     """
     Navigate to the Away Team screen and capture mission results
     ---
@@ -207,7 +208,7 @@ def capture_away_team():
 
 
 @capture_bp.route("/gifts", methods=["POST"])
-def capture_gifts():
+def capture_gifts() -> ResponseReturnValue:
     """
     Navigate to the Gifts screen and capture gift data
     ---
@@ -230,7 +231,7 @@ def capture_gifts():
 
 
 @capture_bp.route("/territory-capture", methods=["POST"])
-def navigate_territory_capture():
+def navigate_territory_capture() -> ResponseReturnValue:
     """
     Navigate to home screen, click Alliance, then click Territory
     ---
@@ -253,7 +254,7 @@ def navigate_territory_capture():
 
 
 @capture_bp.route("/event-rewards", methods=["POST"])
-def capture_event_rewards():
+def capture_event_rewards() -> ResponseReturnValue:
     """
     Navigate to the Event Rewards screen and capture reward data
     ---
@@ -272,7 +273,7 @@ def capture_event_rewards():
 
 
 @capture_bp.route("/system-targets/scan", methods=["POST"])
-def scan_system_targets():
+def scan_system_targets() -> ResponseReturnValue:
     """
     Scan the current system screen for attackable targets, ranked best-first
     ---
@@ -295,7 +296,7 @@ def scan_system_targets():
 
 
 @capture_bp.route("/system-targets/refresh", methods=["POST"])
-def refresh_system_targets():
+def refresh_system_targets() -> ResponseReturnValue:
     """
     Cheaply re-rank the current target list without re-clicking any target
     ---
@@ -337,7 +338,7 @@ def refresh_system_targets():
 
 
 @capture_bp.route("/system-targets/attack", methods=["POST"])
-def attack_system_target():
+def attack_system_target() -> ResponseReturnValue:
     """
     Re-select a previously scanned target and click Attack
     ---
@@ -385,7 +386,7 @@ def attack_system_target():
 
 # ai: claude-sonnet-5 | 2026-09-17
 @capture_bp.route("/hostile-template/capture", methods=["POST"])
-def capture_hostile_template_screen():
+def capture_hostile_template_screen() -> ResponseReturnValue:
     """
     Activate the game window and capture a fresh screenshot for drawing a combat template crop box
     ---
@@ -409,7 +410,7 @@ def capture_hostile_template_screen():
 
 # ai: claude-sonnet-5 | 2026-09-18
 @capture_bp.route("/hostile-template/save", methods=["POST"])
-def save_hostile_template():
+def save_hostile_template() -> ResponseReturnValue:
     """
     Crop the last captured screenshot and register it as a new combat template (hostile ship icon, or skull/diamond label glyph)
     ---

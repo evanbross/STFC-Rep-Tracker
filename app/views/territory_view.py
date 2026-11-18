@@ -9,6 +9,7 @@
 import logging
 
 from flask import Blueprint, current_app, jsonify
+from flask.typing import ResponseReturnValue
 
 from app import google_calendar
 from app.views.request_models import CalendarEventIn, TerritorySystemIn
@@ -23,13 +24,13 @@ territory_bp = Blueprint("territory", __name__)
 # GET/POST/PUT return database rows straight away; the UI asks for calendar
 # status separately through POST /systems/check-calendar (N-P5).
 @territory_bp.get("/systems")
-def get_systems():
+def get_systems() -> ResponseReturnValue:
     return jsonify(current_app.config["DATABASE"].territory_systems.get_all())
 
 
 # ai: claude-opus-5-5 | 2026-11-06
 @territory_bp.post("/systems")
-def upsert_system():
+def upsert_system() -> ResponseReturnValue:
     body = parse_body(TerritorySystemIn)
     system = current_app.config["DATABASE"].territory_systems.upsert(body.name, body.day_of_week, body.event_time)
     return jsonify(system), 200
@@ -37,7 +38,7 @@ def upsert_system():
 
 # ai: claude-opus-5-5 | 2026-11-06
 @territory_bp.put("/systems/<int:system_id>")
-def update_system(system_id: int):
+def update_system(system_id: int) -> ResponseReturnValue:
     body = parse_body(TerritorySystemIn)
     system = current_app.config["DATABASE"].territory_systems.update(
         system_id, body.name, body.day_of_week, body.event_time
@@ -48,7 +49,7 @@ def update_system(system_id: int):
 
 
 @territory_bp.post("/systems/check-calendar")
-def check_calendar():
+def check_calendar() -> ResponseReturnValue:
     """Return all territory systems with calendar_event set, when Google Calendar is connected.
 
     check_territory_systems reports calendar failures per system, so nothing is caught here.
@@ -60,7 +61,7 @@ def check_calendar():
 
 
 @territory_bp.get("/calendars")
-def list_calendars():
+def list_calendars() -> ResponseReturnValue:
     """Return the authenticated user's Google Calendar list."""
     try:
         return jsonify(google_calendar.list_calendars())  # ai: claude-opus-5-5 | 2026-11-06
@@ -70,7 +71,7 @@ def list_calendars():
 
 
 @territory_bp.post("/systems/<int:system_id>/calendar-event")
-def create_calendar_event(system_id: int):
+def create_calendar_event(system_id: int) -> ResponseReturnValue:
     """Create a Google Calendar event for the next occurrence of this territory system.
 
     Accepts an optional JSON body with a 'calendar_id' key (defaults to 'primary').
@@ -91,7 +92,7 @@ def create_calendar_event(system_id: int):
 
 
 @territory_bp.delete("/systems/<int:system_id>")
-def delete_system(system_id: int):
+def delete_system(system_id: int) -> ResponseReturnValue:
     db = current_app.config["DATABASE"]
     if not db.territory_systems.delete(system_id):
         return jsonify({"error": "not found"}), 404

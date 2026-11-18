@@ -11,6 +11,7 @@ from datetime import UTC, datetime, timedelta
 
 from flask import Blueprint, jsonify, current_app
 from flask.views import MethodView
+from flask.typing import ResponseReturnValue
 
 from app.views.request_models import StatusEntriesQuery, StatusEntryIn
 from app.views.validation import parse_body, parse_query
@@ -23,7 +24,7 @@ status_entries_bp = Blueprint("status_entries", __name__)
 class StatusEntriesView(MethodView):
     """Handles GET and POST requests for status entries."""
 
-    def get(self):
+    def get(self) -> ResponseReturnValue:
         """
         Get a flat list of all status entries, with optional filtering, sorting, and paging.
         Also served at /all.
@@ -73,7 +74,7 @@ class StatusEntriesView(MethodView):
             return jsonify({"error": str(e)}), 400
         return jsonify(entries)
 
-    def post(self):
+    def post(self) -> ResponseReturnValue:
         """
         Add a new status entry for a faction
         ---
@@ -113,7 +114,7 @@ AllStatusEntriesView = StatusEntriesView
 class FactionEntriesView(MethodView):
     """Handles GET requests for status entries scoped to a single faction."""
 
-    def get(self, faction_name):
+    def get(self, faction_name: str) -> ResponseReturnValue:
         """
         Get all status entries for a specific faction
         ---
