@@ -22,10 +22,23 @@ def test_create_and_list(client: FlaskClient) -> None:
     created = create_faction(client, "FED", "Federation")
 
     assert created["code"] == "FED"
-    assert created["id"] == "FED"
     listed = client.get("/api/factions/").get_json()
     assert [f["code"] for f in listed] == ["FED"]
     assert listed[0]["selected_snippets"] == []
+
+
+# ai: claude-opus-5-5 | 2026-11-18
+def test_factions_are_identified_only_by_code(client: FlaskClient) -> None:
+    """No `id` or `faction_type` copies of the code: the UI keys and routes by `code`."""
+    created = create_faction(client, "FED", "Federation")
+    updated = client.put("/api/factions/FED", json={"name": "Federation", "code": "FED"}).get_json()
+    listed = client.get("/api/factions/").get_json()
+    summary = client.get("/api/factions/summary").get_json()
+
+    for faction in (created, updated, listed[0], summary[0]):
+        assert faction["code"] == "FED"
+        assert "id" not in faction
+        assert "faction_type" not in faction
 
 
 def test_create_requires_name_and_code(client: FlaskClient) -> None:

@@ -192,8 +192,8 @@ Key endpoints:
 
 - `GET  /api/factions/summary` — faction list with current value, delta, change rate, rep level, minutes to goal (
   sortable)
-- `GET  /api/factions/<id>/selected-snippets` — snippet images for a faction
-- `POST /api/factions/<id>/selected-snippets` — upload a new snippet image (multipart: `file`, `filename`,
+- `GET  /api/factions/<code>/selected-snippets` — snippet images for a faction
+- `POST /api/factions/<code>/selected-snippets` — upload a new snippet image (multipart: `file`, `filename`,
   `snippet_type`)
 - `DELETE /api/factions/selected-snippets/<snippet_id>`
 - `GET  /api/factions/snippet-image/<filename>` — serve snippet image from disk

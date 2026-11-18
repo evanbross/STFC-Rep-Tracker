@@ -93,7 +93,9 @@ def add_selected_snippet(faction_code: str) -> ResponseReturnValue:
         if not saved:
             os.remove(dest)
 
-    return jsonify({"id": new_id, "faction_id": faction_code, "filename": filename, "snippet_type": snippet_type}), 201
+    return jsonify({  # ai: claude-opus-5-5 | 2026-11-18 — faction_code, not faction_id: it holds the code
+        "id": new_id, "faction_code": faction_code, "filename": filename, "snippet_type": snippet_type
+    }), 201
 
 
 # ai: claude-opus-5-5 | 2026-11-18

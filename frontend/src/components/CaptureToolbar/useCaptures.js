@@ -42,7 +42,7 @@ const describeResult = (screen, data) => {
 };
 
 /**
- * Returns {isCapturing, capturingFactionId, anyCaptureRunning, captureScreen, captureFaction}.
+ * Returns {isCapturing, capturingFactionCode, anyCaptureRunning, captureScreen, captureFaction}.
  *
  * onSaved() runs after any capture that stored reputation values, so the
  * cards and chart can reload. anyCaptureRunning also covers captures started
@@ -50,9 +50,9 @@ const describeResult = (screen, data) => {
  */
 const useCaptures = ({onSaved}) => {
     const [isCapturing, setIsCapturing] = useState(false);
-    const [capturingFactionId, setCapturingFactionId] = useState(null);
+    const [capturingFactionCode, setCapturingFactionCode] = useState(null);
     const captureBusy = useCaptureBusy();
-    const anyCaptureRunning = isCapturing || capturingFactionId !== null || captureBusy;
+    const anyCaptureRunning = isCapturing || capturingFactionCode !== null || captureBusy;
 
     const captureScreen = async (screen) => {
         const url = CAPTURE_URLS[screen];
@@ -71,9 +71,9 @@ const useCaptures = ({onSaved}) => {
     };
 
     const captureFaction = async (faction) => {
-        setCapturingFactionId(faction.id);
+        setCapturingFactionCode(faction.code); // ai: claude-opus-5-5 | 2026-11-18
         try {
-            const response = await api.post(`/api/capture-screen/reputations/${faction.id}`);
+            const response = await api.post(`/api/capture-screen/reputations/${faction.code}`);
             if (savedAny(response.data)) {
                 await onSaved();
             } else if (Array.isArray(response.data.saved)) {
@@ -85,11 +85,11 @@ const useCaptures = ({onSaved}) => {
             console.error('Error capturing faction:', error);
             window.alert(`Error: ${errorMessage(error, `Failed to capture ${faction.name}.`)}`);
         } finally {
-            setCapturingFactionId(null);
+            setCapturingFactionCode(null);
         }
     };
 
-    return {isCapturing, capturingFactionId, anyCaptureRunning, captureScreen, captureFaction};
+    return {isCapturing, capturingFactionCode, anyCaptureRunning, captureScreen, captureFaction};
 };
 
 export default useCaptures;

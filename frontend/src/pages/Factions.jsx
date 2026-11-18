@@ -55,15 +55,15 @@ const SnippetsModal = ({ faction, onClose }) => {
     const fileInputRef = useRef();
     const pasteZoneRef = useRef();
 
-    const factionCode = (faction.code || faction.name).toUpperCase();
-    const factionId = faction.id;
+    const filenameCode = (faction.code || faction.name).toUpperCase();
+    const code = faction.code; // ai: claude-opus-5-5 | 2026-11-18 — the API names factions by code
 
     // ai: claude-opus-5-5 | 2026-11-18 — stable per faction, so the effect below can list it
     const loadSnippets = useCallback(() => {
-        api.get(`/api/factions/${factionId}/selected-snippets`)
+        api.get(`/api/factions/${encodeURIComponent(code)}/selected-snippets`)
             .then(r => setSnippets(r.data))
             .catch(err => console.error('Error loading snippets:', err));
-    }, [factionId]);
+    }, [code]);
 
     useEffect(() => { loadSnippets(); }, [loadSnippets]);
 
@@ -88,11 +88,11 @@ const SnippetsModal = ({ faction, onClose }) => {
                 if (prev) URL.revokeObjectURL(prev.previewUrl);
                 return { file, previewUrl: URL.createObjectURL(file) };
             });
-            setNewFilename(nextSnippetFilename(snippets, factionCode, newType));
+            setNewFilename(nextSnippetFilename(snippets, filenameCode, newType));
         };
         window.addEventListener('paste', handlePaste);
         return () => window.removeEventListener('paste', handlePaste);
-    }, [pasteActive, newType, snippets, factionCode]);
+    }, [pasteActive, newType, snippets, filenameCode]);
 
     const handleFileSelect = (e) => {
         const file = e.target.files[0];
@@ -115,7 +115,7 @@ const SnippetsModal = ({ faction, onClose }) => {
             const file = new File([blob], 'pasted', { type });
             clearPending();
             setPendingFile({ file, previewUrl: URL.createObjectURL(blob) });
-            setNewFilename(nextSnippetFilename(snippets, factionCode, newType, ext));
+            setNewFilename(nextSnippetFilename(snippets, filenameCode, newType, ext));
         } catch {
             window.alert('Could not read clipboard. Make sure an image is copied and clipboard access is allowed.');
         }
@@ -136,7 +136,7 @@ const SnippetsModal = ({ faction, onClose }) => {
             fd.append('file', pendingFile.file);
             fd.append('filename', newFilename.trim());
             fd.append('snippet_type', newType);
-            await api.post(`/api/factions/${faction.id}/selected-snippets`, fd);
+            await api.post(`/api/factions/${encodeURIComponent(code)}/selected-snippets`, fd);
             clearPending();
             setPasteActive(false);
             loadSnippets();
@@ -319,7 +319,7 @@ const SnippetsModal = ({ faction, onClose }) => {
 
 // ai: claude-sonnet-5 | 2026-07-10
 const EMPTY_FORM_DATA = {
-    id: null, name: '', code: '', color: '',
+    name: '', code: '', color: '', // ai: claude-opus-5-5 | 2026-11-18 — the edited faction is editingCode, not a body field
     reputation_table_name: '', on_chart: 0, display_order: '',
     reputation_dao_name: '', snippet_selected_button: '', snippet_unselected: '',
     spocks_resource_id: '' // ai: claude-opus-5-5 | 2026-11-17
@@ -330,6 +330,10 @@ const Factions = () => {
     const [showForm, setShowForm] = useState(false);
     const [snippetFaction, setSnippetFaction] = useState(null);
     const [formData, setFormData] = useState(EMPTY_FORM_DATA);
+    // ai: claude-opus-5-5 | 2026-11-18
+    // The code of the faction being edited (null when adding). Kept apart from
+    // formData because the form can change the code: the PUT names the old one.
+    const [editingCode, setEditingCode] = useState(null);
     const [reputationTypes, setReputationTypes] = useState([]); // ai: claude-opus-5-5 | 2026-11-06
 
     // ai: claude-opus-5-5 | 2026-11-18 — a promise chain, so the mount effect sets state only in a callback
@@ -348,9 +352,9 @@ const Factions = () => {
     }, []);
 
     const handleEdit = (faction) => {
+        setEditingCode(faction.code); // ai: claude-opus-5-5 | 2026-11-18
         // ai: claude-sonnet-5 | 2026-07-10
         setFormData({
-            id: faction.id,
             name: faction.name,
             code: faction.code || '',
             color: faction.color || '',
@@ -365,18 +369,25 @@ const Factions = () => {
         setShowForm(true);
     };
 
+    // ai: claude-opus-5-5 | 2026-11-18
+    // Closing always clears the form, so Add after a cancelled Edit starts empty
+    // instead of reopening (and saving over) the faction that was being edited.
+    const closeForm = () => {
+        setShowForm(false);
+        setEditingCode(null);
+        setFormData(EMPTY_FORM_DATA);
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         try {
-            // ai: claude-opus-5-5 | 2026-11-18 — id names the faction in the URL; the API rejects unknown body keys
-            const {id, ...body} = formData;
-            if (id) {
-                await api.put(`/api/factions/${id}`, body);
+            // ai: claude-opus-5-5 | 2026-11-18
+            if (editingCode) {
+                await api.put(`/api/factions/${encodeURIComponent(editingCode)}`, formData);
             } else {
-                await api.post('/api/factions', body);
+                await api.post('/api/factions', formData);
             }
-            setShowForm(false);
-            setFormData(EMPTY_FORM_DATA);
+            closeForm();
             loadFactions();
         } catch (error) {
             console.error('Error saving faction:', error);
@@ -393,7 +404,7 @@ const Factions = () => {
                 <button onClick={() => setShowForm(true)} style={{marginBottom: '20px'}}>Add New Faction</button>
             ) : (
                 <div className="container">
-                    <h2>{formData.id ? 'Edit Faction' : 'Add New Faction'}</h2>
+                    <h2>{editingCode ? 'Edit Faction' : 'Add New Faction'}</h2>
                     <form onSubmit={handleSubmit}>
                         {/* ai: claude-opus-5-5 | 2026-11-18 — every label names its control (htmlFor/id) */}
                         <div className="form-group">
@@ -511,7 +522,7 @@ const Factions = () => {
                             />
                         </div>
                         <button type="submit">Save Faction</button>
-                        <button type="button" className="cancel" onClick={() => setShowForm(false)}>Cancel</button>
+                        <button type="button" className="cancel" onClick={closeForm}>Cancel</button>{/* ai: claude-opus-5-5 | 2026-11-18 */}
                     </form>
                 </div>
             )}
@@ -521,7 +532,7 @@ const Factions = () => {
                     <thead>
                     <tr>
                         <th>Name</th>
-                        <th>Type</th>
+                        <th>Code</th>{/* ai: claude-opus-5-5 | 2026-11-18 — the badge always showed the code */}
                         <th>Rep Table</th>
                         <th className="text-right">Order</th>
                         <th className="text-right">On Chart</th>
@@ -530,7 +541,7 @@ const Factions = () => {
                     </thead>
                     <tbody>
                     {factions.map(f => (
-                        <tr key={f.id}>
+                        <tr key={f.code}>
                             <td>{f.name}</td>
                             <td>
                   <span
@@ -541,7 +552,7 @@ const Factions = () => {
                           borderColor: 'rgba(0,0,0,0.1)'
                       }}
                   >
-                    {f.faction_type}
+                    {f.code}
                   </span>
                             </td>
                             <td>{f.reputation_table_name || '-'}</td>

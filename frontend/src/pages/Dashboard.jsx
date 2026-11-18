@@ -56,7 +56,7 @@ const Dashboard = () => {
                     factions={factions}
                     onSubmitEntry={submitEntry}
                     onCaptureFaction={captures.captureFaction}
-                    capturingFactionId={captures.capturingFactionId}
+                    capturingFactionCode={captures.capturingFactionCode}
                     captureDisabled={captures.anyCaptureRunning}
                 />
 

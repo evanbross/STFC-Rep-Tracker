@@ -13,9 +13,9 @@ import {fireEvent, render, screen, waitFor} from '@testing-library/react';
 import Factions from './Factions';
 import {fakeApi, jsonBody} from '../test/fakeApi';
 
-// GET /api/factions rows. `id` is the backend's alias for the code (factions_dao._row_to_dict).
+// A GET /api/factions row (factions_dao._row_to_dict). Factions are identified by `code`.
 const FEDERATION = {
-    id: 'FED', code: 'FED', name: 'Federation', on_chart: 1, color: '#0080ff',
+    code: 'FED', name: 'Federation', on_chart: 1, color: '#0080ff',
     reputation_table_name: 'fkr_reputations', display_order: 1, reputation_dao_name: 'FKRReputationsDAO',
     snippet_selected_button: 'Selected-Button-Fed.jpg', snippet_unselected: 'Unselected-Button-Fed.jpg',
     spocks_resource_id: 970475396,
@@ -84,6 +84,23 @@ describe('Factions page', () => {
         expect(save.url).toBe('/api/factions');
         expect(jsonBody(save)).toMatchObject({name: 'Romulan', code: 'ROM', reputation_table_name: ''});
         expect(jsonBody(save)).not.toHaveProperty('id');
+    });
+
+    it('starts Add empty after a cancelled Edit, and saves it as a new faction', async () => {
+        const requests = fakeBackend({status: 201, data: {}});
+        render(<Factions/>);
+        fireEvent.click(await screen.findByRole('button', {name: 'Edit'}));
+        fireEvent.click(screen.getByRole('button', {name: 'Cancel'}));
+
+        fireEvent.click(screen.getByRole('button', {name: 'Add New Faction'}));
+
+        expect(screen.getByRole('heading', {name: 'Add New Faction'})).toBeTruthy();
+        expect(screen.getByLabelText('Faction Name:').value).toBe('');
+        change('Faction Name:', 'Romulan');
+        change('Code:', 'ROM');
+        fireEvent.click(screen.getByRole('button', {name: 'Save Faction'}));
+        await waitFor(() => expect(requests.some(r => r.method === 'post')).toBe(true));
+        expect(requests.some(r => r.method === 'put')).toBe(false);
     });
 
     it("keeps the form open and shows the backend's reason when saving fails", async () => {

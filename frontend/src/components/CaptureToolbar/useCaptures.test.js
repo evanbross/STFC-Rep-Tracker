@@ -12,7 +12,7 @@ import {act, renderHook} from '@testing-library/react';
 import useCaptures from './useCaptures';
 import {deferred, fakeApi} from '../../test/fakeApi';
 
-const FED = {id: 3, name: 'Federation'};
+const FED = {code: 'FED', name: 'Federation'};
 
 let alertSpy;
 beforeEach(() => {
@@ -83,25 +83,26 @@ describe('captureFaction', () => {
         await act(async () => {
             done = result.current.captureFaction(FED);
         });
-        expect(result.current.capturingFactionId).toBe(FED.id);
+        expect(result.current.capturingFactionCode).toBe(FED.code);
         expect(result.current.anyCaptureRunning).toBe(true);
 
         await act(async () => {
             reply.resolve({status: 200, data: {saved: [{faction: 'Federation', points: 5}], results: []}});
             await done;
         });
-        expect(result.current.capturingFactionId).toBe(null);
+        expect(result.current.capturingFactionCode).toBe(null);
         expect(result.current.anyCaptureRunning).toBe(false);
         expect(onSaved).toHaveBeenCalledOnce();
         expect(alertSpy).not.toHaveBeenCalled();
     });
 
     it('says so when the faction could not be read', async () => {
-        fakeApi(() => ({status: 200, data: {saved: [], results: []}}));
+        const requests = fakeApi(() => ({status: 200, data: {saved: [], results: []}}));
         const {result} = renderHook(() => useCaptures({onSaved: vi.fn()}));
 
         await act(() => result.current.captureFaction(FED));
 
+        expect(requests[0].url).toBe('/api/capture-screen/reputations/FED');
         expect(lastAlert()).toBe('Federation: no reputation value could be read.');
     });
 });

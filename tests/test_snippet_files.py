@@ -111,7 +111,7 @@ def test_upload_saves_to_the_user_folder_and_registers_it(
 
     assert response.status_code == 201
     body = response.get_json()
-    assert body == {"id": body["id"], "faction_id": "FED", "filename": "Selected-button-FED-1.png",
+    assert body == {"id": body["id"], "faction_code": "FED", "filename": "Selected-button-FED-1.png",
                     "snippet_type": "button"}
     assert (user / "Selected-button-FED-1.png").read_bytes() == _PNG
     assert not (bundled / "Selected-button-FED-1.png").exists()

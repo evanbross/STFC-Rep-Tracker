@@ -50,7 +50,6 @@ class FactionsDAO:
         """
         code = row[0]
         return {
-            "id": code,   # backward-compat alias — value is the code string
             "code": code,
             "name": row[1],
             "on_chart": row[2],
@@ -61,7 +60,6 @@ class FactionsDAO:
             "snippet_selected_button": row[7],
             "snippet_unselected": row[8],
             "spocks_resource_id": row[9],  # ai: claude-opus-5-5 | 2026-11-17
-            "faction_type": code,
             "selected_snippets": selected_snippets,
         }
 
@@ -71,7 +69,6 @@ class FactionsDAO:
                         snippet_unselected, spocks_resource_id) -> dict[str, Any]:
         """Build a faction response dict from individual field values."""
         return {
-            "id": code,   # backward-compat alias
             "code": code,
             "name": name,
             "color": color,
@@ -386,10 +383,8 @@ class FactionsDAO:
         for (code, name, on_chart, color, reputation_table_name, display_order,
              reputation_dao_name, value, timestamp, entry_count) in rows:
             faction = factions.setdefault(code, {
-                "id": code,   # backward-compat alias
                 "code": code,
                 "name": name,
-                "faction_type": code,
                 "on_chart": on_chart,
                 "display_order": display_order,
                 "reputation_table_name": reputation_table_name,

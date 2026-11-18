@@ -16,10 +16,10 @@ import {formatMinutes, formatShort} from './format';
  * factions: summary rows from useFactionSummaries.
  * onSubmitEntry(name, value): resolves true once saved; the input clears then.
  * onCaptureFaction(faction): runs a single-faction capture.
- * capturingFactionId: id of the faction being captured, or null.
+ * capturingFactionCode: code of the faction being captured, or null.
  * captureDisabled: true while any capture runs.
  */
-const FactionCards = ({factions, onSubmitEntry, onCaptureFaction, capturingFactionId, captureDisabled}) => {
+const FactionCards = ({factions, onSubmitEntry, onCaptureFaction, capturingFactionCode, captureDisabled}) => {
     const [selectedFaction, setSelectedFaction] = useState(null);
     const [cardsCollapsed, setCardsCollapsed] = useState(false);
 
@@ -126,7 +126,7 @@ const FactionCards = ({factions, onSubmitEntry, onCaptureFaction, capturingFacti
                                             disabled={captureDisabled}
                                             onClick={() => onCaptureFaction(faction)}
                                         >
-                                            {capturingFactionId === faction.id ? 'Capturing…' : 'Capture'}
+                                            {capturingFactionCode === faction.code ? 'Capturing…' : 'Capture'}
                                         </button>
                                     </div>
                                 </div>
