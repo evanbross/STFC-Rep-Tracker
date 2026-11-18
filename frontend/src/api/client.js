@@ -48,5 +48,8 @@ export function errorMessage(error, fallback = 'Request failed.') {
   if (!error?.response) {
     return error?.code === 'ECONNABORTED' ? SERVER_TIMEOUT : SERVER_UNREACHABLE;
   }
-  return error.response.data?.error ?? fallback;
+  // ai: claude-opus-5-5 | 2026-11-17
+  // A non-JSON reply (an HTML error page, a proxy's 502) has no message of its
+  // own; the status at least says what kind of failure it was.
+  return error.response.data?.error ?? `${fallback} (HTTP ${error.response.status})`;
 }

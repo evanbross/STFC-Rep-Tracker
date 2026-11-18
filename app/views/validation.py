@@ -79,6 +79,26 @@ def parse_form(model: type[ModelT]) -> ModelT:
         raise InvalidRequestError(_field_errors(exc)) from exc
 
 
+# ai: claude-opus-5-5 | 2026-11-17
+def _http_error(exc: HTTPException) -> ResponseReturnValue:
+    """Werkzeug's HTTP errors as {"error": ...} JSON under /api/, so the UI can show why.
+
+    Outside /api/ the default HTML page is kept. A request that matched no route
+    (url_rule is None, a 404 or 405 from routing) usually means the UI is newer
+    than the running backend, so the message says to restart it.
+    """
+    if not request.path.startswith("/api/"):
+        return exc
+    if request.url_rule is None:
+        message = (
+            f"The server has no {request.method} {request.path}. "
+            "If the app was just updated, restart the backend."
+        )
+    else:
+        message = exc.description or exc.name
+    return jsonify({"error": message}), exc.code or 500
+
+
 def register_error_handlers(flask_app: Flask) -> None:
     """Map the expected exception types to JSON responses app-wide."""
 
@@ -105,6 +125,6 @@ def register_error_handlers(flask_app: Flask) -> None:
     @flask_app.errorhandler(Exception)
     def handle_unexpected(exc: Exception) -> ResponseReturnValue:
         if isinstance(exc, HTTPException):
-            return exc
+            return _http_error(exc)
         logger.exception("unhandled error in %s %s", request.method, request.path)
         return jsonify({"error": "Unexpected server error"}), 500
