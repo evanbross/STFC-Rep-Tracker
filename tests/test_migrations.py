@@ -135,6 +135,50 @@ def test_v5_allows_one_reading_per_faction_per_instant(scratch_cursor) -> None:
         scratch_cursor.execute(insert, ("FED",))
 
 
+# ai: claude-opus-5-5 | 2026-11-18
+def _v4_with_readings(cursor, *readings: tuple[str, int]) -> None:
+    """A database at v4 (no uniqueness yet) holding FED readings as (timestamp, value)."""
+    migrations.migrate(cursor, target=4)
+    cursor.execute("INSERT INTO factions (code, name) VALUES ('FED', 'Federation')")
+    for timestamp, value in readings:
+        cursor.execute(
+            "INSERT INTO status_entries (faction_code, timestamp, value) VALUES ('FED', %s, %s)",
+            (timestamp, value),
+        )
+
+
+# ai: claude-opus-5-5 | 2026-11-18
+def test_v5_drops_exact_duplicates_and_keeps_the_oldest_row(scratch_cursor) -> None:
+    _v4_with_readings(
+        scratch_cursor,
+        ("2026-01-01T13:00:00Z", 100),
+        ("2026-01-01T13:00:00Z", 100),
+        ("2026-01-01T14:00:00Z", 200),
+    )
+    scratch_cursor.execute("SELECT min(id) FROM status_entries WHERE value = 100")
+    oldest_id = scratch_cursor.fetchone()[0]
+
+    migrations.migrate(scratch_cursor)
+
+    assert migrations.current_version(scratch_cursor) == migrations.HEAD_VERSION
+    scratch_cursor.execute("SELECT id, value FROM status_entries ORDER BY timestamp")
+    rows = scratch_cursor.fetchall()
+    assert [value for _, value in rows] == [100, 200]
+    assert rows[0][0] == oldest_id
+
+
+# ai: claude-opus-5-5 | 2026-11-18
+def test_v5_stops_on_conflicting_duplicates_without_changing_anything(scratch_cursor) -> None:
+    _v4_with_readings(scratch_cursor, ("2026-01-01T13:00:00Z", 100), ("2026-01-01T13:00:00Z", 120))
+
+    with pytest.raises(RuntimeError, match=r"1 faction/time pairs.*FED at 2026-01-01T13:00:00\+00:00: \[100, 120\]"):
+        migrations.migrate(scratch_cursor)
+
+    assert migrations.current_version(scratch_cursor) == 4
+    scratch_cursor.execute("SELECT count(*) FROM status_entries")
+    assert scratch_cursor.fetchone()[0] == 2
+
+
 def test_failed_migration_leaves_no_trace(scratch_schema: str) -> None:
     def broken(cursor) -> None:
         cursor.execute("CREATE TABLE half_done (id INT)")

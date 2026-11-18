@@ -29,6 +29,7 @@ seeds them.
 import logging
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from datetime import UTC
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -203,18 +204,64 @@ _V4_SPOCKS_RESOURCE_ID = _sql(
     """,
 )
 
-# ai: claude-opus-5-5 | 2026-11-17
+# ai: claude-opus-5-5 | 2026-11-18
 # v5: at most one reading per faction per instant, so an import can use ON CONFLICT
-# instead of a lock to skip readings it already saved. Production had no
-# duplicates when this shipped (770 rows checked). The constraint's index covers
-# the same columns as v3's, which is dropped; Postgres reads it backwards for DESC.
-_V5_UNIQUE_READING = _sql(
-    """
-    ALTER TABLE status_entries
-        ADD CONSTRAINT status_entries_faction_time_key UNIQUE (faction_code, "timestamp")
-    """,
-    "DROP INDEX IF EXISTS status_entries_faction_time_idx",
-)
+# instead of a lock to skip readings it already saved. The constraint's index
+# covers the same columns as v3's, which is dropped; Postgres reads it backwards
+# for DESC.
+#
+# Older databases could hold duplicates, which would make ADD CONSTRAINT fail
+# with a bare UniqueViolation. Exact copies (same value too) carry nothing, so
+# the oldest row is kept. Pairs that disagree stop the upgrade with a list of
+# them: which reading is right is the user's call. This preflight was added
+# after v5 first shipped; it is not drift, because the resulting schema is the
+# same and only databases still below v5 run it.
+_V5_CONFLICT_SAMPLE = 10
+
+
+def _v5_unique_reading(cursor: Any) -> None:
+    cursor.execute(
+        """
+        DELETE FROM status_entries dup
+        USING status_entries keep
+        WHERE keep.faction_code = dup.faction_code
+          AND keep."timestamp" = dup."timestamp"
+          AND keep.value = dup.value
+          AND keep.id < dup.id
+        """
+    )
+    if cursor.rowcount:
+        logger.warning("Schema migration 5 removed %d exact duplicate status entries", cursor.rowcount)
+
+    cursor.execute(
+        """
+        SELECT faction_code, "timestamp", array_agg(value ORDER BY id), count(*) OVER ()
+        FROM status_entries
+        GROUP BY faction_code, "timestamp"
+        HAVING count(*) > 1
+        ORDER BY faction_code, "timestamp"
+        LIMIT %s
+        """,
+        (_V5_CONFLICT_SAMPLE,),
+    )
+    conflicts = cursor.fetchall()
+    if conflicts:
+        listed = "; ".join(f"{code} at {ts.astimezone(UTC).isoformat()}: {values}" for code, ts, values, _ in conflicts)
+        raise RuntimeError(
+            f"Schema migration 5 stopped: {conflicts[0][3]} faction/time pairs in status_entries have more "
+            f"than one reading with different values ({listed}). Delete the wrong reading of each pair, "
+            "then start the app again. To list them all: SELECT faction_code, timestamp, id, value "
+            "FROM status_entries WHERE (faction_code, timestamp) IN (SELECT faction_code, timestamp "
+            "FROM status_entries GROUP BY 1, 2 HAVING count(*) > 1) ORDER BY 1, 2, 3"
+        )
+
+    cursor.execute(
+        """
+        ALTER TABLE status_entries
+            ADD CONSTRAINT status_entries_faction_time_key UNIQUE (faction_code, "timestamp")
+        """
+    )
+    cursor.execute("DROP INDEX IF EXISTS status_entries_faction_time_idx")
 
 # ai: claude-opus-5-5 | 2026-11-18
 # v6: whether a selected snippet's image was uploaded through the API (and so
@@ -230,7 +277,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(2, "reconcile pre-migration drift", _V2_RECONCILE),
     Migration(3, "status_entries.timestamp as timestamptz, indexed", _V3_TIMESTAMPTZ),
     Migration(4, "factions.spocks_resource_id for Spock's Club imports", _V4_SPOCKS_RESOURCE_ID),
-    Migration(5, "one status entry per faction per instant", _V5_UNIQUE_READING),
+    Migration(5, "one status entry per faction per instant", _v5_unique_reading),
     Migration(6, "faction_selected_snippets.uploaded", _V6_SNIPPET_UPLOADED),
 )
 
