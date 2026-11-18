@@ -54,7 +54,7 @@ class SettingsFileError(RuntimeError):
 def load_settings_file() -> None:
     """(Re)load settings.yaml into the in-memory cache read by capture_cfg().
 
-    A missing file means "use code defaults" (Docker mounts it optionally).
+    A missing file means "use code defaults".
     A file that exists but cannot be parsed is fatal: silently falling back to
     default thresholds would make every capture misbehave with no visible cause.
     """

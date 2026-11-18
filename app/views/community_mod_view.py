@@ -126,8 +126,8 @@ def append_capture(record: dict) -> str:
     """Append one record as a JSON Lines row and return the file path.
 
     One write() of one line, under a lock shared by both Flask servers in
-    this process (7300 and 7443). Multi-process servers (Gunicorn workers in
-    Docker) would need a file lock; capture never runs there.
+    this process (7300 and 7443). The app runs as one process, so no file
+    lock is needed.
     """
     line = json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n"
     capture_path = os.path.normpath(_CAPTURE_FILE)

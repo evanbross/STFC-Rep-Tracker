@@ -121,7 +121,7 @@ def _warm_ocr_reader() -> None:
     """Background thread: load the EasyOCR model now, so the first capture doesn't stall on it."""
     try:
         # Windows-only capture stack, imported here for the same reason create_app
-        # imports capture_bp lazily: containers run without it (DISABLE_CAPTURE).
+        # imports capture_bp lazily: tests run without it (DISABLE_CAPTURE).
         from app.screen_processing.screen_capture import get_reader
         started = time.monotonic()
         get_reader()
@@ -278,7 +278,7 @@ logger = logging.getLogger(__name__)
 
 # ai: claude-opus-5-5 | 2026-11-06
 def create_wsgi_app() -> Flask:
-    """App factory for WSGI servers (gunicorn "main:create_wsgi_app()") and tests.
+    """App factory for tests and any WSGI server ("main:create_wsgi_app()").
 
     Importing main has no side effects beyond logging setup: the schema init
     and connection pool start only when an app is actually built.

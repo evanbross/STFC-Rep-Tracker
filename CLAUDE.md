@@ -60,7 +60,7 @@ are read: `FLASK_ENV` (`development` | `production` | `testing`, default `develo
 `DATABASE_URL_POOLED` / `DIRECT`, `CORS_ORIGINS`, `CADDY_APP_NAME`, `PORT`, `DISABLE_CAPTURE`.
 - `main.py` builds it once with `load_settings()` and passes it to `create_app(settings)`. Importing `main` builds
   nothing: `python main.py` runs `_serve()` (lock → elevation → env check → app → listeners → OCR warm-up), and
-  Gunicorn/tests call the `create_wsgi_app()` factory (`main:create_wsgi_app()`).
+  tests call the `create_wsgi_app()` factory. `DISABLE_CAPTURE` keeps the Windows capture stack out (tests set it).
 - In production, a missing, placeholder, or short (<16 chars) `SECRET_KEY` stops startup.
 - Settings errors name the field, never the value.
 - Add new env vars to `AppSettings`; don't call `os.environ.get` elsewhere.
@@ -82,10 +82,10 @@ the project root.
   after saving; that wakes the pruner, which keeps the newest 30 files (subfolders like `debug/` are left alone).
 - Elevation and single-instance mutexes live in `app/win_process.py`, shared by `launcher.py` and `main.py`.
 
-**Dependencies**: Python 3.14 (`.python-version`, `requires-python`, Docker base image). `pyproject.toml` + `uv.lock`
+**Dependencies**: Python 3.14 (`.python-version`, `requires-python`). `pyproject.toml` + `uv.lock`
 are the source of truth. After changing a dependency, run `uv lock`, then regenerate `requirements.txt` with the
-`uv export` command in its header. Never edit `requirements.txt` by hand. `requirements-docker.txt` is a hand-kept
-Linux subset (no capture stack) for the API image, so bump its pins to match the lock.
+`uv export` command in its header. Never edit `requirements.txt` by hand. There is no Docker deployment; the app ships
+only through the Windows installer.
 - Don't move to 3.15 yet: `scikit-image` (via easyocr) has no 3.15 Windows wheel before 0.27, and `pyyaml` /
   `pyclipper` only build from source there.
 - Changing `.python-version` can make an IDE's uv integration rebuild `.venv` on its own. Close the IDE, or point

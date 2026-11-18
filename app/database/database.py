@@ -22,9 +22,9 @@ from app.database.territory_systems_dao import TerritorySystemsDAO
 
 logger = logging.getLogger(__name__)
 
-# Stable advisory lock key used to serialize init_database across workers.
-# Multiple Gunicorn workers can race to run init at startup; the advisory lock
-# makes them queue so only one performs DDL/upserts at a time.
+# Stable advisory lock key used to serialize init_database across processes.
+# Two processes starting against the same database (another machine, a test
+# run beside the app) would race to migrate; the lock makes them queue.
 _INIT_ADVISORY_LOCK_ID = 0x535446435F5245
 
 
@@ -80,8 +80,8 @@ class Database:
     def init_database(self) -> None:
         """Bring the schema to head, register reputation DAOs, and seed changed tier tables.
 
-        Runs in one transaction under a session-level advisory lock, so Gunicorn
-        workers starting together queue instead of racing, and a failed
+        Runs in one transaction under a session-level advisory lock, so processes
+        starting together queue instead of racing, and a failed
         migration leaves the database untouched. At head this costs the lock
         and two small SELECTs; tier rows load lazily on first use.
         """
