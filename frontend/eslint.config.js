@@ -25,6 +25,17 @@ export default [
       globals: globals.browser,
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
+    // ai: claude-opus-5-5 | 2026-11-18
+    // Dialog globals must be called as window.alert / window.confirm /
+    // window.prompt (JAVASCRIPT_TYPESCRIPT_STANDARDS.md). Member access isn't a
+    // global reference, so only the bare forms are flagged.
+    rules: {
+      'no-restricted-globals': ['error',
+        { name: 'alert', message: 'Use window.alert().' },
+        { name: 'confirm', message: 'Use window.confirm().' },
+        { name: 'prompt', message: 'Use window.prompt().' },
+      ],
+    },
   },
   {
     files: ['*.config.js'],

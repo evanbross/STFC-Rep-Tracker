@@ -6,7 +6,7 @@
  *
  * Licensing inquiries: license@zombietech.biz
  */
-import {useEffect, useRef, useState} from 'react';
+import {useCallback, useEffect, useRef, useState} from 'react';
 import { api, errorMessage } from '../api/client';
 
 const getContrastingColor = (hexcolor) => {
@@ -33,6 +33,18 @@ const getContrastingColor = (hexcolor) => {
 
 const SNIPPET_TYPES = ['button', 'desc'];
 
+// ai: claude-opus-5-5 | 2026-11-18
+// Pure, so the paste effect depends only on the values it reads, not on a
+// helper recreated every render.
+const nextSnippetFilename = (snippets, factionCode, type, ext = 'png') => {
+    const prefix = `Selected-${type}-${factionCode}-`;
+    const usedNumbers = snippets
+        .map(s => { const m = s.filename.match(new RegExp(`^${prefix}(\\d+)\\.`, 'i')); return m ? parseInt(m[1]) : 0; })
+        .filter(Boolean);
+    const next = usedNumbers.length > 0 ? Math.max(...usedNumbers) + 1 : 1;
+    return `${prefix}${next}.${ext}`;
+};
+
 const SnippetsModal = ({ faction, onClose }) => {
     const [snippets, setSnippets] = useState([]);
     const [pendingFile, setPendingFile] = useState(null);   // { file: File, previewUrl: string }
@@ -43,23 +55,17 @@ const SnippetsModal = ({ faction, onClose }) => {
     const fileInputRef = useRef();
     const pasteZoneRef = useRef();
 
-    const nextSnippetFilename = (type, ext = 'png') => {
-        const factionCode = (faction.code || faction.name).toUpperCase();
-        const prefix = `Selected-${type}-${factionCode}-`;
-        const usedNumbers = snippets
-            .map(s => { const m = s.filename.match(new RegExp(`^${prefix}(\\d+)\\.`, 'i')); return m ? parseInt(m[1]) : 0; })
-            .filter(Boolean);
-        const next = usedNumbers.length > 0 ? Math.max(...usedNumbers) + 1 : 1;
-        return `${prefix}${next}.${ext}`;
-    };
+    const factionCode = (faction.code || faction.name).toUpperCase();
+    const factionId = faction.id;
 
-    const loadSnippets = () => {
-        api.get(`/api/factions/${faction.id}/selected-snippets`)
+    // ai: claude-opus-5-5 | 2026-11-18 — stable per faction, so the effect below can list it
+    const loadSnippets = useCallback(() => {
+        api.get(`/api/factions/${factionId}/selected-snippets`)
             .then(r => setSnippets(r.data))
             .catch(err => console.error('Error loading snippets:', err));
-    };
+    }, [factionId]);
 
-    useEffect(() => { loadSnippets(); }, [faction.id]);
+    useEffect(() => { loadSnippets(); }, [loadSnippets]);
 
     // Revoke the pending preview's object URL on unmount (e.g. modal close)
     // ai: claude-opus-5-5 | 2026-11-18 — the ref is updated after render, not during it
@@ -82,11 +88,11 @@ const SnippetsModal = ({ faction, onClose }) => {
                 if (prev) URL.revokeObjectURL(prev.previewUrl);
                 return { file, previewUrl: URL.createObjectURL(file) };
             });
-            setNewFilename(nextSnippetFilename(newType));
+            setNewFilename(nextSnippetFilename(snippets, factionCode, newType));
         };
         window.addEventListener('paste', handlePaste);
         return () => window.removeEventListener('paste', handlePaste);
-    }, [pasteActive, newType, snippets, faction.code, faction.name]);
+    }, [pasteActive, newType, snippets, factionCode]);
 
     const handleFileSelect = (e) => {
         const file = e.target.files[0];
@@ -102,16 +108,16 @@ const SnippetsModal = ({ faction, onClose }) => {
         try {
             const items = await navigator.clipboard.read();
             const imageItem = items.find(item => item.types.some(t => t.startsWith('image/')));
-            if (!imageItem) { alert('No image found in clipboard.'); return; }
+            if (!imageItem) { window.alert('No image found in clipboard.'); return; }
             const type = imageItem.types.find(t => t.startsWith('image/'));
             const blob = await imageItem.getType(type);
             const ext = type.split('/')[1] || 'png';
             const file = new File([blob], 'pasted', { type });
             clearPending();
             setPendingFile({ file, previewUrl: URL.createObjectURL(blob) });
-            setNewFilename(nextSnippetFilename(newType, ext));
+            setNewFilename(nextSnippetFilename(snippets, factionCode, newType, ext));
         } catch {
-            alert('Could not read clipboard. Make sure an image is copied and clipboard access is allowed.');
+            window.alert('Could not read clipboard. Make sure an image is copied and clipboard access is allowed.');
         }
     };
 
@@ -136,7 +142,7 @@ const SnippetsModal = ({ faction, onClose }) => {
             loadSnippets();
         } catch (err) {
             console.error('Upload failed:', err);
-            alert(`Upload failed: ${errorMessage(err)}`); // ai: claude-opus-5-5 | 2026-11-06
+            window.alert(`Upload failed: ${errorMessage(err)}`); // ai: claude-opus-5-5 | 2026-11-06
         } finally {
             setUploading(false);
         }
@@ -154,7 +160,7 @@ const SnippetsModal = ({ faction, onClose }) => {
             loadSnippets();
         } catch (err) {
             console.error('Delete failed:', err);
-            alert(`Delete failed: ${errorMessage(err)}`); // ai: claude-opus-5-5 | 2026-11-06
+            window.alert(`Delete failed: ${errorMessage(err)}`); // ai: claude-opus-5-5 | 2026-11-06
         }
     };
 
@@ -372,7 +378,7 @@ const Factions = () => {
             loadFactions();
         } catch (error) {
             console.error('Error saving faction:', error);
-            alert(`Failed to save faction: ${errorMessage(error)}`); // ai: claude-opus-5-5 | 2026-11-06
+            window.alert(`Failed to save faction: ${errorMessage(error)}`); // ai: claude-opus-5-5 | 2026-11-06
         }
     };
 

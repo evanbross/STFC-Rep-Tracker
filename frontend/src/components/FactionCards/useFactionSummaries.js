@@ -36,7 +36,7 @@ const useFactionSummaries = () => {
             return factionList;
         } catch (error) {
             console.error('Error loading factions:', error);
-            alert(`Could not load factions: ${errorMessage(error)}`);
+            window.alert(`Could not load factions: ${errorMessage(error)}`);
             return null;
         }
     };
@@ -44,7 +44,7 @@ const useFactionSummaries = () => {
     const addEntry = async (factionName, value) => {
         const parsed = parseInt(value, 10);
         if (!Number.isFinite(parsed)) {
-            alert('Enter a valid number.');
+            window.alert('Enter a valid number.');
             return false;
         }
         try {
@@ -52,7 +52,7 @@ const useFactionSummaries = () => {
             return true;
         } catch (error) {
             console.error('Error adding entry:', error);
-            alert(`Failed to add entry: ${errorMessage(error)}`);
+            window.alert(`Failed to add entry: ${errorMessage(error)}`);
             return false;
         }
     };

@@ -53,7 +53,7 @@ const useTerritorySchedule = () => {
             setScheduleStatus('Loading calendars');
             await loadCalendars();
         } catch (error) {
-            alert(`Google Calendar connection failed:\n\n${errorMessage(error)}`);
+            window.alert(`Google Calendar connection failed:\n\n${errorMessage(error)}`);
         } finally {
             setScheduleStatus(null);
         }
@@ -81,7 +81,7 @@ const useTerritorySchedule = () => {
                 await Promise.all([loadCalendars(), checkCalendar()]);
             } catch (error) {
                 console.error('Error opening territory schedule:', error);
-                alert(`Could not load the territory schedule: ${errorMessage(error)}`);
+                window.alert(`Could not load the territory schedule: ${errorMessage(error)}`);
             } finally {
                 setScheduleStatus(null);
             }
@@ -93,7 +93,7 @@ const useTerritorySchedule = () => {
         try {
             await checkCalendar();
         } catch (error) {
-            alert(`Calendar check failed: ${errorMessage(error)}`);
+            window.alert(`Calendar check failed: ${errorMessage(error)}`);
         }
     };
 
@@ -106,7 +106,7 @@ const useTerritorySchedule = () => {
             setScheduleList(prev => prev.map(s => s.id === id ? res.data : s));
         } catch (error) {
             console.error('Error adding calendar event:', error);
-            alert(`Failed to add calendar event: ${errorMessage(error)}`);
+            window.alert(`Failed to add calendar event: ${errorMessage(error)}`);
         }
     };
 
@@ -145,7 +145,7 @@ const useTerritorySchedule = () => {
             }
         } catch (error) {
             console.error('Error saving schedule entry:', error);
-            alert(`Failed to save schedule entry: ${errorMessage(error)}`);
+            window.alert(`Failed to save schedule entry: ${errorMessage(error)}`);
         }
     };
 
@@ -157,7 +157,7 @@ const useTerritorySchedule = () => {
             setScheduleList(prev => prev.filter(s => s.id !== id));
         } catch (error) {
             console.error('Error deleting schedule entry:', error);
-            alert(`Failed to delete schedule entry: ${errorMessage(error)}`);
+            window.alert(`Failed to delete schedule entry: ${errorMessage(error)}`);
         }
     };
 

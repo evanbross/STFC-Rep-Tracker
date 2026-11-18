@@ -9,7 +9,7 @@
 // ai: claude-opus-5-5 | 2026-11-06
 // Composes the Dashboard sections. Each section's state and API calls live in
 // its own component folder; this page only owns the reload order between them.
-import {useEffect, useState} from 'react';
+import {useEffect, useEffectEvent, useState} from 'react';
 import CaptureToolbar, {useCaptures} from '../components/CaptureToolbar';
 import FactionCards, {useFactionSummaries} from '../components/FactionCards';
 import HistoryChart, {useHistoryEntries} from '../components/HistoryChart';
@@ -30,8 +30,15 @@ const Dashboard = () => {
 
     const captures = useCaptures({onSaved: refreshAll});
 
-    useEffect(() => {
+    // ai: claude-opus-5-5 | 2026-11-18
+    // The initial load runs once on mount. useEffectEvent lets it call the
+    // latest refreshAll without making the effect re-run each time refreshAll
+    // is recreated (every render), which would reload in a loop.
+    const loadOnMount = useEffectEvent(() => {
         refreshAll();
+    });
+    useEffect(() => {
+        loadOnMount();
     }, []);
 
     const submitEntry = async (factionName, value) => {

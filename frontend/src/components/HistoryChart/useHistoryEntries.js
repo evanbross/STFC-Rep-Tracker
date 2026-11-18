@@ -84,7 +84,7 @@ const useHistoryEntries = () => {
             setChartData({datasets: buildDatasets(grouped, colors, onChart)});
         } catch (error) {
             console.error('Error loading entries:', error);
-            alert(`Could not load reputation history: ${errorMessage(error)}`);
+            window.alert(`Could not load reputation history: ${errorMessage(error)}`);
         }
     };
 

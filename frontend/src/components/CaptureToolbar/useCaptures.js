@@ -61,10 +61,10 @@ const useCaptures = ({onSaved}) => {
         try {
             const response = await api.post(url);
             if (savedAny(response.data)) await onSaved();
-            alert(describeResult(screen, response.data));
+            window.alert(describeResult(screen, response.data));
         } catch (error) {
             console.error('Error capturing screen:', error);
-            alert(`Error: ${errorMessage(error, 'Failed to capture screen.')}`);
+            window.alert(`Error: ${errorMessage(error, 'Failed to capture screen.')}`);
         } finally {
             setIsCapturing(false);
         }
@@ -77,13 +77,13 @@ const useCaptures = ({onSaved}) => {
             if (savedAny(response.data)) {
                 await onSaved();
             } else if (Array.isArray(response.data.saved)) {
-                alert(`${faction.name}: no reputation value could be read.`);
+                window.alert(`${faction.name}: no reputation value could be read.`);
             } else {
-                alert('Capture returned an unexpected response.');
+                window.alert('Capture returned an unexpected response.');
             }
         } catch (error) {
             console.error('Error capturing faction:', error);
-            alert(`Error: ${errorMessage(error, `Failed to capture ${faction.name}.`)}`);
+            window.alert(`Error: ${errorMessage(error, `Failed to capture ${faction.name}.`)}`);
         } finally {
             setCapturingFactionId(null);
         }
