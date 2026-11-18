@@ -6,7 +6,7 @@
  *
  * Licensing inquiries: license@zombietech.biz
  */
-import React, {useEffect, useLayoutEffect, useRef, useState} from 'react';
+import {useEffect, useLayoutEffect, useRef, useState} from 'react';
 import './ContextMenu.css';
 
 // Gap kept between the menu and the viewport edge when it has to be nudged back on-screen.

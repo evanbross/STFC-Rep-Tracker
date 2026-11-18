@@ -13,6 +13,7 @@ google_token*.json
 /community-data.jsonl
 /certs/
 /server.log
+/.backend-port
 /frontend/dist
 /build
 /dist

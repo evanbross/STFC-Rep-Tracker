@@ -6,7 +6,7 @@
  *
  * Licensing inquiries: license@zombietech.biz
  */
-import React, {useEffect, useState} from 'react';
+import {useEffect, useRef, useState} from 'react';
 import { api, errorMessage } from '../api/client';
 
 const getContrastingColor = (hexcolor) => {
@@ -40,8 +40,8 @@ const SnippetsModal = ({ faction, onClose }) => {
     const [newType, setNewType] = useState('desc');
     const [uploading, setUploading] = useState(false);
     const [pasteActive, setPasteActive] = useState(false);
-    const fileInputRef = React.useRef();
-    const pasteZoneRef = React.useRef();
+    const fileInputRef = useRef();
+    const pasteZoneRef = useRef();
 
     const nextSnippetFilename = (type, ext = 'png') => {
         const factionCode = (faction.code || faction.name).toUpperCase();
@@ -62,8 +62,9 @@ const SnippetsModal = ({ faction, onClose }) => {
     useEffect(() => { loadSnippets(); }, [faction.id]);
 
     // Revoke the pending preview's object URL on unmount (e.g. modal close)
-    const pendingFileRef = React.useRef(pendingFile);
-    pendingFileRef.current = pendingFile;
+    // ai: claude-opus-5-5 | 2026-11-18 — the ref is updated after render, not during it
+    const pendingFileRef = useRef(pendingFile);
+    useEffect(() => { pendingFileRef.current = pendingFile; }, [pendingFile]);
     useEffect(() => {
         return () => {
             if (pendingFileRef.current) URL.revokeObjectURL(pendingFileRef.current.previewUrl);
@@ -109,7 +110,7 @@ const SnippetsModal = ({ faction, onClose }) => {
             clearPending();
             setPendingFile({ file, previewUrl: URL.createObjectURL(blob) });
             setNewFilename(nextSnippetFilename(newType, ext));
-        } catch (err) {
+        } catch {
             alert('Could not read clipboard. Make sure an image is copied and clipboard access is allowed.');
         }
     };
@@ -325,6 +326,13 @@ const Factions = () => {
     const [formData, setFormData] = useState(EMPTY_FORM_DATA);
     const [reputationTypes, setReputationTypes] = useState([]); // ai: claude-opus-5-5 | 2026-11-06
 
+    // ai: claude-opus-5-5 | 2026-11-18 — a promise chain, so the mount effect sets state only in a callback
+    const loadFactions = () =>
+        api.get('/api/factions')
+            .then(response => setFactions(response.data))
+            .catch(error => console.error('Error loading factions:', error));
+
+    // ai: claude-opus-5-5 | 2026-11-18 — moved below loadFactions, which it calls
     useEffect(() => {
         loadFactions();
         // ai: claude-opus-5-5 | 2026-11-06
@@ -332,15 +340,6 @@ const Factions = () => {
             .then(r => setReputationTypes(r.data))
             .catch(error => console.error('Error loading reputation types:', error));
     }, []);
-
-    const loadFactions = async () => {
-        try {
-            const response = await api.get('/api/factions');
-            setFactions(response.data);
-        } catch (error) {
-            console.error('Error loading factions:', error);
-        }
-    };
 
     const handleEdit = (faction) => {
         // ai: claude-sonnet-5 | 2026-07-10

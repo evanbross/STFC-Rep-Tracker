@@ -7,7 +7,7 @@
  * Licensing inquiries: license@zombietech.biz
  */
 // ai: claude-sonnet-5 | 2026-09-14
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { api, errorMessage } from '../api/client';
 import HostileTemplateCapture from '../components/HostileTemplateCapture';
 import TargetCandidates, { useAttackTarget } from '../components/TargetCandidates';

@@ -8,7 +8,6 @@
  */
 // ai: claude-opus-5-5 | 2026-11-06
 // The Dashboard's "Auto Capture" button row, moved out of Dashboard.jsx.
-import React from 'react';
 import ContextMenu, {useContextMenu} from '../ContextMenu';
 
 /**

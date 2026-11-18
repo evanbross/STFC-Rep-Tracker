@@ -9,7 +9,7 @@
 // ai: claude-opus-5-5 | 2026-11-17
 // "Import Spock's Club" button: pick the exported .tsv, review what it holds
 // for each faction, then save it as one set of readings.
-import React, {useRef} from 'react';
+import {useRef} from 'react';
 import useSpocksClubImport from './useSpocksClubImport';
 
 const SOURCE_LABELS = {

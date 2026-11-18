@@ -244,8 +244,11 @@ Conventions:
   `useCaptureBusy`'s interceptors sit on that instance. Capture errors arrive as non-2xx responses, so don't check
   `data.error` on success.
 - One folder per component under `src/components/` (jsx, its hook, helpers, `index.js`); import from the folder.
+- `npm run lint` (ESLint 10 + React Hooks rules) must report no errors; it catches undefined names on runtime-only
+  branches that `npm run build` misses. No `React` default import: the JSX runtime is automatic.
 
-During development, Vite proxies `/api/*` to `http://127.0.0.1:7300`. In production, Flask serves
+During development, Vite proxies `/api/*` to the port in `.backend-port` (written by `main.py` on startup in a source
+checkout; 7300 if absent). It reads the file once, so restart `npm run dev` if the backend moves ports. In production, Flask serves
 `frontend/dist/index.html` for all non-API routes.
 
 ### Key Faction Data Model

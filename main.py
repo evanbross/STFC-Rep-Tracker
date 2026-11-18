@@ -6,6 +6,7 @@
 #
 # Licensing inquiries: license@zombietech.biz
 # =============================================================================
+import contextlib
 import datetime
 import errno
 import ipaddress
@@ -323,6 +324,7 @@ def _serve() -> None:
 
     _build_frontend_if_needed()
     port = app_settings.port
+    port_file = _publish_dev_port(port)  # ai: claude-opus-5-5 | 2026-11-18
     try:
         flask_app.run(debug=debug, port=port, use_reloader=False)
     except OSError as e:
@@ -339,6 +341,30 @@ def _serve() -> None:
         else:
             logger.error(f"Failed to start server on port {port}: {e}")
         sys.exit(1)
+    finally:
+        if port_file is not None:  # ai: claude-opus-5-5 | 2026-11-18
+            with contextlib.suppress(FileNotFoundError):
+                os.remove(port_file)
+
+
+# ai: claude-opus-5-5 | 2026-11-18
+# frontend/vite.config.js reads this file to find the backend, so keep the two in step.
+_DEV_PORT_FILE = ".backend-port"
+
+
+def _publish_dev_port(port: int) -> str | None:
+    """Record the port this backend serves on, for the Vite dev server's /api proxy.
+
+    The launcher moves off 7300 when it's taken; without this the dev proxy kept
+    sending requests to 7300 regardless. Source checkouts only: the frozen build
+    has no Vite. Returns the file's path so the caller can remove it on exit.
+    """
+    if is_frozen():
+        return None
+    path = runtime_path(_DEV_PORT_FILE)
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(str(port))
+    return path
 
 
 if __name__ == "__main__":

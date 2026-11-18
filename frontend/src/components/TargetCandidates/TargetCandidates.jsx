@@ -8,7 +8,6 @@
  */
 // ai: claude-opus-5-5 | 2026-11-06
 // The ranked attack-candidate table shared by Combat and System Targets (N-O6).
-import React from 'react';
 import TargetFlags from './TargetFlags';
 import { formatCargo, formatIntercept } from './format';
 

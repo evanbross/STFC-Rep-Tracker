@@ -7,7 +7,7 @@
  * Licensing inquiries: license@zombietech.biz
  */
 // ai: claude-sonnet-5 | 2026-09-18
-import React, { useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { api, errorMessage } from '../../api/client';
 import { useCaptureBusy } from '../../hooks/useCaptureBusy';
 

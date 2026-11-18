@@ -6,7 +6,7 @@
  *
  * Licensing inquiries: license@zombietech.biz
  */
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { api, errorMessage } from '../api/client';
 
 const COL_ORDER = ['low_limit', 'high_limit', 'messages_count', 'credit_amount'];
@@ -25,13 +25,13 @@ const sortedDataKeys = (obj) =>
 
 const RepTable = ({ title, tableName, data, onSaved }) => {
   const [editing, setEditing] = useState(false);
-  const [rows, setRows] = useState(data);
+  // ai: claude-opus-5-5 | 2026-11-18
+  // rows is the edit buffer, copied from data by handleEdit; outside editing
+  // the table shows data directly, so a reload after saving needs no sync effect.
+  const [rows, setRows] = useState([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
-
-  useEffect(() => {
-    setRows(data);
-  }, [data]);
+  const shown = editing ? rows : data;
 
   const handleEdit = () => {
     setRows(data.map(r => ({ ...r })));
@@ -40,7 +40,6 @@ const RepTable = ({ title, tableName, data, onSaved }) => {
   };
 
   const handleCancel = () => {
-    setRows(data);
     setError(null);
     setEditing(false);
   };
@@ -71,8 +70,6 @@ const RepTable = ({ title, tableName, data, onSaved }) => {
     }
   };
 
-  const numericFields = ['low_limit', 'high_limit', 'messages_count', 'credit_amount'];
-
   return (
     <div className="container">
       <h2>{title}</h2>
@@ -80,15 +77,15 @@ const RepTable = ({ title, tableName, data, onSaved }) => {
         <thead>
           <tr>
             <th>Name</th>
-            {rows.length > 0 && sortedDataKeys(rows[0])
+            {shown.length > 0 && sortedDataKeys(shown[0])
               .map(k => <th key={k} className="text-right">{k.replace(/_/g, ' ')}</th>)
             }
           </tr>
         </thead>
         <tbody>
-          {rows.length === 0 ? (
+          {shown.length === 0 ? (
             <tr><td colSpan="3">No reputations found.</td></tr>
-          ) : rows.map((rep, idx) => (
+          ) : shown.map((rep, idx) => (
             <tr key={rep.id ?? idx}>
               <td>
                 {editing
@@ -138,17 +135,14 @@ const Reputations = () => {
   const [reputationGroups, setReputationGroups] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const loadAllReputations = async () => {
-    setLoading(true);
-    try {
-      const response = await api.get('/api/reputations/all');
-      setReputationGroups(response.data);
-    } catch (error) {
-      console.error('Error loading reputations:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  // ai: claude-opus-5-5 | 2026-11-18
+  // loading starts true and only the first load shows the spinner; a reload
+  // after saving keeps the tables on screen.
+  const loadAllReputations = () =>
+    api.get('/api/reputations/all')
+      .then(response => setReputationGroups(response.data))
+      .catch(error => console.error('Error loading reputations:', error))
+      .finally(() => setLoading(false));
 
   useEffect(() => {
     loadAllReputations();

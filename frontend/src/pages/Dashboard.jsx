@@ -9,7 +9,7 @@
 // ai: claude-opus-5-5 | 2026-11-06
 // Composes the Dashboard sections. Each section's state and API calls live in
 // its own component folder; this page only owns the reload order between them.
-import React, {useEffect, useState} from 'react';
+import {useEffect, useState} from 'react';
 import CaptureToolbar, {useCaptures} from '../components/CaptureToolbar';
 import FactionCards, {useFactionSummaries} from '../components/FactionCards';
 import HistoryChart, {useHistoryEntries} from '../components/HistoryChart';

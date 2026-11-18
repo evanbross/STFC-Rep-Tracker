@@ -7,7 +7,6 @@
  * Licensing inquiries: license@zombietech.biz
  */
 // ai: claude-sonnet-5 | 2026-09-18
-import React from 'react';
 
 // Skull/diamond badges for one candidate row; rendered only by TargetCandidates.
 const TargetFlags = ({ hazard, bounty }) => {

@@ -6,7 +6,7 @@
  *
  * Licensing inquiries: license@zombietech.biz
  */
-import React, { Suspense, lazy } from 'react'
+import { Suspense, lazy } from 'react'
 import { BrowserRouter as Router, Routes, Route, NavLink } from 'react-router-dom'
 
 const Dashboard = lazy(() => import('./pages/Dashboard'))

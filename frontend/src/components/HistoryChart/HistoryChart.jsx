@@ -8,7 +8,7 @@
  */
 // ai: claude-opus-5-5 | 2026-11-06
 // Reputation history chart with its clickable legend, moved out of Dashboard.jsx.
-import React, {useMemo} from 'react';
+import {useMemo} from 'react';
 import {
     CategoryScale,
     Chart as ChartJS,

@@ -7,7 +7,7 @@
  * Licensing inquiries: license@zombietech.biz
  */
 // ai: claude-sonnet-5 | 2026-09-14
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, errorMessage } from '../api/client';
 import HostileTemplateCapture from '../components/HostileTemplateCapture';

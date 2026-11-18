@@ -9,7 +9,7 @@
 // ai: claude-opus-5-5 | 2026-11-06
 // Collapsible faction summary cards (value, delta, rates, goal, quick entry,
 // single-faction capture), moved out of Dashboard.jsx.
-import React, {useState} from 'react';
+import {useState} from 'react';
 import {formatMinutes, formatShort} from './format';
 
 /**

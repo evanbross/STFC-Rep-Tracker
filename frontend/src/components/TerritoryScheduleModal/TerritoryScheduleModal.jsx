@@ -10,7 +10,6 @@
 // Territory Schedule modal, moved out of Dashboard.jsx. Render it only while
 // open: mounting it loads the schedule and, if Google Calendar is connected,
 // checks it. Connecting needs the user's click. // ai: claude-opus-5-5 | 2026-11-07
-import React from 'react';
 import useTerritorySchedule from './useTerritorySchedule';
 
 const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
