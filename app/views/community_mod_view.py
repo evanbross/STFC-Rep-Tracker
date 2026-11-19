@@ -11,13 +11,15 @@ import json
 import logging
 import os
 import threading
+from collections.abc import Iterator
 from datetime import datetime, UTC
 
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, Response, current_app, jsonify, request
 from flask.typing import ResponseReturnValue
 from werkzeug.exceptions import RequestEntityTooLarge
 
 from app.app_config import capture_cfg
+from app.database.status_entries_dao import iso_utc
 from app.paths import runtime_path
 
 logger = logging.getLogger(__name__)
@@ -38,6 +40,16 @@ _DEFAULT_MAX_PAYLOAD_BYTES = 1_000_000
 SYNC_TOKEN_HEADER = "stfc-sync-token"
 
 _SENSITIVE_HEADERS = {"authorization", "cookie", "x-api-key", "x-auth-token", SYNC_TOKEN_HEADER}  # ai: claude-opus-5-5 | 2026-11-19
+
+# ai: claude-opus-5-5 | 2026-11-19
+# Wakes the /events streams after each capture. The counter, not the
+# notification, is what a stream compares, so a capture that lands while a
+# stream is between waits is still seen on its next wait.
+_capture_changed = threading.Condition()
+_capture_count = 0
+# A comment line this often keeps idle proxies from closing the stream, and
+# makes a closed browser tab surface as a failed write so its thread exits.
+_KEEPALIVE_SECONDS = 25.0
 
 
 @community_mod_bp.route("/", methods=["POST"])
@@ -158,5 +170,85 @@ def append_capture(record: dict) -> str:
     capture_path = os.path.normpath(_CAPTURE_FILE)
     with _capture_lock, open(capture_path, "a", encoding="utf-8", newline="\n") as f:
         f.write(line)
+    _notify_capture()  # ai: claude-opus-5-5 | 2026-11-19
     return capture_path
 
+
+# ai: claude-opus-5-5 | 2026-11-19
+def _notify_capture() -> None:
+    global _capture_count
+    with _capture_changed:
+        _capture_count += 1
+        _capture_changed.notify_all()
+
+
+# ai: claude-opus-5-5 | 2026-11-19
+def last_capture_time() -> str | None:
+    """When the last payload was captured (ISO 8601, UTC), or None if none has been.
+
+    Read from the capture file's modification time: append_capture is its only
+    writer, so the file itself is the record and survives restarts.
+    """
+    try:
+        modified = os.stat(_CAPTURE_FILE).st_mtime
+    except FileNotFoundError:
+        return None
+    return iso_utc(datetime.fromtimestamp(modified, UTC))
+
+
+# ai: claude-opus-5-5 | 2026-11-19
+@community_mod_bp.route("/status", methods=["GET"])
+def capture_status() -> ResponseReturnValue:
+    """
+    When the community mod last sent a payload.
+    ---
+    tags:
+      - Community Mod
+    responses:
+      200:
+        description: "`last_received_at` as ISO 8601 UTC, or null if nothing has been received"
+    """
+    return jsonify({"last_received_at": last_capture_time()})
+
+
+# ai: claude-opus-5-5 | 2026-11-19
+@community_mod_bp.route("/events", methods=["GET"])
+def capture_events() -> ResponseReturnValue:
+    """
+    Server-sent events: a `capture` event, carrying the new `last_received_at`, after each payload.
+    ---
+    tags:
+      - Community Mod
+    produces:
+      - text/event-stream
+    responses:
+      200:
+        description: An open event stream. Re-read /status after reconnecting; events missed while disconnected are not replayed.
+    """
+    return Response(
+        capture_event_stream(),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+# ai: claude-opus-5-5 | 2026-11-19
+def capture_event_stream() -> Iterator[str]:
+    """Yield SSE frames: a capture event per change in _capture_count, else a keepalive.
+
+    The first frame goes out at once, so the response headers are sent and the
+    browser's EventSource reports the connection open. Several captures in one
+    wait collapse into one event, since only the latest time matters.
+    """
+    with _capture_changed:
+        seen = _capture_count
+    yield "retry: 10000\n\n"
+    while True:
+        with _capture_changed:
+            _capture_changed.wait_for(lambda: _capture_count != seen, timeout=_KEEPALIVE_SECONDS)
+            current = _capture_count
+        if current == seen:
+            yield ": keepalive\n\n"
+            continue
+        seen = current
+        yield f"event: capture\ndata: {json.dumps({'last_received_at': last_capture_time()})}\n\n"

@@ -11,6 +11,7 @@
 // its own component folder; this page only owns the reload order between them.
 import {useEffect, useEffectEvent, useState} from 'react';
 import CaptureToolbar, {useCaptures} from '../components/CaptureToolbar';
+import CommunityModStatus from '../components/CommunityModStatus'; // ai: claude-opus-5-5 | 2026-11-19
 import FactionCards, {useFactionSummaries} from '../components/FactionCards';
 import HistoryChart, {useHistoryEntries} from '../components/HistoryChart';
 import SpocksClubImport from '../components/SpocksClubImport'; // ai: claude-opus-5-5 | 2026-11-17
@@ -49,7 +50,11 @@ const Dashboard = () => {
 
     return (
         <div className="dashboard">
-            <h1>STFC Reputation Tracker</h1>
+            {/* ai: claude-opus-5-5 | 2026-11-19 — title left, mod sync time top right */}
+            <div className="dashboard-header">
+                <h1>STFC Reputation Tracker</h1>
+                <CommunityModStatus/>
+            </div>
 
             <div className="container">
                 <FactionCards
