@@ -1930,7 +1930,7 @@ dependencies = [
 dev = [
     { name = "pyinstaller" },
     { name = "pytest" },
-    { name = "zt-devkit" },
+    { name = "zt-common" },
 ]
 
 [package.metadata]
@@ -1960,7 +1960,7 @@ requires-dist = [
 dev = [
     { name = "pyinstaller", specifier = "==6.22.3" },
     { name = "pytest", specifier = "==9.2.0" },
-    { name = "zt-devkit", editable = "../infra/devkit" },
+    { name = "zt-common", editable = "../infra/zt-common" },
 ]
 
 [[package]]
@@ -2107,9 +2107,9 @@ wheels = [
 ]
 
 [[package]]
-name = "zt-devkit"
+name = "zt-common"
 version = "0.1.0"
-source = { editable = "../infra/devkit" }
+source = { editable = "../infra/zt-common" }
 
 [package.metadata]
 

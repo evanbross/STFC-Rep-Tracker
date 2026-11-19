@@ -32,12 +32,12 @@ _BACKEND_ARG = "--backend"
 _launcher_lock = SingleInstanceLock("Global\\STFCRepTrackerLauncher")  # ai: claude-opus-5-5 | 2026-11-06
 
 # ai: claude-opus-5-5 | 2026-11-12
-# Shared dev-Caddy client from the zt-devkit package (../infra/devkit), installed
+# Shared dev-Caddy client from the zt-common package (../infra/zt-common), installed
 # as an editable *dev* dependency. Optional on purpose: the installed app
 # (embedded Python + requirements.txt, exported with --no-dev) doesn't have it,
 # and there's no dev Caddy on a user's machine anyway.
 try:
-    from zt_devkit import caddy_registry as _caddy_registry
+    from zt_common import caddy_registry as _caddy_registry
 except ImportError:
     _caddy_registry = None
 
