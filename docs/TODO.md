@@ -19,7 +19,7 @@ What already exists to build on:
   through Caddy at `http://stfc.localhost`, with the cross-origin write guard and a
   payload size cap. It currently only appends payloads to `community-data.jsonl`.
 - **Caddy registration:** `launcher.py` registers the main app as `stfc` via
-  `zt_devkit.caddy_registry.register(name, port)`.
+  `zt_common.caddy_registry.register(name, port)`.
 
 Open questions:
 - **What does Spock's Club send, and how?** Is it a push to a URL, a webhook, or a
@@ -29,7 +29,7 @@ Open questions:
   differs from their latest reading, or every reading and rely on the
   same-instant skip? Which timestamp should it use: the payload's, or the time it
   was received?
-- **Caddy in the installed app:** `zt-devkit` is a dev-only dependency and isn't
+- **Caddy in the installed app:** `zt-common` is a dev-only dependency here and isn't
   in the installer build, so a Caddy name only exists in a source checkout. Does
   the installed app need it too, or is a fixed localhost port enough there?
 - **Port:** a fixed port (like 7443), or picked at startup like the main app? A
