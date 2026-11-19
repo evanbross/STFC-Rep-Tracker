@@ -38,7 +38,9 @@ Open questions:
 - **Trust:** bind to loopback by default, like the community-mod listener. Does it
   need a shared secret if Spock's Club runs on another machine?
 - **Refresh:** once a push saves new readings, notify the open Dashboard (SSE)
-  rather than having it poll.
+  rather than having it poll. *2026-11-19:* `GET /api/community-mod/events` and
+  `_notify_capture()` in `community_mod_view.py` already do this for capture times
+  (the Dashboard's `CommunityModStatus`); reuse that channel rather than adding one.
 
 *Update 2026-11-18:* Spock's Club doesn't push data itself; it receives it from
 the community mod's sync. The mod now also syncs to this app through Caddy

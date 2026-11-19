@@ -112,6 +112,22 @@ h1 {
     color: #ddeeff;
 }
 
+/* ai: claude-opus-5-5 | 2026-11-19 */
+.dashboard-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 0.5rem 1rem;
+}
+
+.community-mod-status {
+    margin-left: auto;
+    font-size: 0.82rem;
+    color: var(--c-muted);
+    white-space: nowrap;
+}
+
 h2 { font-size: 1.05rem; }
 h3 { font-size: 0.9rem; }
 

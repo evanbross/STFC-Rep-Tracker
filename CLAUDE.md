@@ -170,7 +170,9 @@ added to `CORS_ORIGINS`.
 `[sync.targets.stfc-rep-tracker]` table in the game's `community_patch_settings.toml`), which Caddy proxies to the
 main app on whatever port it picked. Payloads are appended to `community-data.jsonl`. When `COMMUNITY_MOD_TOKEN`
 is set, a request whose `stfc-sync-token` header doesn't match gets 401 before its body is read; unset, any
-caller is accepted (fine while only this machine can reach it). There is no separate listener
+caller is accepted (fine while only this machine can reach it). `GET /api/community-mod/status` returns the last
+capture time (the capture file's mtime), and `GET /api/community-mod/events` is an SSE stream with a `capture`
+event per payload; the Dashboard's `CommunityModStatus` reads both. There is no separate listener
 or fixed port; an installed build without Caddy doesn't receive mod sync.
 
 **Request bodies and errors**:

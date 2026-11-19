@@ -15,6 +15,7 @@ so nothing here can touch the real community-data files.
 import io
 import json
 import threading
+from datetime import datetime, timedelta, UTC
 from pathlib import Path
 
 import pytest
@@ -153,3 +154,45 @@ def test_token_is_checked_before_the_size_cap(token_client: FlaskClient, capture
     """An unauthorised caller gets 401 even for an oversize body; its body is never read."""
     assert token_client.post(_URL, json={"blob": "x" * _LIMIT}).status_code == 401
 
+
+# ai: claude-opus-5-5 | 2026-11-19
+def test_status_is_null_before_any_capture(mod_client: FlaskClient) -> None:
+    response = mod_client.get(f"{_URL}status")
+
+    assert response.status_code == 200
+    assert response.get_json() == {"last_received_at": None}
+
+
+def test_status_reports_the_latest_capture_in_utc(mod_client: FlaskClient) -> None:
+    before = datetime.now(UTC) - timedelta(seconds=2)   # file times can be a little coarse
+    assert mod_client.post(_URL, json={"x": 1}).status_code == 200
+
+    received = datetime.fromisoformat(mod_client.get(f"{_URL}status").get_json()["last_received_at"])
+
+    assert received.utcoffset() == timedelta(0)
+    assert before <= received <= datetime.now(UTC)
+
+
+def test_event_stream_sends_keepalive_then_capture(capture_file: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(community_mod_view, "_KEEPALIVE_SECONDS", 0.05)
+    stream = community_mod_view.capture_event_stream()
+
+    assert next(stream).startswith("retry:")
+    assert next(stream) == ": keepalive\n\n"
+
+    community_mod_view.append_capture({"n": 1})
+    event = next(stream)
+
+    assert event.startswith("event: capture\ndata: ")
+    payload = json.loads(event.removeprefix("event: capture\ndata: "))
+    assert payload == {"last_received_at": community_mod_view.last_capture_time()}
+    stream.close()
+
+
+def test_events_route_is_an_uncached_event_stream(mod_client: FlaskClient) -> None:
+    response = mod_client.get(f"{_URL}events", buffered=False)
+
+    assert response.mimetype == "text/event-stream"
+    assert response.headers["Cache-Control"] == "no-cache"
+    assert next(response.response).startswith(b"retry:")
+    response.close()
