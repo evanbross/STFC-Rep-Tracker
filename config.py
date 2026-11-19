@@ -47,6 +47,11 @@ class AppSettings(BaseSettings):
     cors_origins: str = ""          # comma-separated; empty means the built-in local defaults
     port: int = Field(default=7300, ge=1, le=65535)
     disable_capture: bool = False
+    # ai: claude-opus-5-5 | 2026-11-19
+    # Shared secret the community mod sends in its stfc-sync-token header. Empty
+    # means the endpoint accepts any caller, which is fine only while it's reachable
+    # from this machine alone; set it before exposing the app anywhere else.
+    community_mod_token: str = ""
 
     @field_validator("disable_capture", mode="before")
     @classmethod
@@ -91,6 +96,7 @@ class AppSettings(BaseSettings):
             "CORS_ORIGINS": self.cors_origin_list,
             "DEBUG": self.flask_env == "development",
             "TESTING": self.flask_env == "testing",
+            "COMMUNITY_MOD_TOKEN": self.community_mod_token.strip(),  # ai: claude-opus-5-5 | 2026-11-19
         }
 
 

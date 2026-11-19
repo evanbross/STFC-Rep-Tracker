@@ -6,13 +6,14 @@
 #
 # Licensing inquiries: license@zombietech.biz
 # =============================================================================
+import hmac
 import json
 import logging
 import os
 import threading
 from datetime import datetime, UTC
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
 from flask.typing import ResponseReturnValue
 from werkzeug.exceptions import RequestEntityTooLarge
 
@@ -32,7 +33,11 @@ _CAPTURE_FILE = runtime_path("community-data.jsonl")
 _capture_lock = threading.Lock()
 _DEFAULT_MAX_PAYLOAD_BYTES = 1_000_000
 
-_SENSITIVE_HEADERS = {"authorization", "cookie", "x-api-key", "x-auth-token", "stfc-sync-token"}  # ai: claude-opus-5-5 | 2026-11-06
+# ai: claude-opus-5-5 | 2026-11-19
+# The header carrying the `token` from the mod's [sync.targets.*] table.
+SYNC_TOKEN_HEADER = "stfc-sync-token"
+
+_SENSITIVE_HEADERS = {"authorization", "cookie", "x-api-key", "x-auth-token", SYNC_TOKEN_HEADER}  # ai: claude-opus-5-5 | 2026-11-19
 
 
 @community_mod_bp.route("/", methods=["POST"])
@@ -53,6 +58,10 @@ def receive_payload() -> ResponseReturnValue:
         description: Payload captured successfully
       400:
         description: Request body is not valid JSON
+      401:
+        description: COMMUNITY_MOD_TOKEN is set and the stfc-sync-token header doesn't match it
+      413:
+        description: Payload is larger than community_mod.max_payload_bytes
     """
     logger.info("community-mod: POST request received from %s", request.remote_addr)
     logger.info(
@@ -60,6 +69,12 @@ def receive_payload() -> ResponseReturnValue:
         request.content_type,
         request.content_length,
     )
+
+    # ai: claude-opus-5-5 | 2026-11-19
+    # Checked before the body is read, so an unauthorised caller costs nothing.
+    if not sync_token_accepted(request.headers.get(SYNC_TOKEN_HEADER)):
+        logger.warning("community-mod: rejected request with a missing or wrong %s", SYNC_TOKEN_HEADER)
+        return jsonify({"error": "Missing or invalid sync token"}), 401
 
     # ai: claude-opus-5-5 | 2026-11-06
     max_payload_bytes = max_payload_size()
@@ -97,6 +112,19 @@ def receive_payload() -> ResponseReturnValue:
     return jsonify({"status": "captured"}), 200
 
 
+# ai: claude-opus-5-5 | 2026-11-19
+def sync_token_accepted(sent: str | None) -> bool:
+    """True when no COMMUNITY_MOD_TOKEN is configured, or `sent` matches it.
+
+    compare_digest keeps the comparison time independent of how much matches.
+    Both sides are encoded first because it rejects non-ASCII str arguments.
+    """
+    expected = current_app.config.get("COMMUNITY_MOD_TOKEN", "")
+    if not expected:
+        return True
+    return sent is not None and hmac.compare_digest(sent.encode("utf-8"), expected.encode("utf-8"))
+
+
 # ai: claude-opus-5-5 | 2026-11-06
 def max_payload_size() -> int:
     """Largest accepted community-mod body in bytes (settings: community_mod.max_payload_bytes)."""
@@ -131,3 +159,4 @@ def append_capture(record: dict) -> str:
     with _capture_lock, open(capture_path, "a", encoding="utf-8", newline="\n") as f:
         f.write(line)
     return capture_path
+

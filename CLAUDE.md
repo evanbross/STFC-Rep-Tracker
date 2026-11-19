@@ -57,7 +57,8 @@ npm run build
 
 **Environment**: `config.py` defines `AppSettings` (pydantic-settings). It is the one place environment variables
 are read: `FLASK_ENV` (`development` | `production` | `testing`, default `development`), `SECRET_KEY`,
-`DATABASE_URL_POOLED` / `DIRECT`, `CORS_ORIGINS`, `CADDY_APP_NAME`, `PORT`, `DISABLE_CAPTURE`.
+`DATABASE_URL_POOLED` / `DIRECT`, `CORS_ORIGINS`, `CADDY_APP_NAME`, `PORT`, `DISABLE_CAPTURE`,
+`COMMUNITY_MOD_TOKEN`.
 - `main.py` builds it once with `load_settings()` and passes it to `create_app(settings)`. Importing `main` builds
   nothing: `python main.py` runs `_serve()` (lock → elevation → env check → app → OCR warm-up → serve), and
   tests call the `create_wsgi_app()` factory. `DISABLE_CAPTURE` keeps the Windows capture stack out (tests set it).
@@ -167,7 +168,9 @@ added to `CORS_ORIGINS`.
 
 **Community mod sync**: the STFC community mod posts to `http://stfc.localhost/api/community-mod/` (a
 `[sync.targets.stfc-rep-tracker]` table in the game's `community_patch_settings.toml`), which Caddy proxies to the
-main app on whatever port it picked. Payloads are appended to `community-data.jsonl`. There is no separate listener
+main app on whatever port it picked. Payloads are appended to `community-data.jsonl`. When `COMMUNITY_MOD_TOKEN`
+is set, a request whose `stfc-sync-token` header doesn't match gets 401 before its body is read; unset, any
+caller is accepted (fine while only this machine can reach it). There is no separate listener
 or fixed port; an installed build without Caddy doesn't receive mod sync.
 
 **Request bodies and errors**:

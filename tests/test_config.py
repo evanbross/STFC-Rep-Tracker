@@ -15,7 +15,7 @@ from config import DEV_SECRET_KEY, SettingsError, load_settings
 _REAL_KEY = "k3Y-" + "x" * 28
 _ENV_VARS = (
     "FLASK_ENV", "SECRET_KEY", "DATABASE_URL_POOLED", "DATABASE_URL_DIRECT", "DATABASE_URL",
-    "CADDY_APP_NAME", "CORS_ORIGINS", "PORT", "DISABLE_CAPTURE",
+    "CADDY_APP_NAME", "CORS_ORIGINS", "PORT", "DISABLE_CAPTURE", "COMMUNITY_MOD_TOKEN",
 )
 
 
@@ -101,3 +101,14 @@ def test_disable_capture_parsing(env: pytest.MonkeyPatch, raw: str, expected: bo
     env.setenv("DISABLE_CAPTURE", raw)
 
     assert load_settings().disable_capture is expected
+
+
+# ai: claude-opus-5-5 | 2026-11-19
+def test_community_mod_token_reaches_flask_config(env: pytest.MonkeyPatch) -> None:
+    env.setenv("COMMUNITY_MOD_TOKEN", "  mod-token  ")
+
+    assert load_settings().flask_config()["COMMUNITY_MOD_TOKEN"] == "mod-token"
+
+
+def test_community_mod_token_defaults_to_unset(env: pytest.MonkeyPatch) -> None:
+    assert load_settings().flask_config()["COMMUNITY_MOD_TOKEN"] == ""

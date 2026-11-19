@@ -119,3 +119,37 @@ def test_concurrent_appends_stay_whole_lines(capture_file: Path) -> None:
         thread.join()
 
     assert sorted(r["n"] for r in _lines(capture_file)) == list(range(16))
+
+
+# ai: claude-opus-5-5 | 2026-11-19
+@pytest.fixture(name="token_client")
+def fixture_token_client(capture_file: Path) -> FlaskClient:
+    """The same blueprint with COMMUNITY_MOD_TOKEN set, as flask_config() would load it."""
+    app = Flask("community_mod_token_test")
+    app.config["COMMUNITY_MOD_TOKEN"] = "s3cret-t0ken"
+    app.register_blueprint(community_mod_view.community_mod_bp, url_prefix="/api/community-mod")
+    return app.test_client()
+
+
+@pytest.mark.parametrize("headers", [{}, {"stfc-sync-token": "wrong"}, {"stfc-sync-token": ""}, {"stfc-sync-token": "s3cret-t0kén"}])
+def test_configured_token_rejects_missing_or_wrong_header(
+    token_client: FlaskClient, capture_file: Path, headers: dict[str, str]
+) -> None:
+    response = token_client.post(_URL, json={"x": 1}, headers=headers)
+
+    assert response.status_code == 401
+    assert "s3cret" not in response.get_data(as_text=True)
+    assert not capture_file.exists()
+
+
+def test_configured_token_accepts_matching_header(token_client: FlaskClient, capture_file: Path) -> None:
+    response = token_client.post(_URL, json={"x": 1}, headers={"Stfc-Sync-Token": "s3cret-t0ken"})
+
+    assert response.status_code == 200
+    assert "s3cret-t0ken" not in capture_file.read_text(encoding="utf-8")
+
+
+def test_token_is_checked_before_the_size_cap(token_client: FlaskClient, capture_file: Path) -> None:
+    """An unauthorised caller gets 401 even for an oversize body; its body is never read."""
+    assert token_client.post(_URL, json={"blob": "x" * _LIMIT}).status_code == 401
+
