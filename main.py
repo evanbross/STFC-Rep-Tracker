@@ -7,12 +7,9 @@
 # Licensing inquiries: license@zombietech.biz
 # =============================================================================
 import contextlib
-import datetime
 import errno
-import ipaddress
 import logging.config
 import os
-import ssl
 import subprocess
 import sys
 import threading
@@ -20,13 +17,12 @@ import time
 
 import yaml
 from flask import Flask
-from werkzeug.serving import make_server
 
 from app import screenshot_retention
-from app.app_config import capture_cfg, screenshots_dir
+from app.app_config import screenshots_dir
 from app.paths import is_frozen, resource_path, runtime_path
 from app.request_guards import install_cross_origin_write_guard
-from app.views.community_mod_view import community_mod_bp, max_payload_size
+from app.views.community_mod_view import community_mod_bp
 from app.views.validation import register_error_handlers
 from app.win_process import SingleInstanceLock, is_admin, relaunch_as_admin
 from config import AppSettings, load_settings
@@ -109,10 +105,9 @@ def _build_frontend_if_needed() -> None:
 
 
 # ── Single-instance helpers ───────────────────────────────────────────────────
-# Werkzeug's server (used by both app.run() below and _run_community_mod_https_server)
-# sets allow_reuse_address on its listening socket, which on Windows lets a second
-# backend process silently bind the same port instead of failing — see launcher.py's
-# analogous guard. This mutex stops a second `main.py` instance (started via the
+# Werkzeug's server (used by app.run() below) sets allow_reuse_address on its
+# listening socket, which on Windows lets a second backend process silently bind
+# the same port instead of failing — see launcher.py's analogous guard. This mutex stops a second `main.py` instance (started via the
 # launcher or directly, e.g. `python main.py`) before it ever reaches a bind() call.
 _backend_lock = SingleInstanceLock("Global\\STFCRepTrackerBackend")  # ai: claude-opus-5-5 | 2026-11-06
 
@@ -129,87 +124,6 @@ def _warm_ocr_reader() -> None:
         logger.info("OCR model loaded in %.1fs", time.monotonic() - started)
     except Exception:
         logger.exception("OCR warm-up failed; the model will load on first capture instead")
-
-
-def _ensure_community_mod_cert(cert_dir: str) -> tuple[str, str]:
-    """
-    Return (cert_path, key_path), generating a self-signed certificate if either
-    file is missing. The cert is valid for 10 years and covers localhost / 127.0.0.1.
-    """
-    os.makedirs(cert_dir, exist_ok=True)
-    cert_path = os.path.join(cert_dir, "community_mod_cert.pem")
-    key_path = os.path.join(cert_dir, "community_mod_key.pem")
-
-    if os.path.exists(cert_path) and os.path.exists(key_path):
-        logger.info("community-mod HTTPS: using existing cert at %s", cert_path)
-        return cert_path, key_path
-
-    logger.info("community-mod HTTPS: generating self-signed certificate in %s", cert_dir)
-    from cryptography import x509
-    from cryptography.hazmat.primitives import hashes, serialization
-    from cryptography.hazmat.primitives.asymmetric import rsa
-    from cryptography.x509.oid import NameOID
-
-    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    subject = issuer = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "localhost")])
-    now = datetime.datetime.now(datetime.UTC)
-    cert = (
-        x509.CertificateBuilder()
-        .subject_name(subject)
-        .issuer_name(issuer)
-        .public_key(key.public_key())
-        .serial_number(x509.random_serial_number())
-        .not_valid_before(now)
-        .not_valid_after(now + datetime.timedelta(days=3650))
-        .add_extension(
-            x509.SubjectAlternativeName([
-                x509.DNSName("localhost"),
-                x509.IPAddress(ipaddress.IPv4Address("127.0.0.1")),
-            ]),
-            critical=False,
-        )
-        .sign(key, hashes.SHA256())
-    )
-
-    with open(key_path, "wb") as f:
-        f.write(key.private_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PrivateFormat.TraditionalOpenSSL,
-            encryption_algorithm=serialization.NoEncryption(),
-        ))
-    with open(cert_path, "wb") as f:
-        f.write(cert.public_bytes(serialization.Encoding.PEM))
-
-    logger.info("community-mod HTTPS: certificate generated (valid 10 years)")
-    return cert_path, key_path
-
-
-# ai: claude-opus-5-5 | 2026-11-06
-def create_community_mod_app() -> Flask:
-    """Minimal app exposing only the community-mod blueprint, for the HTTPS listener.
-
-    No CORS: the mod is not a browser page (captured requests carry no Origin),
-    so nothing needs to read responses cross-origin. The write guard still
-    rejects any browser page that tries to POST here.
-    """
-    https_app = Flask("community_mod_https")
-    # This listener only takes community payloads, so cap every body at that size.
-    https_app.config["MAX_CONTENT_LENGTH"] = max_payload_size() + 1
-    install_cross_origin_write_guard(https_app, cors_origins=())
-    https_app.register_blueprint(community_mod_bp, url_prefix="/api/community-mod")
-    return https_app
-
-
-# ai: claude-opus-5-5 | 2026-11-06
-def _run_community_mod_https_server(cert_path: str, key_path: str, port: int = 7443) -> None:
-    """Serve create_community_mod_app() over HTTPS on the configured bind host (loopback by default)."""
-    ssl_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    ssl_ctx.load_cert_chain(cert_path, key_path)
-
-    bind_host = capture_cfg("community_mod", "bind_host", default="127.0.0.1")
-    server = make_server(bind_host, port, create_community_mod_app(), ssl_context=ssl_ctx)
-    logger.info("community-mod HTTPS server listening on https://%s:%d/api/community-mod", bind_host, port)
-    server.serve_forever()
 
 
 def create_app(app_settings: AppSettings):
@@ -297,12 +211,12 @@ def create_wsgi_app() -> Flask:
 def _serve() -> None:
     """Desktop entry point. Cheap checks run first, so a duplicate or
     about-to-relaunch process exits before any network or model work (N-P4):
-    single-instance lock -> elevation -> env check -> create_app -> listeners.
+    single-instance lock -> elevation -> env check -> create_app -> serve.
     """
     if not _backend_lock.acquire():
         logger.error(
             "Another STFC Rep Tracker backend instance is already running — "
-            "exiting instead of racing it for ports 7300/7443."
+            "exiting instead of racing it for its port."  # ai: claude-opus-5-5 | 2026-11-18
         )
         sys.exit(1)
 
@@ -315,9 +229,6 @@ def _serve() -> None:
     _check_env(app_settings)
     flask_app = create_app(app_settings)
     screenshot_retention.start(screenshots_dir())  # ai: claude-opus-5-5 | 2026-11-06 — signalled by writers (R11)
-
-    cert_path, key_path = _ensure_community_mod_cert(runtime_path("certs"))
-    threading.Thread(target=_run_community_mod_https_server, args=(cert_path, key_path), daemon=True).start()
 
     if not app_settings.disable_capture:
         threading.Thread(target=_warm_ocr_reader, name="ocr-warmup", daemon=True).start()

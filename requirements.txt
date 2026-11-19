@@ -17,9 +17,7 @@ charset-normalizer==3.5.2
 click==8.5.1
     # via flask
 cryptography==50.0.2
-    # via
-    #   google-auth
-    #   stfc-rep-tracker
+    # via google-auth
 cuda-bindings==13.5.0 ; python_full_version < '3.15' and sys_platform == 'linux'
     # via torch
 cuda-pathfinder==1.9.0 ; python_full_version < '3.15' and sys_platform == 'linux'

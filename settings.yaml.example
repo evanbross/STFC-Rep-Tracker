@@ -293,8 +293,5 @@ stfc_config:
     write_behind_queue_size: 20
 
   community_mod:
-    # Interface for the community-mod HTTPS listener (port 7443). The mod runs on
-    # this machine, so loopback is enough; use 0.0.0.0 only to accept it from the LAN.
-    bind_host: 127.0.0.1
-    # Largest accepted payload, in bytes.
+    # Largest accepted payload at /api/community-mod/, in bytes.
     max_payload_bytes: 1000000

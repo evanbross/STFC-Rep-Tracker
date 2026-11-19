@@ -15,10 +15,9 @@ What already exists to build on:
 - **Parsing and saving:** `app/spocks_club_parsing.py` reads an export, and
   `POST /api/spocks-club/import` saves readings through `status_entries.add_entries_at`,
   which skips a faction that already has a reading at that instant.
-- **A second listener:** `main.py` already runs one for the community mod
-  (`_run_community_mod_https_server`, port 7443, bound to `community_mod.bind_host`).
-  It's the pattern to follow: its own small Flask app, its own thread, the
-  cross-origin write guard, and a payload size cap.
+- **The community mod route:** `POST /api/community-mod/` on the main app, reached
+  through Caddy at `http://stfc.localhost`, with the cross-origin write guard and a
+  payload size cap. It currently only appends payloads to `community-data.jsonl`.
 - **Caddy registration:** `launcher.py` registers the main app as `stfc` via
   `zt_devkit.caddy_registry.register(name, port)`.
 
@@ -42,8 +41,8 @@ Open questions:
   rather than having it poll.
 
 *Update 2026-11-18:* Spock's Club doesn't push data itself; it receives it from
-the community mod's sync. The mod now also syncs to this app through Caddy (see
-"Retire the 7443 community-mod listener" below), and its `resource` records
+the community mod's sync. The mod now also syncs to this app through Caddy
+(the separate 7443 listener was retired on 2026-11-18), and its `resource` records
 carry the same IDs as `factions.spocks_resource_id` (e.g. 970475396 =
 Federation Points). The live listener is probably "save the mod's faction
 resources" on the existing `/api/community-mod/` route, not a new listener.
@@ -66,32 +65,3 @@ deployment would expose it publicly.
 - The mod sends the `token` from its `[sync.targets.stfc-rep-tracker]` table in
   `community_patch_settings.toml` (currently the placeholder `"local"`).
 - Settings errors must name the field, never the value (see `config.py`).
-
-## Retire the 7443 community-mod listener
-
-*Added 2026-11-18.*
-
-The mod now syncs to `http://stfc.localhost/api/community-mod/`, which Caddy
-proxies to the main app on whatever port it picked. Confirmed working
-2026-11-18: payloads arrive with `Host: stfc.localhost`. The main app already
-mounts `community_mod_bp` at `/api/community-mod`, so the separate HTTPS
-listener on 7443 is no longer used.
-
-Remove from `main.py`:
-- `_run_community_mod_https_server`, `create_community_mod_app` and the thread that
-  starts them.
-- `_ensure_community_mod_cert` and its self-signed cert files. `main.py` is the only
-  `cryptography` importer, so drop it from `pyproject.toml` too (if it's a direct
-  dependency there, not just pulled in by another package), then `uv lock` and
-  regenerate `requirements.txt`.
-- The `community_mod.bind_host` setting in `settings.yaml` / `settings.yaml.example`,
-  and the 7443 listener references in `CLAUDE.md` (cross-origin write guard
-  section) and `community_mod_view.py`'s comments.
-- The 7443-app cases in `tests/test_csrf_guard.py` (the main app's guard tests stay).
-
-Keep: `community_mod_bp`, the payload size cap (`community_mod.max_payload_bytes`)
-and `append_capture`.
-
-Before removing it, check that nothing else still posts to `localhost:7443`. The
-installed app has no Caddy (`zt-devkit` is dev-only), so this assumes the
-installed build doesn't need mod sync, or will get its own route when it does.

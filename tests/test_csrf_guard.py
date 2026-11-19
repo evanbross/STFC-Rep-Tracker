@@ -7,12 +7,10 @@
 # Licensing inquiries: license@zombietech.biz
 # =============================================================================
 # ai: claude-opus-5-5 | 2026-11-06
-"""Cross-origin write protection (R2) on both Flask apps."""
-import sys
+"""Cross-origin write protection (R2)."""
 from pathlib import Path
 
 import pytest
-from flask import Flask
 from flask.testing import FlaskClient
 
 from app.views import community_mod_view
@@ -84,23 +82,22 @@ def test_text_plain_body_is_not_parsed_as_json(client: FlaskClient) -> None:
     assert client.get("/api/status_entries/all").get_json() == []
 
 
-@pytest.fixture(name="community_client")
-def fixture_community_client(
-    flask_app: Flask, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> FlaskClient:
-    """Client for the 7443 community-mod app (main is imported by flask_app).
+# ai: claude-opus-5-5 | 2026-11-18
+def test_community_mod_endpoint_rejects_browser_pages(
+    client: FlaskClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The mod posts here with no Origin; a browser page on another origin must not.
 
-    The capture file is redirected so a regression that lets a request through
+    The capture file is redirected so a regression that lets the request through
     can never append test data to the real community-data file.
     """
-    monkeypatch.setattr(community_mod_view, "_CAPTURE_FILE", str(tmp_path / "community-data.json"))
-    return sys.modules["main"].create_community_mod_app().test_client()
+    capture_file = tmp_path / "community-data.jsonl"
+    monkeypatch.setattr(community_mod_view, "_CAPTURE_FILE", str(capture_file))
 
-
-def test_community_mod_listener_rejects_browser_pages(community_client: FlaskClient) -> None:
-    response = community_client.post(
+    response = client.post(
         "/api/community-mod/", json={"x": 1}, headers={"Origin": "https://evil.example"},
     )
 
     assert response.status_code == 403
     assert "Access-Control-Allow-Origin" not in response.headers
+    assert not capture_file.exists()

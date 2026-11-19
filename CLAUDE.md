@@ -59,7 +59,7 @@ npm run build
 are read: `FLASK_ENV` (`development` | `production` | `testing`, default `development`), `SECRET_KEY`,
 `DATABASE_URL_POOLED` / `DIRECT`, `CORS_ORIGINS`, `CADDY_APP_NAME`, `PORT`, `DISABLE_CAPTURE`.
 - `main.py` builds it once with `load_settings()` and passes it to `create_app(settings)`. Importing `main` builds
-  nothing: `python main.py` runs `_serve()` (lock → elevation → env check → app → listeners → OCR warm-up), and
+  nothing: `python main.py` runs `_serve()` (lock → elevation → env check → app → OCR warm-up → serve), and
   tests call the `create_wsgi_app()` factory. `DISABLE_CAPTURE` keeps the Windows capture stack out (tests set it).
 - In production, a missing, placeholder, or short (<16 chars) `SECRET_KEY` stops startup.
 - Settings errors name the field, never the value.
@@ -160,11 +160,15 @@ catch-all.
 - `section31_reputations_dao.py` — `Section31ReputationsDAO`
 - `ex_borg_reputations_dao.py` — `ExBorgReputationsDAO`
 
-**Cross-origin write guard** (`app/request_guards.py`): a `before_request` hook on both Flask apps (main and the
-7443 community-mod listener) returns 403 for POST/PUT/PATCH/DELETE under `/api/` when `Origin` (or `Referer`) is
-neither the app's own origin nor in `CORS_ORIGINS`. Requests with neither header (curl, the community mod) pass.
-New origins that serve the UI must be added to `CORS_ORIGINS`. The 7443 listener binds to
-`community_mod.bind_host` in `settings.yaml` (default `127.0.0.1`).
+**Cross-origin write guard** (`app/request_guards.py`): a `before_request` hook returns 403 for
+POST/PUT/PATCH/DELETE under `/api/` when `Origin` (or `Referer`) is neither the app's own origin nor in
+`CORS_ORIGINS`. Requests with neither header (curl, the community mod) pass. New origins that serve the UI must be
+added to `CORS_ORIGINS`.
+
+**Community mod sync**: the STFC community mod posts to `http://stfc.localhost/api/community-mod/` (a
+`[sync.targets.stfc-rep-tracker]` table in the game's `community_patch_settings.toml`), which Caddy proxies to the
+main app on whatever port it picked. Payloads are appended to `community-data.jsonl`. There is no separate listener
+or fixed port; an installed build without Caddy doesn't receive mod sync.
 
 **Request bodies and errors**:
 - JSON bodies are parsed with `parse_body(Model)` (`app/views/validation.py`) against the Pydantic models in

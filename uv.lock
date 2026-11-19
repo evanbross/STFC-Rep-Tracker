@@ -1905,7 +1905,6 @@ name = "stfc-rep-tracker"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
-    { name = "cryptography" },
     { name = "easyocr" },
     { name = "flasgger" },
     { name = "flask" },
@@ -1936,7 +1935,6 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "cryptography", specifier = ">=44.0.0" },
     { name = "easyocr", specifier = "==1.7.2" },
     { name = "flasgger", specifier = "==0.9.7.1" },
     { name = "flask", specifier = "==3.1.3" },

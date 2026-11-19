@@ -3,7 +3,6 @@ name = "stfc-rep-tracker"
 version = "0.1.0"
 requires-python = ">=3.14"
 dependencies = [
-    "cryptography>=44.0.0",
     "easyocr==1.7.2",
     "flasgger==0.9.7.1",
     "Flask==3.1.3",
