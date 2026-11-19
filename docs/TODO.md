@@ -40,3 +40,58 @@ Open questions:
   need a shared secret if Spock's Club runs on another machine?
 - **Refresh:** once a push saves new readings, notify the open Dashboard (SSE)
   rather than having it poll.
+
+*Update 2026-11-18:* Spock's Club doesn't push data itself; it receives it from
+the community mod's sync. The mod now also syncs to this app through Caddy (see
+"Retire the 7443 community-mod listener" below), and its `resource` records
+carry the same IDs as `factions.spocks_resource_id` (e.g. 970475396 =
+Federation Points). The live listener is probably "save the mod's faction
+resources" on the existing `/api/community-mod/` route, not a new listener.
+That would answer the format, port and Caddy questions above.
+
+## Check the community mod's sync token
+
+*Added 2026-11-18.*
+
+`POST /api/community-mod/` accepts any request. That's fine while it's only
+reachable from this machine through `http://stfc.localhost`, but a cloud
+deployment would expose it publicly.
+
+- Add an optional `COMMUNITY_MOD_TOKEN` to `AppSettings`. When it's set,
+  `receive_payload` rejects a request whose `stfc-sync-token` header doesn't match
+  (compare with `hmac.compare_digest`). When it's unset, keep today's behaviour,
+  so local use doesn't change.
+- The header is already in `_SENSITIVE_HEADERS`, so it's never written to
+  `community-data.jsonl`.
+- The mod sends the `token` from its `[sync.targets.stfc-rep-tracker]` table in
+  `community_patch_settings.toml` (currently the placeholder `"local"`).
+- Settings errors must name the field, never the value (see `config.py`).
+
+## Retire the 7443 community-mod listener
+
+*Added 2026-11-18.*
+
+The mod now syncs to `http://stfc.localhost/api/community-mod/`, which Caddy
+proxies to the main app on whatever port it picked. Confirmed working
+2026-11-18: payloads arrive with `Host: stfc.localhost`. The main app already
+mounts `community_mod_bp` at `/api/community-mod`, so the separate HTTPS
+listener on 7443 is no longer used.
+
+Remove from `main.py`:
+- `_run_community_mod_https_server`, `create_community_mod_app` and the thread that
+  starts them.
+- `_ensure_community_mod_cert` and its self-signed cert files. `main.py` is the only
+  `cryptography` importer, so drop it from `pyproject.toml` too (if it's a direct
+  dependency there, not just pulled in by another package), then `uv lock` and
+  regenerate `requirements.txt`.
+- The `community_mod.bind_host` setting in `settings.yaml` / `settings.yaml.example`,
+  and the 7443 listener references in `CLAUDE.md` (cross-origin write guard
+  section) and `community_mod_view.py`'s comments.
+- The 7443-app cases in `tests/test_csrf_guard.py` (the main app's guard tests stay).
+
+Keep: `community_mod_bp`, the payload size cap (`community_mod.max_payload_bytes`)
+and `append_capture`.
+
+Before removing it, check that nothing else still posts to `localhost:7443`. The
+installed app has no Caddy (`zt-devkit` is dev-only), so this assumes the
+installed build doesn't need mod sync, or will get its own route when it does.
