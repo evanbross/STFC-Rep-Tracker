@@ -52,6 +52,10 @@ class AppSettings(BaseSettings):
     # means the endpoint accepts any caller, which is fine only while it's reachable
     # from this machine alone; set it before exposing the app anywhere else.
     community_mod_token: str = ""
+    # ai: claude-opus-5-5 | 2026-11-19
+    # Random per-start value the launcher passes and /api/health echoes, so the
+    # launcher's readiness check can't be answered by some other process on the port.
+    launch_id: str = ""
 
     @field_validator("disable_capture", mode="before")
     @classmethod
@@ -97,6 +101,7 @@ class AppSettings(BaseSettings):
             "DEBUG": self.flask_env == "development",
             "TESTING": self.flask_env == "testing",
             "COMMUNITY_MOD_TOKEN": self.community_mod_token.strip(),  # ai: claude-opus-5-5 | 2026-11-19
+            "LAUNCH_ID": self.launch_id,  # ai: claude-opus-5-5 | 2026-11-19
         }
 
 

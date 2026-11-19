@@ -50,10 +50,10 @@ const Dashboard = () => {
 
     return (
         <div className="dashboard">
-            {/* ai: claude-opus-5-5 | 2026-11-19 — title left, mod sync time top right */}
+            {/* ai: claude-opus-5-5 | 2026-11-19 — title left, mod sync time top right; a sync that changed values reloads cards and chart */}
             <div className="dashboard-header">
                 <h1>STFC Reputation Tracker</h1>
-                <CommunityModStatus/>
+                <CommunityModStatus onReadingsSaved={refreshAll}/>
             </div>
 
             <div className="container">

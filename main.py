@@ -17,9 +17,11 @@ import time
 
 import yaml
 from flask import Flask
+from werkzeug.serving import make_server
 
 from app import screenshot_retention
 from app.app_config import screenshots_dir
+from app.caddy_route import CaddyRoute
 from app.paths import is_frozen, resource_path, runtime_path
 from app.request_guards import install_cross_origin_write_guard
 from app.views.community_mod_view import community_mod_bp
@@ -135,6 +137,7 @@ def create_app(app_settings: AppSettings):
     from app.database.database import Database
     from app.views.calendar_view import calendar_bp
     from app.views.factions_view import factions_bp
+    from app.views.health_view import health_bp  # ai: claude-opus-5-5 | 2026-11-19
     from app.views.reputations_view import reputations_bp
     from app.views.spocks_club_view import MAX_EXPORT_BYTES, spocks_club_bp  # ai: claude-opus-5-5 | 2026-11-18
     from app.views.status_entries_view import status_entries_bp
@@ -170,6 +173,7 @@ def create_app(app_settings: AppSettings):
     flask_app.register_blueprint(community_mod_bp, url_prefix="/api/community-mod")
     flask_app.register_blueprint(status_entries_bp, url_prefix="/api/status_entries")
     flask_app.register_blueprint(factions_bp, url_prefix="/api/factions")
+    flask_app.register_blueprint(health_bp, url_prefix="/api/health")  # ai: claude-opus-5-5 | 2026-11-19
     flask_app.register_blueprint(reputations_bp, url_prefix="/api/reputations")
     flask_app.register_blueprint(spocks_club_bp, url_prefix="/api/spocks-club")  # ai: claude-opus-5-5 | 2026-11-17
     flask_app.register_blueprint(target_types_bp, url_prefix="/api/target-types")
@@ -235,9 +239,12 @@ def _serve() -> None:
 
     _build_frontend_if_needed()
     port = app_settings.port
-    port_file = _publish_dev_port(port)  # ai: claude-opus-5-5 | 2026-11-18
+    # ai: claude-opus-5-5 | 2026-11-19
+    # make_server binds the port before serve_forever, so Caddy is only pointed
+    # at a port this process actually holds. Same server and threading as the
+    # app.run() it replaces; flask_app.debug already comes from DEBUG in config.
     try:
-        flask_app.run(debug=debug, port=port, use_reloader=False)
+        server = make_server("127.0.0.1", port, flask_app, threaded=True)
     except OSError as e:
         # WSAEACCES (10013) on Windows means the port is either in use or in the
         # system's excluded port range.  Give a concrete, actionable message.
@@ -252,7 +259,20 @@ def _serve() -> None:
         else:
             logger.error(f"Failed to start server on port {port}: {e}")
         sys.exit(1)
+
+    # ai: claude-opus-5-5 | 2026-11-19
+    caddy_route = CaddyRoute(app_settings.caddy_app_name, port)
+    flask_app.config["CADDY_ROUTE"] = caddy_route  # read by /api/health
+    caddy_route.start()
+    port_file = _publish_dev_port(port)  # ai: claude-opus-5-5 | 2026-11-18
+    logger.info("Serving on port %d; open %s", port, caddy_route.url)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        logger.info("Stopping (interrupted)")
     finally:
+        caddy_route.stop()
+        server.server_close()
         if port_file is not None:  # ai: claude-opus-5-5 | 2026-11-18
             with contextlib.suppress(FileNotFoundError):
                 os.remove(port_file)

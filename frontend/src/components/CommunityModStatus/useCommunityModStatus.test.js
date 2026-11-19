@@ -92,6 +92,36 @@ describe('useCommunityModStatus', () => {
         expect(requests).toHaveLength(2);
     });
 
+    // ai: claude-opus-5-5 | 2026-11-19
+    it('calls onReadingsSaved for a readings event and after a reconnect', async () => {
+        fakeApi(() => ({status: 200, data: {last_received_at: FIRST}}));
+        const onReadingsSaved = vi.fn();
+        const {result} = renderHook(() => useCommunityModStatus({onReadingsSaved}));
+        await waitFor(() => expect(result.current.lastReceivedAt).toBe(FIRST));
+
+        act(() => source().emit('open'));
+        expect(onReadingsSaved).not.toHaveBeenCalled();
+
+        act(() => source().emit('readings', '{}'));
+        expect(onReadingsSaved).toHaveBeenCalledTimes(1);
+
+        act(() => {
+            source().emit('error');
+            source().emit('open');
+        });
+        expect(onReadingsSaved).toHaveBeenCalledTimes(2);
+    });
+
+    it('works without an onReadingsSaved callback', async () => {
+        fakeApi(() => ({status: 200, data: {last_received_at: FIRST}}));
+        const {result} = renderHook(() => useCommunityModStatus());
+        await waitFor(() => expect(result.current.lastReceivedAt).toBe(FIRST));
+
+        act(() => source().emit('readings', '{}'));
+
+        expect(result.current.error).toBeNull();
+    });
+
     it('reports an error when the status cannot be loaded', async () => {
         fakeApi(() => NETWORK_ERROR);
 

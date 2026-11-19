@@ -15,7 +15,7 @@ from config import DEV_SECRET_KEY, SettingsError, load_settings
 _REAL_KEY = "k3Y-" + "x" * 28
 _ENV_VARS = (
     "FLASK_ENV", "SECRET_KEY", "DATABASE_URL_POOLED", "DATABASE_URL_DIRECT", "DATABASE_URL",
-    "CADDY_APP_NAME", "CORS_ORIGINS", "PORT", "DISABLE_CAPTURE", "COMMUNITY_MOD_TOKEN",
+    "CADDY_APP_NAME", "CORS_ORIGINS", "PORT", "DISABLE_CAPTURE", "COMMUNITY_MOD_TOKEN", "LAUNCH_ID",
 )
 
 
@@ -112,3 +112,10 @@ def test_community_mod_token_reaches_flask_config(env: pytest.MonkeyPatch) -> No
 
 def test_community_mod_token_defaults_to_unset(env: pytest.MonkeyPatch) -> None:
     assert load_settings().flask_config()["COMMUNITY_MOD_TOKEN"] == ""
+
+
+# ai: claude-opus-5-5 | 2026-11-19
+def test_launch_id_reaches_flask_config(env: pytest.MonkeyPatch) -> None:
+    env.setenv("LAUNCH_ID", "abc123")
+
+    assert load_settings().flask_config()["LAUNCH_ID"] == "abc123"

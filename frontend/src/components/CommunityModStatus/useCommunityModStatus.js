@@ -13,15 +13,25 @@
 // stream reconnects, since events sent while disconnected aren't replayed.
 // Between those, each `capture` event carries the new time, so a sync shows up
 // as it happens without polling.
-import {useEffect, useState} from 'react';
+//
+// ai: claude-opus-5-5 | 2026-11-19
+// A `readings` event means a sync changed faction values in the database;
+// onReadingsSaved re-reads them. It's also called after a reconnect, since a
+// `readings` event may have been missed while disconnected.
+import {useEffect, useEffectEvent, useState} from 'react';
 import {api, errorMessage} from '../../api/client';
 
 export const STATUS_URL = '/api/community-mod/status';
 export const EVENTS_URL = '/api/community-mod/events';
 
-export default function useCommunityModStatus() {
+export default function useCommunityModStatus({onReadingsSaved} = {}) {
     const [lastReceivedAt, setLastReceivedAt] = useState(null);
     const [error, setError] = useState(null);
+
+    // The latest callback, without reopening the event stream when it changes.
+    const readingsSaved = useEffectEvent(() => {
+        onReadingsSaved?.();
+    });
 
     useEffect(() => {
         let cancelled = false;
@@ -47,6 +57,7 @@ export default function useCommunityModStatus() {
             setLastReceivedAt(JSON.parse(event.data).last_received_at);
             setError(null);
         });
+        source.addEventListener('readings', () => readingsSaved()); // ai: claude-opus-5-5 | 2026-11-19
         source.addEventListener('error', () => {
             reconnecting = true;
         });
@@ -54,6 +65,7 @@ export default function useCommunityModStatus() {
             if (!reconnecting) return;
             reconnecting = false;
             loadStatus();
+            readingsSaved(); // ai: claude-opus-5-5 | 2026-11-19
         });
 
         return () => {

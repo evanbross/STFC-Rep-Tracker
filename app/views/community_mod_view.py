@@ -19,8 +19,10 @@ from flask.typing import ResponseReturnValue
 from werkzeug.exceptions import RequestEntityTooLarge
 
 from app.app_config import capture_cfg
+from app.community_mod_parsing import resource_amounts
 from app.database.status_entries_dao import iso_utc
 from app.paths import runtime_path
+from app.spocks_club_parsing import match_factions
 
 logger = logging.getLogger(__name__)
 
@@ -42,11 +44,13 @@ SYNC_TOKEN_HEADER = "stfc-sync-token"
 _SENSITIVE_HEADERS = {"authorization", "cookie", "x-api-key", "x-auth-token", SYNC_TOKEN_HEADER}  # ai: claude-opus-5-5 | 2026-11-19
 
 # ai: claude-opus-5-5 | 2026-11-19
-# Wakes the /events streams after each capture. The counter, not the
-# notification, is what a stream compares, so a capture that lands while a
-# stream is between waits is still seen on its next wait.
+# Wakes the /events streams after each capture, and again when a capture saved
+# reputation readings. The counters, not the notification, are what a stream
+# compares, so a change that lands while a stream is between waits is still
+# seen on its next wait.
 _capture_changed = threading.Condition()
 _capture_count = 0
+_readings_count = 0
 # A comment line this often keeps idle proxies from closing the stream, and
 # makes a closed browser tab surface as a failed write so its thread exits.
 _KEEPALIVE_SECONDS = 25.0
@@ -67,7 +71,7 @@ def receive_payload() -> ResponseReturnValue:
           type: object
     responses:
       200:
-        description: Payload captured successfully
+        description: Payload captured; `readings_saved` counts the faction values that changed and were saved
       400:
         description: Request body is not valid JSON
       401:
@@ -113,15 +117,42 @@ def receive_payload() -> ResponseReturnValue:
     safe_headers = {
         k: v for k, v in request.headers.items() if k.lower() not in _SENSITIVE_HEADERS
     }
+    received_at = datetime.now(UTC)  # ai: claude-opus-5-5 | 2026-11-19
     capture = {
-        "received_at": datetime.now(UTC).isoformat(),  # + "Z",
+        "received_at": received_at.isoformat(),  # ai: claude-opus-5-5 | 2026-11-19
         "headers": safe_headers,
         "payload": data,
     }
 
     capture_path = append_capture(capture)  # ai: claude-opus-5-5 | 2026-11-06
     logger.info("community-mod: payload appended to %s", capture_path)
-    return jsonify({"status": "captured"}), 200
+    # ai: claude-opus-5-5 | 2026-11-19
+    # After the append, so the raw payload is kept even if the database is down.
+    saved = save_reputation_changes(data, received_at)
+    return jsonify({"status": "captured", "readings_saved": len(saved)}), 200
+
+
+# ai: claude-opus-5-5 | 2026-11-19
+def save_reputation_changes(payload: object, received_at: datetime) -> list[dict]:
+    """Save a reading for each faction whose resource in `payload` differs from its latest value.
+
+    Factions are matched on spocks_resource_id, the game's resource ID. Most
+    payloads hold no resources at all and never reach the database.
+    """
+    amounts = resource_amounts(payload)
+    if not amounts:
+        return []
+    db = current_app.config["DATABASE"]
+    readings, _ = match_factions(db.factions.get_all_factions(), amounts)
+    if not readings:
+        return []
+    saved = db.status_entries.add_changed_entries_at(
+        received_at, {reading.faction_code: reading.value for reading in readings}
+    )
+    if saved:
+        logger.info("community-mod: saved %d changed reputation reading(s)", len(saved))
+        _notify_readings()
+    return saved
 
 
 # ai: claude-opus-5-5 | 2026-11-19
@@ -183,6 +214,14 @@ def _notify_capture() -> None:
 
 
 # ai: claude-opus-5-5 | 2026-11-19
+def _notify_readings() -> None:
+    global _readings_count
+    with _capture_changed:
+        _readings_count += 1
+        _capture_changed.notify_all()
+
+
+# ai: claude-opus-5-5 | 2026-11-19
 def last_capture_time() -> str | None:
     """When the last payload was captured (ISO 8601, UTC), or None if none has been.
 
@@ -215,7 +254,7 @@ def capture_status() -> ResponseReturnValue:
 @community_mod_bp.route("/events", methods=["GET"])
 def capture_events() -> ResponseReturnValue:
     """
-    Server-sent events: a `capture` event, carrying the new `last_received_at`, after each payload.
+    Server-sent events: `capture` after each payload, and `readings` when one saved reputation values.
     ---
     tags:
       - Community Mod
@@ -223,7 +262,10 @@ def capture_events() -> ResponseReturnValue:
       - text/event-stream
     responses:
       200:
-        description: An open event stream. Re-read /status after reconnecting; events missed while disconnected are not replayed.
+        description: >-
+          An open event stream. `capture` carries the new `last_received_at`; `readings` means faction
+          values changed, so re-read them. Events missed while disconnected are not replayed: re-read
+          /status and the faction summary after reconnecting.
     """
     return Response(
         capture_event_stream(),
@@ -234,21 +276,31 @@ def capture_events() -> ResponseReturnValue:
 
 # ai: claude-opus-5-5 | 2026-11-19
 def capture_event_stream() -> Iterator[str]:
-    """Yield SSE frames: a capture event per change in _capture_count, else a keepalive.
+    """Yield SSE frames: `capture` and `readings` events as their counters change, else a keepalive.
 
     The first frame goes out at once, so the response headers are sent and the
-    browser's EventSource reports the connection open. Several captures in one
-    wait collapse into one event, since only the latest time matters.
+    browser's EventSource reports the connection open. Several changes in one
+    wait collapse into one event of each kind: each only means "go and re-read".
     """
     with _capture_changed:
-        seen = _capture_count
+        seen = _event_counts()
     yield "retry: 10000\n\n"
     while True:
         with _capture_changed:
-            _capture_changed.wait_for(lambda: _capture_count != seen, timeout=_KEEPALIVE_SECONDS)
-            current = _capture_count
+            _capture_changed.wait_for(lambda: _event_counts() != seen, timeout=_KEEPALIVE_SECONDS)
+            current = _event_counts()
         if current == seen:
             yield ": keepalive\n\n"
             continue
+        if current[0] != seen[0]:
+            yield f"event: capture\ndata: {json.dumps({'last_received_at': last_capture_time()})}\n\n"
+        if current[1] != seen[1]:
+            # A browser only dispatches an event that has a data line.
+            yield "event: readings\ndata: {}\n\n"
         seen = current
-        yield f"event: capture\ndata: {json.dumps({'last_received_at': last_capture_time()})}\n\n"
+
+
+# ai: claude-opus-5-5 | 2026-11-19
+def _event_counts() -> tuple[int, int]:
+    """(captures, reading saves) so far; read it holding _capture_changed."""
+    return _capture_count, _readings_count

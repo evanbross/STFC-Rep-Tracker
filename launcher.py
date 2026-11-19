@@ -7,6 +7,7 @@
 # Licensing inquiries: license@zombietech.biz
 # =============================================================================
 import ctypes
+import json
 import os
 import runpy
 import secrets
@@ -17,6 +18,7 @@ import sys
 import threading
 import time
 import tkinter as tk
+import urllib.request
 import webbrowser
 from tkinter import font as tkfont
 from tkinter import messagebox, scrolledtext, ttk
@@ -31,11 +33,11 @@ _PREFERRED_PORT = 7300
 _BACKEND_ARG = "--backend"
 _launcher_lock = SingleInstanceLock("Global\\STFCRepTrackerLauncher")  # ai: claude-opus-5-5 | 2026-11-06
 
-# ai: claude-opus-5-5 | 2026-11-12
+# ai: claude-opus-5-5 | 2026-11-19
 # Shared dev-Caddy client from the zt-common package (../infra/zt-common), installed
-# as an editable *dev* dependency. Optional on purpose: the installed app
-# (embedded Python + requirements.txt, exported with --no-dev) doesn't have it,
-# and there's no dev Caddy on a user's machine anyway.
+# as an editable *dev* dependency, so optional. The backend registers its own route
+# (app/caddy_route.py); the launcher only removes it after terminating the backend,
+# which skips the backend's own cleanup.
 try:
     from zt_common import caddy_registry as _caddy_registry
 except ImportError:
@@ -167,15 +169,34 @@ def _find_free_port(start: int = _PREFERRED_PORT, attempts: int = 20) -> int:
         ) from exc
 
 
-def _wait_for_server(port: int, timeout: int = 60) -> bool:
+# ai: claude-opus-5-5 | 2026-11-19
+def read_health(port: int) -> dict | None:
+    """The backend's /api/health answer, or None if nothing valid answered."""
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/health", timeout=2) as response:
+            body = json.loads(response.read())
+    except (OSError, ValueError):  # not listening yet, timed out, or not our JSON
+        return None
+    return body if isinstance(body, dict) else None
+
+
+# ai: claude-opus-5-5 | 2026-11-19
+def wait_for_health(port: int, launch_id: str, process: subprocess.Popen, timeout: int = 60) -> dict | None:
+    """Wait until the backend we started answers /api/health; return its answer.
+
+    A startup readiness probe, bounded by `timeout`: an open port only means
+    something is listening, while a health answer echoing our launch_id means
+    our own child is serving requests. Gives up at once if the child exits.
+    """
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        try:
-            with socket.create_connection(("127.0.0.1", port), timeout=1):
-                return True
-        except OSError:
-            time.sleep(0.5)
-    return False
+        if process.poll() is not None:
+            return None
+        health = read_health(port)
+        if health is not None and health.get("launch_id") == launch_id:
+            return health
+        time.sleep(0.5)
+    return None
 
 
 
@@ -325,7 +346,7 @@ class LauncherWindow:
         self._port: int | None = None
         self._restart_btn: ttk.Button | None = None
         self._app_url: str | None = None
-        self._caddy_app_name: str = "stfc"
+        self._caddy_app_name: str | None = None  # ai: claude-opus-5-5 | 2026-11-19 — as the backend reports it
 
         self._configure_styles()
         self._build_ui()
@@ -443,7 +464,6 @@ class LauncherWindow:
             shutil.copy2(env_example, env_path)
 
         env_data = _parse_env_file(env_path)
-        self._caddy_app_name = env_data.get("CADDY_APP_NAME", "stfc")
 
         if _needs_setup(env_data):
             self._status_var.set("Setup required — please fill in the configuration.")
@@ -470,6 +490,8 @@ class LauncherWindow:
 
             env = os.environ.copy()
             env["PORT"] = str(port)
+            launch_id = secrets.token_hex(8)  # ai: claude-opus-5-5 | 2026-11-19
+            env["LAUNCH_ID"] = launch_id
 
             if is_frozen():
                 command = [sys.executable, _BACKEND_ARG]
@@ -496,10 +518,11 @@ class LauncherWindow:
                 target=self._pump_output, args=(self._process, log_path), daemon=True
             ).start()
 
-            self._set_status(f"Waiting for server on port {port}…")
-            if _wait_for_server(port):
-                url, caddy_ok = self._resolve_app_url(port)
-                self.root.after(0, lambda: self._on_server_ready(url, caddy_ok))
+            # ai: claude-opus-5-5 | 2026-11-19
+            self._set_status("Waiting for the server to start…")
+            health = wait_for_health(port, launch_id, self._process)
+            if health is not None:
+                self.root.after(0, lambda: self._on_server_ready(health))
             else:
                 self._set_status("Server did not start — check server.log for details.")
                 self.root.after(0, lambda: self._set_restart_button_state("normal"))
@@ -507,43 +530,28 @@ class LauncherWindow:
             self._set_status(f"Error: {exc}")
             self.root.after(0, lambda: self._set_restart_button_state("normal"))
 
-    # ai: claude-sonnet-5 | 2026-07-31
-    def _resolve_app_url(self, port: int) -> tuple[str, bool]:
-        """Attempt Caddy registration and return (url, caddy_ok).
-
-        caddy_ok reflects whether register() actually succeeded, not just
-        whether the caddy_registry module imported — a prior version of this
-        code conflated the two, which let the UI show/open http://<name>.localhost
-        even when Caddy never registered the route (e.g. Caddy started after
-        this app, or isn't running at all).
-        """
-        caddy_ok = _caddy_registry is not None and _caddy_registry.register(
-            self._caddy_app_name, port
-        )
-        url = (
-            f"http://{self._caddy_app_name}.localhost"
-            if caddy_ok
-            else f"http://localhost:{port}"
-        )
-        return url, caddy_ok
-
-    def _on_server_ready(self, url: str, caddy_ok: bool) -> None:
-        self._app_url = url
-        suffix = "" if caddy_ok else " — Caddy unavailable, using direct port"
-        self._status_var.set(f"Now running on {url} (using port {self._port}){suffix}")
+    # ai: claude-opus-5-5 | 2026-11-19
+    def _on_server_ready(self, health: dict) -> None:
+        """Show where the backend says it can be reached (its Caddy name, or the bare port)."""
+        self._app_url = health["url"]
+        if health.get("caddy_app_name"):
+            self._caddy_app_name = health["caddy_app_name"]
+        suffix = "" if health.get("caddy_app_name") else " — Caddy unavailable, using direct port"
+        self._status_var.set(f"Now running on {self._app_url} (port {self._port}){suffix}")
         self._open_btn.config(state="normal")
         self._set_restart_button_state("normal")
 
     # ── Actions ───────────────────────────────────────────────────────────────
 
-    # ai: claude-sonnet-5 | 2026-07-31
+    # ai: claude-opus-5-5 | 2026-11-19
     def _open_browser(self) -> None:
-        # Re-resolve on each click (not a background poll — only runs on this
-        # explicit user action) so a Caddy stack that started late is picked
-        # up without requiring an app restart.
+        # Re-read /api/health on each click (an explicit user action, not a
+        # poll): the backend re-registers with a Caddy that started late, and
+        # this picks up the URL that gives.
         if self._port is not None:
-            url, caddy_ok = self._resolve_app_url(self._port)
-            self._on_server_ready(url, caddy_ok)
+            health = read_health(self._port)
+            if health is not None:
+                self._on_server_ready(health)
         if self._app_url:
             webbrowser.open(self._app_url)
 
@@ -562,8 +570,6 @@ class LauncherWindow:
         self.root.destroy()
 
     def _stop_backend(self) -> None:
-        if _caddy_registry is not None:
-            _caddy_registry.deregister(self._caddy_app_name)
         self._app_url = None
         if self._process and self._process.poll() is None:
             self._process.terminate()
@@ -572,6 +578,13 @@ class LauncherWindow:
             except subprocess.TimeoutExpired:
                 self._process.kill()
                 self._process.wait(timeout=5)
+        # ai: claude-opus-5-5 | 2026-11-19
+        # terminate() is TerminateProcess on Windows, so the backend never ran
+        # its own deregister. Remove the route it reported, after it's gone, so
+        # its reconciler can't put it back.
+        if _caddy_registry is not None and self._caddy_app_name:
+            _caddy_registry.deregister(self._caddy_app_name)
+        self._caddy_app_name = None
         self._process = None
         self._port = None
 

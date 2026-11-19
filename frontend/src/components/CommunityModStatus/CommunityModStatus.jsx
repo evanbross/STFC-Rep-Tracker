@@ -16,8 +16,9 @@ export function formatSyncTime(isoTime) {
     return new Date(isoTime).toLocaleString(undefined, {dateStyle: 'medium', timeStyle: 'medium'});
 }
 
-const CommunityModStatus = () => {
-    const {lastReceivedAt, error} = useCommunityModStatus();
+// ai: claude-opus-5-5 | 2026-11-19 — onReadingsSaved: a sync changed faction values
+const CommunityModStatus = ({onReadingsSaved}) => {
+    const {lastReceivedAt, error} = useCommunityModStatus({onReadingsSaved});
 
     return (
         <div className="community-mod-status" title={error ?? 'Last update received from the community mod'}>

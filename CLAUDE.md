@@ -33,12 +33,17 @@ python main.py
 ```
 
 Normally the backend is started via `launcher.py` instead of `main.py` directly. The launcher picks
-a free port starting at 7300 and registers it with the shared `../infra` Caddy instance as
-`http://stfc.localhost` (app name `"stfc"`, overridable via `CADDY_APP_NAME`) — see `launcher.py`
-and `zt_common.caddy_registry`. That comes from the `zt-common` package (`../infra/zt-common`), an
-editable uv **dev** dependency. It's optional: if it isn't installed (the shipped app exports with
-`--no-dev`) or Caddy isn't running, the launcher falls back to opening `http://localhost:<port>`
-directly.
+a free port starting at 7300, passes it as `PORT` with a random `LAUNCH_ID`, and waits until
+`GET /api/health` echoes that ID (an open port alone could be another process), then opens the `url`
+the backend reports.
+
+The backend registers **itself** with the shared `../infra` Caddy instance as `http://stfc.localhost`
+(app name `"stfc"`, overridable via `CADDY_APP_NAME`) once it has bound its port, however it was started
+(launcher, PyCharm, `python main.py`) — see `app/caddy_route.py`. A `RouteReconciler` puts the route back
+if Caddy restarts or starts late, and a clean exit removes it; the launcher removes it after terminating
+the backend, since `TerminateProcess` skips that cleanup. The client comes from the `zt-common` package
+(`../infra/zt-common`), an editable uv **dev** dependency. It's optional: if it isn't installed (the shipped
+app exports with `--no-dev`) or Caddy isn't running, the app is reached at `http://localhost:<port>`.
 
 **Frontend dev server** (proxies `/api` to Flask):
 
@@ -58,7 +63,7 @@ npm run build
 **Environment**: `config.py` defines `AppSettings` (pydantic-settings). It is the one place environment variables
 are read: `FLASK_ENV` (`development` | `production` | `testing`, default `development`), `SECRET_KEY`,
 `DATABASE_URL_POOLED` / `DIRECT`, `CORS_ORIGINS`, `CADDY_APP_NAME`, `PORT`, `DISABLE_CAPTURE`,
-`COMMUNITY_MOD_TOKEN`.
+`COMMUNITY_MOD_TOKEN`, `LAUNCH_ID` (set by the launcher only).
 - `main.py` builds it once with `load_settings()` and passes it to `create_app(settings)`. Importing `main` builds
   nothing: `python main.py` runs `_serve()` (lock → elevation → env check → app → OCR warm-up → serve), and
   tests call the `create_wsgi_app()` factory. `DISABLE_CAPTURE` keeps the Windows capture stack out (tests set it).
@@ -168,11 +173,15 @@ added to `CORS_ORIGINS`.
 
 **Community mod sync**: the STFC community mod posts to `http://stfc.localhost/api/community-mod/` (a
 `[sync.targets.stfc-rep-tracker]` table in the game's `community_patch_settings.toml`), which Caddy proxies to the
-main app on whatever port it picked. Payloads are appended to `community-data.jsonl`. When `COMMUNITY_MOD_TOKEN`
+main app on whatever port it picked. Payloads are appended to `community-data.jsonl`. Then each `resource` record
+(`app/community_mod_parsing.py`) whose `rid` matches a faction's `spocks_resource_id` is saved as a status entry
+at the receive time, but only if it differs from that faction's latest entry (`add_changed_entries_at`); the
+mod resends unchanged values, and a full sync has ~5,700 resources. When `COMMUNITY_MOD_TOKEN`
 is set, a request whose `stfc-sync-token` header doesn't match gets 401 before its body is read; unset, any
 caller is accepted (fine while only this machine can reach it). `GET /api/community-mod/status` returns the last
 capture time (the capture file's mtime), and `GET /api/community-mod/events` is an SSE stream with a `capture`
-event per payload; the Dashboard's `CommunityModStatus` reads both. There is no separate listener
+event per payload and a `readings` event when one saved values; the Dashboard's `CommunityModStatus` reads both,
+and a `readings` event (or a reconnect) reloads the cards and chart. There is no separate listener
 or fixed port; an installed build without Caddy doesn't receive mod sync.
 
 **Request bodies and errors**:
@@ -196,6 +205,7 @@ registered in `main.py` with URL prefixes:
 | `calendar_view.py`       | `/api/calendar`       |
 | `community_mod_view.py`  | `/api/community-mod`  |
 | `spocks_club_view.py`    | `/api/spocks-club`    |
+| `health_view.py`         | `/api/health`         |
 
 Key endpoints:
 

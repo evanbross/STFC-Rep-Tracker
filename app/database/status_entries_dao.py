@@ -95,6 +95,42 @@ class StatusEntriesDAO:
                     skipped.append(code)
         return saved, skipped
 
+    # ai: claude-opus-5-5 | 2026-11-19
+    def add_changed_entries_at(self, timestamp: datetime, values_by_code: dict[str, int]) -> list[dict[str, Any]]:
+        """Insert an entry at `timestamp` for each faction whose value differs from its latest one.
+
+        For the community mod, which resends values that haven't changed. The
+        comparison and the insert are one statement, so nothing changes between
+        them. A faction with no entries yet always gets one. Returns the saved
+        entries. Raises NotFoundError, and saves nothing, if a code is unknown.
+
+        Two overlapping calls with the same new value can both save it, a
+        harmless repeat reading; a lock per faction isn't worth that.
+        """
+        saved: list[dict[str, Any]] = []
+        with self.db.connect() as conn, conn.cursor() as cursor:
+            for code, value in values_by_code.items():
+                try:
+                    cursor.execute(
+                        """
+                        INSERT INTO status_entries (faction_code, timestamp, value)
+                        SELECT %(code)s, %(timestamp)s, %(value)s
+                        WHERE %(value)s::bigint IS DISTINCT FROM (
+                            SELECT value FROM status_entries
+                            WHERE faction_code = %(code)s
+                            ORDER BY timestamp DESC
+                            LIMIT 1
+                        )
+                        ON CONFLICT (faction_code, timestamp) DO NOTHING
+                        """,
+                        {"code": code, "timestamp": timestamp, "value": value},
+                    )
+                except psycopg2.errors.ForeignKeyViolation as exc:
+                    raise NotFoundError(f"Faction '{code}' not found") from exc
+                if cursor.rowcount:
+                    saved.append({"faction_code": code, "timestamp": iso_utc(timestamp), "value": value})
+        return saved
+
     def get_faction_entries(self, faction_name: str) -> list[dict[str, Any]]:
         """Get all stat entries for a specific faction"""
         with self.db.connect() as conn:
