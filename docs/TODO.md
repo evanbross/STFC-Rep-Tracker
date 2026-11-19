@@ -47,21 +47,3 @@ carry the same IDs as `factions.spocks_resource_id` (e.g. 970475396 =
 Federation Points). The live listener is probably "save the mod's faction
 resources" on the existing `/api/community-mod/` route, not a new listener.
 That would answer the format, port and Caddy questions above.
-
-## Check the community mod's sync token
-
-*Added 2026-11-18.*
-
-`POST /api/community-mod/` accepts any request. That's fine while it's only
-reachable from this machine through `http://stfc.localhost`, but a cloud
-deployment would expose it publicly.
-
-- Add an optional `COMMUNITY_MOD_TOKEN` to `AppSettings`. When it's set,
-  `receive_payload` rejects a request whose `stfc-sync-token` header doesn't match
-  (compare with `hmac.compare_digest`). When it's unset, keep today's behaviour,
-  so local use doesn't change.
-- The header is already in `_SENSITIVE_HEADERS`, so it's never written to
-  `community-data.jsonl`.
-- The mod sends the `token` from its `[sync.targets.stfc-rep-tracker]` table in
-  `community_patch_settings.toml` (currently the placeholder `"local"`).
-- Settings errors must name the field, never the value (see `config.py`).
